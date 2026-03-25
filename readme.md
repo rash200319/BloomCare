@@ -15,7 +15,7 @@
 
 # current roc-auc 
 ---
-GDM Stage 2 ROC-AUC: 0.9981
+GDM Stage 2 ROC-AUC: 0.9983
 <br>
 Preterm Stage 2 ROC-AUC: 0.9911
 <br>
