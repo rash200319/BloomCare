@@ -17,7 +17,7 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "Data"
 print("\n--- Training GDM Expert Model ---")
 try:
     # Load both datasets
-    df_gdm = pd.read_csv(DATA_DIR / "Gestational Diabetic Dat Set.csv")
+    df_gdm = pd.read_csv(DATA_DIR / "GDM_Dataset_Enterprise_Imputed.csv")
     df_bmi = pd.read_csv(DATA_DIR / "Gestational Diabetes.csv")
     print("Both GDM Datasets Loaded Successfully.")
 except FileNotFoundError:

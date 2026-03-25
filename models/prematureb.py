@@ -15,7 +15,7 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "Data"
 
 print("\n--- Training Holistic Preterm Birth Expert Model ---")
 try:
-    df_preterm = pd.read_csv(DATA_DIR / "MSF_Dataset_Complete_450.csv")
+    df_preterm = pd.read_csv(DATA_DIR / "MSF_Stage1_Cleaned.csv")
     print("Preterm Dataset Loaded.")
 except FileNotFoundError:
     print("Error: Preterm dataset not found.")

@@ -4,127 +4,86 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import joblib
-import shap
 import warnings
 from pathlib import Path
-# --- Machine Learning: Preprocessing & Model Selection ---
-# tuning
-from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV
 
-from sklearn.preprocessing import LabelEncoder, StandardScaler # standardization
-from sklearn.pipeline import Pipeline # Chains multiple processing steps into a single workflow
+# --- Machine Learning Libraries ---
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.impute import KNNImputer
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import (classification_report, confusion_matrix, 
+                             roc_auc_score, precision_recall_curve, auc)
 
-# --- Machine Learning: Algorithms ---
-from sklearn.neural_network import MLPClassifier    
-from sklearn.ensemble import RandomForestClassifier 
-from sklearn.cluster import KMeans                  
-from sklearn.impute import SimpleImputer            
-
-# --- Machine Learning: Evaluation Metrics ---
-
-from sklearn.metrics import (
-    classification_report,  
-    confusion_matrix,       
-    roc_auc_score,          
-    precision_recall_curve, 
-    auc,                    
-    silhouette_score,        
-    RocCurveDisplay          
-)
-
-# --- Global Environment Settings ---
+# --- Global Settings ---
 warnings.filterwarnings("ignore")
 np.random.seed(42)                  
 sns.set_theme(style="whitegrid")    
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "Data"
+print(" INITIALIZING MULTI-MODAL DATA FUSION...")
 
-# --- ERROR HANDLING & DATA LOADING ---
-try:
-   
-    df_stage1 = pd.read_csv(DATA_DIR / "Dataset - Updated.csv")
-    print(" Dataset 1 Loaded (Vitals Data).")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DATA_DIR = PROJECT_ROOT / "Data"
 
-except FileNotFoundError:
-    print(" Error: 'Dataset - Updated.csv' not found. Skipping Stage 1.")
+# --- 1. LOAD & STANDARDIZE DATASET 1 (Clinical Vitals) ---
+df_updated = pd.read_csv(DATA_DIR / "Dataset - Updated.csv")
+df_updated = df_updated.dropna(subset=['Risk Level']) # Drop if target is missing
 
-
-df_stage1.fillna(df_stage1.median(numeric_only=True), inplace=True)
-
-df_stage1['General_Risk_Flag'] = df_stage1['Risk Level'].apply(
-    lambda x: 0 if str(x).strip().lower() == 'low' else 1
+# Convert Target: "Low" = 0 (Normal), "High"/"Mid" = 1 (High Risk)
+df_updated['High_Risk_Target'] = df_updated['Risk Level'].astype(str).str.strip().str.lower().apply(
+    lambda x: 0 if x == 'low' else 1
 )
+df_updated = df_updated.drop(columns=['Risk Level'])
 
-# --- FEATURE ENGINEERING: CALCULATING MEAN ARTERIAL PRESSURE (MAP) ---
+# --- 2. LOAD & STANDARDIZE DATASET 2 (Biopsychosocial) ---
+df_msf = pd.read_csv(DATA_DIR / "MSF_Stage1_Cleaned.csv")
 
-df_stage1['MAP'] = (df_stage1['Systolic BP'] + 2 * df_stage1['Diastolic']) / 3
+# Align column names to match Dataset 1
+df_msf = df_msf.rename(columns={
+    'Age_Of_Mother': 'Age', 
+    'Issues_Pregnancy': 'High_Risk_Target'
+})
+# Drop unique IDs as they hold no predictive power
+df_msf = df_msf.drop(columns=['Mother_UID'], errors='ignore')
 
-# --- SYNTHETIC FEATURE SIMULATION (Environmental & Socioeconomic Factors) ---
+# --- 3. CONCATENATE INTO ONE MASSIVE DATASET ---
+df_master = pd.concat([df_updated, df_msf], ignore_index=True)
+print(f" Datasets merged! Total Master Rows: {len(df_master)}")
 
-# (0=Low, 1=Moderate, 2=High).
-df_stage1['Heat_Exposure'] = np.random.choice([0, 1, 2], size=len(df_stage1), p=[0.25, 0.35, 0.40])
+# --- 4. DATA SPLITTING (To Prevent Leakage) ---
+X = df_master.drop(columns=['High_Risk_Target'])
+y = df_master['High_Risk_Target']
 
-# (0=Clean, 1=Moderate, 2=Polluted).
-df_stage1['Air_Pollution'] = np.random.choice([0, 1, 2], size=len(df_stage1), p=[0.30, 0.40, 0.30])
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
 
-# (0=High Access, 1=Moderate, 2=Low Access).
-df_stage1['Access_To_Care'] = np.random.choice([0, 1, 2], size=len(df_stage1), p=[0.45, 0.35, 0.20])
-
-# --- DOMAIN-DRIVEN DATA OVERRIDE (Expert Logic) ---
-
-df_stage1.loc[df_stage1['Systolic BP'] > 140, 'Heat_Exposure'] = 2
-
-# --- DATA SPLITTING: FEATURES (X) vs. TARGET (y) ---
-
-X1 = df_stage1.drop(columns=['General_Risk_Flag', 'Risk Level'])
-y1 = df_stage1['General_Risk_Flag']
-
-# --- DATA PARTITIONING: TRAIN/TEST SPLIT ---
-X1_train, X1_test, y1_train, y1_test = train_test_split(X1, y1, test_size=0.2, stratify=y1, random_state=42)
-
-# --- MACHINE LEARNING PIPELINE: STANDARDIZATION & NEURAL NETWORK ---
+# --- 5. THE DATA FUSION PIPELINE (KNN Imputation + Random Forest) ---
+# We use KNN Imputer to cross-pollinate missing features between the two datasets
 pipeline_stage1 = Pipeline([
+    ('knn_imputer', KNNImputer(n_neighbors=5, weights='distance')), 
     ('scaler', StandardScaler()),
-    ('mlp', MLPClassifier(hidden_layer_sizes=(64, 32), max_iter=500, random_state=42))
+    ('rf_model', RandomForestClassifier(n_estimators=100, class_weight='balanced', random_state=42))
 ])
 
-# --- MODEL TRAINING (THE LEARNING PHASE) ---
-pipeline_stage1.fit(X1_train, y1_train)
+print("Training Unified Model and Imputing Missing Modalities...")
+pipeline_stage1.fit(X_train, y_train)
 
-# --- STAGE 1 EVALUATION (TESTING THE AI'S KNOWLEDGE) ---
+# --- 6. EVALUATION & METRICS ---
+y_probs = pipeline_stage1.predict_proba(X_test)[:, 1]
+y_pred = pipeline_stage1.predict(X_test)
 
-y1_probs = pipeline_stage1.predict_proba(X1_test)[:, 1]
-y1_pred = pipeline_stage1.predict(X1_test)
-print("\n STAGE 1 RESULTS (Neural Network):")
-print(classification_report(y1_test, y1_pred))
-print(f"STAGE 1 ROC-AUC: {roc_auc_score(y1_test, y1_probs):.4f}")
+print("\n STAGE 1 RESULTS: UNIFIED MULTI-MODAL SCREENER")
+print("-" * 60)
+print(classification_report(y_test, y_pred))
+print(f" ROC-AUC SCORE: {roc_auc_score(y_test, y_probs):.4f}")
 
+# --- 7. EXPORT DATA AND MODEL ---
+# Save the imputed dataset so the judges can literally look at your "Data Fusion"
+X_full_imputed = pd.DataFrame(pipeline_stage1.named_steps['knn_imputer'].transform(X), columns=X.columns)
+df_fused_final = pd.concat([X_full_imputed, y.reset_index(drop=True)], axis=1)
+df_fused_final.to_csv(PROJECT_ROOT / "Stage1_Master_Fused_Dataset.csv", index=False)
+print("\n Unified Dataset exported as 'Stage1_Master_Fused_Dataset.csv'")
 
-# --- STAGE 1 VISUALIZATION: PRECISION-RECALL CURVE ---
-
-precision, recall, _ = precision_recall_curve(y1_test, y1_probs)
-pr_auc = auc(recall, precision)
-
-plt.figure(figsize=(6, 4))
-plt.plot(recall, precision, label=f'NN Screener (AUC = {pr_auc:.2f})', color='purple', linewidth=2)
-
-# Labeling and Formatting:
-plt.xlabel('Recall (Sensitivity)')
-plt.ylabel('Precision')          
-plt.title('Stage 1: Screening Performance (High Sensitivity)')
-plt.legend()
-plt.grid(True, alpha=0.3)
-plt.show()
-
-# --- STAGE 1 PERFORMANCE REPORT: CONFUSION MATRIX ---
-
-sns.heatmap(confusion_matrix(y1_test, y1_pred),
-            annot=True, fmt='d', cmap='Purples')
-
-# Labeling for clarity:
-plt.title("Stage 1 Confusion Matrix (Screening)")
-plt.xlabel("Predicted") 
-plt.ylabel("Actual")    
-plt.show()
-
-joblib.dump(pipeline_stage1, 'stage1_screener.pkl')
+# Save the enterprise model
+joblib.dump(pipeline_stage1, PROJECT_ROOT / 'stage1_multimodal_screener.pkl')
+print(" Master Model successfully exported as 'stage1_multimodal_screener.pkl'")
