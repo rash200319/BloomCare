@@ -55,3 +55,21 @@ For detailed data mapping, see [DATA_DICTIONARY.md](./DATA_DICTIONARY.md).
 
 ---
 © 2026 Hemas Hospitals Intelligence
+
+## Recent Work Added (March 2026)
+
+The following updates were implemented in this project:
+
+- Added offline-first Stage 1 flow for the frontline triage experience.
+- Integrated a service worker and web app manifest for PWA-style offline support.
+- Added local queueing of screenings with reconnect sync behavior.
+- Wired offline AI inference using stage1_offline_ai.js fallback when backend is unavailable.
+- Improved responsive behavior across key screens (frontline workspace and patient portal).
+- Updated Stage 1 inputs to the Golden Features set:
+   - Age, BMI, Systolic_BP, Diastolic, Heart_Rate, BS, Body_Temp, Hemoglobin,
+      PCOS, Previous_Complications, Preexisting_Diabetes, Mental_Health,
+      Sleep_Pattern, Exercise, Education.
+- Added automatic Mean Arterial Pressure (MAP) calculation and display:
+   - MAP = (Systolic_BP + 2 x Diastolic) / 3.
+- Added imputation-style defaults for unknown values in frontend payload creation.
+

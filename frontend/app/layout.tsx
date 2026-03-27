@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import OfflineBootstrap from '@/components/offline-bootstrap'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -10,6 +11,8 @@ export const metadata: Metadata = {
   title: 'BloomCare - Maternal Risk Intelligence System',
   description: 'AI-Powered Maternal Risk Intelligence System for Hemas Hospitals',
   generator: 'v0.app',
+  manifest: '/manifest.json',
+  themeColor: '#e11d48',
   icons: {
     icon: [
       {
@@ -37,6 +40,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="font-sans antialiased">
+        <OfflineBootstrap />
         {children}
         <Analytics />
       </body>

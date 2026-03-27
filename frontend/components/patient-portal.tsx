@@ -165,14 +165,14 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
       <div className="fixed bottom-0 left-0 w-[600px] h-[600px] bg-teal-500/5 rounded-full blur-[140px] pointer-events-none" />
 
       {/* Top Navigation Bar */}
-      <header className="bg-white/70 backdrop-blur-xl border-b border-slate-100 px-6 py-4 flex items-center justify-between sticky top-0 z-50">
-        <div className="flex items-center gap-6">
+      <header className="bg-white/70 backdrop-blur-xl border-b border-slate-100 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between sticky top-0 z-50 gap-3">
+        <div className="flex items-center gap-3 sm:gap-6 min-w-0">
           <div className="flex items-center gap-3 transition-transform hover:scale-105 cursor-pointer group">
             <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/30 rotate-3 group-hover:rotate-0 transition-transform duration-500">
               <Baby className="w-7 h-7 text-white filter drop-shadow-sm" />
             </div>
             <div>
-              <h1 className="text-2xl font-black tracking-tight text-slate-900 leading-none">Bloom<span className="text-primary">Care</span></h1>
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 leading-none">Bloom<span className="text-primary">Care</span></h1>
               <p className="text-[9px] font-bold text-slate-400 tracking-[0.2em] uppercase mt-1">
                 {getText("Patient Portal", "රෝගී ද්වාරය", "நோயாளி போர்டல்")}
               </p>
@@ -180,9 +180,9 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
           {/* Notifications */}
-          <button className="relative p-3 bg-white border border-slate-100 rounded-xl hover:bg-slate-50 transition-all shadow-sm group">
+          <button className="relative p-3 bg-white border border-slate-100 rounded-xl hover:bg-slate-50 transition-all shadow-sm group hidden sm:inline-flex">
             <Bell className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors" />
             <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-primary rounded-full border-2 border-white shadow-sm" />
           </button>
@@ -191,7 +191,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
           <div className="relative">
             <button
               onClick={() => setShowLanguageDropdown(!showLanguageDropdown)}
-              className="flex items-center gap-3 px-4 py-2 bg-white rounded-xl border border-slate-200 hover:border-primary/30 transition-all shadow-sm"
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-white rounded-xl border border-slate-200 hover:border-primary/30 transition-all shadow-sm"
             >
               <Globe className="w-4 h-4 text-primary" />
               <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{selectedLanguage}</span>
@@ -220,7 +220,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
             )}
           </div>
 
-          <div className="h-8 w-px bg-slate-100 mx-2" />
+          <div className="h-8 w-px bg-slate-100 mx-1 sm:mx-2" />
 
           {/* User Profile */}
           <div className="relative">
@@ -260,7 +260,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 p-8 overflow-y-auto">
+      <main className="flex-1 p-4 sm:p-8 overflow-y-auto">
         {/* Welcome Card */}
         <Card className="mb-10 border-0 glass overflow-hidden relative group shadow-2xl shadow-rose-100/20 rounded-[32px]">
           <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -mr-20 -mt-20 animate-pulse" />
@@ -308,7 +308,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
         </Card>
 
         <Tabs defaultValue="overview" className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <TabsList className="bg-white/50 backdrop-blur-md border border-slate-100 p-1.5 rounded-2xl shadow-sm inline-flex">
+          <TabsList className="bg-white/50 backdrop-blur-md border border-slate-100 p-1.5 rounded-2xl shadow-sm inline-flex w-full overflow-x-auto">
             <TabsTrigger value="overview" className="h-10 px-6 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-[10px] font-black uppercase tracking-widest transition-all">
               <Activity className="w-4 h-4 mr-2" />
               {getText("Overview", "දළ විශ්ලේෂණය", "கண்ணோட்டம்")}
