@@ -1,4 +1,4 @@
- BloomCare 🌸
+ BloomCare 
 
 BloomCare is an AI-powered maternity care intelligence platform designed to improve maternal health outcomes through advanced predictive diagnostics and role-based monitoring dashboards.
 
@@ -36,7 +36,7 @@ currently
    ```bash
    npm run dev
    ```
-4. Open [http://localhost:3000](http://localhost:3000) in your browser.
+4. Open [http://localhost:3000](http://localhost:3000) in your browser.(currently on local host)
 
 ### Backend & Models
 
