@@ -93,6 +93,29 @@ rf_model_gdm.fit(X_gdm_train, y_gdm_train)
 
 print(f"GDM Stage 2 ROC-AUC: {roc_auc_score(y_gdm_test, rf_model_gdm.predict_proba(X_gdm_test)[:, 1]):.4f}")
 
+import shap
+import matplotlib.pyplot as plt
+
+# ---------------------------------------------------------------------
+# EXPLAINABLE AI (XAI) FOR THE HEMAS DASHBOARD
+# ---------------------------------------------------------------------
+print("\n📊 Generating SHAP Clinical Trust Graphs for the Dashboard...")
+
+# Initialize the SHAP explainer
+explainer = shap.TreeExplainer(rf_model_gdm)
+shap_values = explainer.shap_values(X_gdm_test)
+
+# We want the explanation for the High-Risk Class (Class 1)
+# Create a visually appealing SHAP summary plot
+plt.figure(figsize=(10, 6))
+shap.summary_plot(shap_values[:, :, 1], X_gdm_test, show=False)
+
+# Save the graph so the Frontend UI dev can display it on the Dashboard
+plt.title("Clinical Drivers of GDM Metabolic Risk (Hemas XAI)", fontsize=14)
+plt.tight_layout()
+plt.savefig("stage2_gdm_shap_explainer.png", dpi=300, bbox_inches='tight')
+print("Saved XAI Graph: stage2_gdm_shap_explainer.png")
+
 # Save the GDM Engine and Imputers
 joblib.dump(rf_model_gdm, 'stage2_gdm_diagnostic.pkl')
 joblib.dump(gdm_imputer, 'gdm_imputer.pkl')

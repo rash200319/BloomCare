@@ -85,3 +85,186 @@ preeclampsia stage2 ROC-AUC: 0.9749
 
 **Note:** These column value interpretations are inferred from data patterns and standard healthcare survey conventions. Verify against your original data dictionary for exact mappings.
 
+# MSF Dataset Overview (Mother's Significant Feature)
+---
+
+**Summary**
+The Mother's Significant Feature (MSF) dataset is described as having 450 records and 130 features. Each mother has three survey forms:
+1. `1_Form_Genral_info.pdf`
+2. `2_Form_Mother_Features.pdf`
+3. `3_Form_Pregnancy_Outcome.pdf`
+
+**Excel Sheets (6 total)**
+1. `MSF_Dataset_Complete.xlsx` (all 130 attributes; noted as 1000 records)
+2. `MSF_Physical&health_Fetaures.xlsx` (physical and health attributes)
+3. `MSF_Mother_lifestyle.xlsx` (lifestyle attributes)
+4. `MSF_Mother_Social.xlsx` (social status attributes)
+5. `MSF_Mother_stress.xlsx` (stress level attributes)
+6. `MSF_HealthOutcome.xlsx` (pregnancy and baby health outcomes)
+
+**Key Notes**
+- Primary key: `Mother_UID` (unique per woman).
+- Records with the same `Mother_UID` across sheets belong to the same woman.
+- In MSF data, `1` denotes "yes/true" and `0` denotes "no/false".
+
+**Attributes With Missing Values**
+1. Mother's weight before delivery
+2. Miscarriage history
+3. Cravings
+4. Family support
+5. Women supporting family
+6. Hobbies
+
+## MSF_Physical&health_Fetaures.xlsx Features
+1. Age of Mother
+2. Mother's weight before pregnancy
+3. Mother's weight before delivery
+4. Height
+5. BMI
+6. Haemoglobin
+7. PCOS (Polycystic ovary syndrome)
+8. Age of Father
+9. Infertility treatment
+10. Miscarriage history
+11. Menstrual cycle (before marriage)
+12. Menstrual cycle (after marriage)
+13. Time taken to conceive
+14. Thyroid
+15. Hypertension
+16. Gestational diabetes
+17. Gastric issue
+18. Cold/viral infection
+19. Low amniotic fluid
+20. High amniotic fluid
+21. No health complication during pregnancy
+22. IVF
+23. Birth parity
+
+## MSF_Mother_Social.xlsx Features
+1. Years of marriage
+2. Does newborn have siblings
+3. Number of newborn's siblings
+4. Mother education status
+5. Family income
+6. Hobbies (visiting places)
+7. Hobbies (artistic things: dance/singing/painting etc.)
+8. Hobbies (shopping)
+9. Hobbies (cooking/household work)
+10. Hobbies (spending time with people)
+11. Hobbies (eating / foodie)
+12. Hobbies (sitting alone in peace)
+13. Working till which month of pregnancy (during pregnancy)
+14. Family support by (in-laws)
+15. Family support by (parents)
+16. Family support by (husband)
+17. You supporting the family (in-laws)
+18. You supporting the family (parents)
+19. You supporting the family (other family members)
+
+## MSF_Mother_stress.xlsx Features
+1. Travel time (during teenage)
+2. Travel time (after marriage)
+3. Travel time (during pregnancy)
+4. Hours at work (after marriage)
+5. Hours at work (during pregnancy)
+6. Stress level at work/home (after marriage)
+7. Stress level at work/home (during pregnancy)
+8. Happy about arrival of baby
+9. Depression/loneliness (before pregnancy)
+10. Depression/loneliness (during pregnancy)
+
+## MSF_Mother_lifestyle.xlsx Features
+1. Exercise (during teenage)
+2. Exercise (after marriage)
+3. Exercise (during pregnancy)
+4. Use of laptop/mobile (during teenage)
+5. Use of laptop/mobile (after marriage)
+6. Use of laptop/mobile (during pregnancy)
+7. Outside food habits (during teenage)
+8. Outside food habits (after marriage)
+9. Outside food habits (during pregnancy)
+10. Tea/coffee/caffeine (during teenage)
+11. Tea/coffee/caffeine (after marriage)
+12. Tea/coffee/caffeine (during pregnancy)
+13. Smoking (during teenage)
+14. Smoking (after marriage)
+15. Smoking (during pregnancy)
+16. Alcohol (during teenage)
+17. Alcohol (after marriage)
+18. Alcohol (during pregnancy)
+19. Noise/air pollution (during teenage)
+20. Noise/air pollution (after marriage)
+21. Noise/air pollution (during pregnancy)
+22. Health conscious (during teenage)
+23. Health conscious (after marriage)
+24. Health conscious (during pregnancy)
+25. Diet: grains/vegetables/pulses/rice/salad (during teenage)
+26. Diet: more pulses and rice (during teenage)
+27. Diet: more dairy products (during teenage)
+28. Diet: mostly snacks/high carbohydrate (during teenage)
+29. Diet: non-vegetarian food (during teenage)
+30. Diet: fruits and salads (during teenage)
+31. Diet: grains/vegetables/pulses/rice/salad (after marriage)
+32. Diet: more pulses and rice (after marriage)
+33. Diet: more dairy products (after marriage)
+34. Diet: mostly snacks/high carbohydrate (after marriage)
+35. Diet: non-vegetarian food (after marriage)
+36. Diet: fruits and salads (after marriage)
+37. Diet: grains/vegetables/pulses/rice/salad (during pregnancy)
+38. Diet: more pulses and rice (during pregnancy)
+39. Diet: more dairy products (during pregnancy)
+40. Diet: mostly snacks/high carbohydrate (during pregnancy)
+41. Diet: non-vegetarian food (during pregnancy)
+42. Diet: fruits and salads (during pregnancy)
+43. Sleep pattern (during teenage) (get up early)
+44. Sleep pattern (during teenage) (night person)
+45. Sleep pattern (during teenage) (sleep more than 8 hours)
+46. Sleep pattern (during teenage) (sleep less than 7 hours)
+47. Sleep pattern (after marriage) (get up early)
+48. Sleep pattern (after marriage) (night person)
+49. Sleep pattern (after marriage) (sleep more than 8 hours)
+50. Sleep pattern (after marriage) (sleep less than 7 hours)
+51. Sleep pattern (during pregnancy) (get up early)
+52. Sleep pattern (during pregnancy) (night person)
+53. Sleep pattern (during pregnancy) (sleep more than 8 hours)
+54. Sleep pattern (during pregnancy) (sleep less than 7 hours)
+55. Exposure to morning sunlight (during teenage)
+56. Exposure to morning sunlight (after marriage)
+57. Exposure to morning sunlight (during pregnancy)
+58. Travel time (during teenage)
+59. Travel time (after marriage)
+60. Travel time (during pregnancy)
+61. Mode of commutation (during teenage)
+62. Mode of commutation (after marriage)
+63. Mode of commutation (during pregnancy)
+64. Works as (after marriage)
+65. Works as (during pregnancy)
+66. Use of contraceptive (how long)
+67. Type of contraceptive used (before pregnancy)
+68. Intercourse frequency
+69. Craving
+70. Carving
+71. Craving
+
+## MSF_HealthOutcome.xlsx Features
+1. Preterm birth
+2. Full term birth
+3. Weight of baby/babies
+4. Number of days in hospital just after childbirth
+5. NICU stay requirement
+6. Jaundice detected in baby after birth
+7. C-section delivery
+8. Vaginal delivery
+9. Hours in labour before childbirth
+10. Need to induce artificial pain for labour
+
+**Purpose**
+This dataset is designed so researchers can experiment with different combinations of features to analyze women's and children's health.
+
+**Cited Papers**
+1. Deshpande H., Ragha L., "A Hybrid Random Forest based Feature selection model using Mutual Information and F-score for Preterm birth classification.", International Journal of Medical Engineering and Informatics (in press).
+2. Deshpande H., Ragha L., "Random forest based Fuzzy Feature weighing model for Imbalance class distribution towards Preterm-birth classification", SSRN-Elsevier's Online Digital Publication under ICAST-2021 Conference Proceedings (in press).
+
+**Data Consistency Check**
+The description mentions 450 records, but `MSF_Dataset_Complete.xlsx` is noted as 1000 records. Please confirm which count is correct.
+

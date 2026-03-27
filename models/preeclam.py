@@ -180,7 +180,10 @@ axes[2].set_title("Key Drivers of High-Risk Phenotype")
 axes[2].set_xlabel("Importance (Gini)")
 
 plt.tight_layout()
-plt.show()
+explainer_path = Path(__file__).resolve().parents[1] / "explainer.png"
+plt.savefig(explainer_path, dpi=300, bbox_inches='tight')
+plt.close()
+print(f"Saved explainer plot: {explainer_path}")
 
 joblib.dump(rf_model, 'stage2_diagnostic.pkl')
 print("Summary: Stage 1 Screens Vitals (High Sens) -> Stage 2 Diagnoses Phenotype (High Spec).")
