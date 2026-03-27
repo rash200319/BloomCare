@@ -2,23 +2,23 @@
 
 BloomCare is an AI-powered maternity care intelligence platform designed to improve maternal health outcomes through advanced predictive diagnostics and role-based monitoring dashboards.
 
-## 🏗️ Project Structure
+##  Project Structure
 
-The project is divided into two main sections:
+currently
 
 - **`frontend/`**: A modern Next.js 16 (React 19) application featuring:
-  - **Frontline Dashboard**: For clinical staff and field workers.
-  - **Clinical Dashboard**: For obstetricians with Explainable AI (XAI) insights.
-  - **Admin Dashboard**: For hospital management and analytics.
-  - **Patient Portal**: For expectant mothers to track their journey.
-  - **Trilingual Support**: English (EN), Sinhala (SI), and Tamil (TA).
+  - **Frontline Dashboard**
+  - **Clinical Dashboard**
+  - **Admin Dashboard**
+  - **Patient Portal**
+  - **Trilingual Support**
 - **`models/`**: Predictive machine learning models (Stage 1 & Stage 2) for:
   - Preeclampsia Risk
   - Gestational Diabetes (GDM)
   - Preterm Birth
 - **`Data/`**: Datasets used for model training and reference.
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### Frontend (User Interface)
 
