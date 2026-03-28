@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from bloomcare.main import app
+from backend.main import app
 
 client = TestClient(app)
 

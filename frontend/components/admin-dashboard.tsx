@@ -123,11 +123,43 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [dateRange, setDateRange] = useState("this-month")
+  const [isExporting, setIsExporting] = useState(false)
 
   const getText = (en: string, si: string, ta: string) => {
     if (selectedLanguage === "SI") return si
     if (selectedLanguage === "TA") return ta
     return en
+  }
+
+  const handleExportPDF = async () => {
+    try {
+      setIsExporting(true)
+      const response = await fetch("http://localhost:8000/export/monthly-screening-trends")
+      
+      if (!response.ok) {
+        throw new Error("Failed to export PDF")
+      }
+      
+      // Get the PDF blob
+      const blob = await response.blob()
+      
+      // Create a download link
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = "BloomCare_Monthly_Screening_Report.pdf"
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+      console.log("PDF exported successfully")
+    } catch (error) {
+      console.error("Error exporting PDF:", error)
+      alert("Failed to export PDF. Please try again.")
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   return (
@@ -374,9 +406,14 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                       {getText("Monthly Screening Trends", "මාසික පරීක්ෂණ ප්‍රවණතා", "மாதாந்திர ஸ்கிரீனிங் போக்குகள்")}
                     </CardTitle>
                   </div>
-                  <Button variant="outline" className="rounded-xl border-slate-200 text-[10px] font-black uppercase tracking-widest">
+                  <Button 
+                    onClick={handleExportPDF}
+                    disabled={isExporting}
+                    variant="outline" 
+                    className="rounded-xl border-slate-200 text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+                  >
                     <Download className="w-4 h-4 mr-2" />
-                    {getText("Export", "අපනයනය", "ஏற்றுமதி")}
+                    {isExporting ? getText("Exporting...", "අපනයනය කරමින්...", "ஏற்றுமதி செய்கிறது...") : getText("Export", "අපනයනය", "ஏற்றுமதி")}
                   </Button>
                 </CardHeader>
                 <CardContent className="pt-8">

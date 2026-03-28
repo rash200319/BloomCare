@@ -43,7 +43,7 @@ The backend handles:
 ## Architecture
 
 ```
-bloomcare/
+backend/
 ├── main.py          →  FastAPI application + all route handlers
 ├── models.py        →  Pydantic schemas (request + response models)
 ├── ml_services.py   →  Two-stage ML pipeline (Winsorization → Imputation → KMeans → RF)
@@ -60,7 +60,7 @@ bloomcare/
 
 ```
 d:\hemasaithon\aithon\
-├── bloomcare\               ← This backend package
+├── backend\                 ← This backend package
 │   ├── __init__.py
 │   ├── main.py
 │   ├── models.py
@@ -112,8 +112,8 @@ python -m venv .venv
 ### 3. Install dependencies
 
 ```powershell
-# Install from the bloomcare package requirements (recommended)
-pip install -r bloomcare\requirements.txt
+# Install from the backend package requirements (recommended)
+pip install -r backend\requirements.txt
 
 # OR install from the legacy api requirements
 pip install -r api_requirements.txt
@@ -126,10 +126,10 @@ pip install -r api_requirements.txt
 Copy the environment template and fill in your values:
 
 ```powershell
-copy bloomcare\.env.example bloomcare\.env
+copy backend\.env.example backend\.env
 ```
 
-Edit `bloomcare\.env`:
+Edit `backend\.env`:
 
 ```env
 # ── OpenAI (GenAI Assistant) ──────────────────────────────────────
@@ -157,10 +157,10 @@ ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
 ### Development server (recommended)
 
 ```powershell
-# From the aithon\ directory (NOT inside bloomcare\)
+# From the aithon\ directory (NOT inside backend\)
 cd d:\hemasaithon\aithon
 
-python -m uvicorn bloomcare.main:app --host 0.0.0.0 --port 8001 --reload --log-level info
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 8001 --reload --log-level info
 ```
 
 | Flag | Purpose |
@@ -173,7 +173,7 @@ python -m uvicorn bloomcare.main:app --host 0.0.0.0 --port 8001 --reload --log-l
 ### Production server (no reload)
 
 ```powershell
-python -m uvicorn bloomcare.main:app --host 0.0.0.0 --port 8001 --workers 4 --log-level warning
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 8001 --workers 4 --log-level warning
 ```
 
 ### Verify the server is running
@@ -390,25 +390,25 @@ Expected response:
 cd d:\hemasaithon\aithon
 
 # Run all tests with verbose output
-python -m pytest bloomcare/tests/test_api.py -v
+python -m pytest backend/tests/test_api.py -v
 
 # Run with short traceback on failures
-python -m pytest bloomcare/tests/test_api.py -v --tb=short
+python -m pytest backend/tests/test_api.py -v --tb=short
 
 # Run a specific test
-python -m pytest bloomcare/tests/test_api.py::test_diagnose_full_panel -v
+python -m pytest backend/tests/test_api.py::test_diagnose_full_panel -v
 
 # Run with coverage report (requires pytest-cov)
-python -m pytest bloomcare/tests/test_api.py --cov=bloomcare --cov-report=term-missing
+python -m pytest backend/tests/test_api.py --cov=backend --cov-report=term-missing
 ```
 
 All 5 tests should pass (including the Stage-2 ML pipeline test):
 ```
-PASSED bloomcare/tests/test_api.py::test_health_check
-PASSED bloomcare/tests/test_api.py::test_triage_sync
-PASSED bloomcare/tests/test_api.py::test_diagnose_full_panel
-PASSED bloomcare/tests/test_api.py::test_diagnose_minimal_biomarker
-PASSED bloomcare/tests/test_api.py::test_assistant_explain_mock
+PASSED backend/tests/test_api.py::test_health_check
+PASSED backend/tests/test_api.py::test_triage_sync
+PASSED backend/tests/test_api.py::test_diagnose_full_panel
+PASSED backend/tests/test_api.py::test_diagnose_minimal_biomarker
+PASSED backend/tests/test_api.py::test_assistant_explain_mock
 ```
 
 ---
@@ -465,7 +465,7 @@ Input Biomarkers
 ### Server won't start
 
 ```powershell
-# Make sure you're in the RIGHT directory (aithon\, not bloomcare\)
+# Make sure you're in the RIGHT directory (aithon\, not backend\)
 cd d:\hemasaithon\aithon
 
 # Check Python version
@@ -476,13 +476,13 @@ pip list | findstr fastapi
 pip list | findstr uvicorn
 ```
 
-### `ModuleNotFoundError: No module named 'bloomcare'`
+### `ModuleNotFoundError: No module named 'backend'`
 
 ```powershell
-# You must run uvicorn from d:\hemasaithon\aithon (the parent of bloomcare\)
-# Do NOT cd into bloomcare\ first
+# You must run uvicorn from d:\hemasaithon\aithon (the parent of backend\)
+# Do NOT cd into backend\ first
 cd d:\hemasaithon\aithon
-python -m uvicorn bloomcare.main:app --port 8001
+python -m uvicorn backend.main:app --port 8001
 ```
 
 ### `/api/v1/diagnose` is slow (30–60 seconds)
@@ -496,7 +496,7 @@ The backend falls back to mock explanations automatically. Set `BLOOMCARE_MOCK_L
 
 ### Frontend CORS errors
 
-Add your frontend origin to `ALLOWED_ORIGINS` in `bloomcare/main.py`:
+Add your frontend origin to `ALLOWED_ORIGINS` in `backend/main.py`:
 
 ```python
 ALLOWED_ORIGINS = [
