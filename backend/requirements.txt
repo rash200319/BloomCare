@@ -28,3 +28,9 @@ python-dotenv==1.0.1            # Load .env into os.environ
 pytest==8.3.4
 pytest-asyncio==0.25.2
 httpx==0.28.1                   # used by TestClient
+
+# Database & Authentication
+psycopg2-binary==2.9.9
+SQLAlchemy==2.0.28
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
