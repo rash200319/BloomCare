@@ -15,7 +15,7 @@ class UserUpdate(UserBase):
     password: Optional[str] = None
 
 class UserInDBBase(UserBase):
-    id: str
+    id: uuid.UUID
 
     model_config = {"from_attributes": True}
 

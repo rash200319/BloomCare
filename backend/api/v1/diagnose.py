@@ -3,12 +3,13 @@ from typing import Any
 from sqlalchemy.orm import Session
 import logging
 
-from core.deps import get_db, get_current_active_user
-from schemas.screening import DiagnoseInput, DiagnoseResponse
-from models.user import User
-from models.screening import Stage2Diagnostic
+from ...core.deps import get_db, get_optional_current_active_user
+from ...schemas.screening import DiagnoseInput, DiagnoseResponse
+from ...models.user import User
+from ...models.screening import Stage2Diagnostic
+from ...models.patient import Patient
 # import the ML service properly (assuming we adapted ml_services)
-from services.ml_services import run_stage2_phenotyping_engine
+from ...ml_services import run_stage2_phenotyping_engine
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +19,10 @@ router = APIRouter()
 def run_diagnose(
     payload: DiagnoseInput,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User | None = Depends(get_optional_current_active_user),
 ) -> Any:
-    # RBAC: Only Clinical Specialist or Admin can perform stage 2
-    if current_user.role.value not in ["CLINICAL_SPECIALIST", "ADMIN"]:
+    # RBAC: Only Clinical Specialist or Admin can perform stage 2 when authenticated
+    if current_user is not None and current_user.role.value not in ["CLINICAL_SPECIALIST", "ADMIN"]:
         raise HTTPException(status_code=403, detail="Not authorized to perform Stage-2 diagnosis")
 
     try:
@@ -39,10 +40,19 @@ def run_diagnose(
 
     # DB Persistence
     import uuid
+    # Ensure patient exists (resolve external ID to internal UUID)
+    patient_obj = db.query(Patient).filter(Patient.national_id == payload.patient_id).first()
+    if not patient_obj:
+        patient_obj = Patient(national_id=payload.patient_id, full_name=payload.patient_id)
+        db.add(patient_obj)
+        db.commit()
+        db.refresh(patient_obj)
+    internal_patient_id = patient_obj.id
+
     db_diag = Stage2Diagnostic(
         id=str(uuid.uuid4()),
-        patient_id=payload.patient_id,
-        specialist_id=current_user.id,
+        patient_id=internal_patient_id,
+        specialist_id=(current_user.id if current_user else None),
         gestational_age_weeks=payload.gestational_age_weeks,
         sflt1_plgf_ratio=payload.sflt1_plgf_ratio,
         plgf_absolute=payload.plgf_absolute,

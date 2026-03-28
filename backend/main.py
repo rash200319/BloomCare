@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from core.__pycache__.config import settings
-from api.api_router import api_router
+from .core.config import settings
+from .api.api_router import api_router
 
 from contextlib import asynccontextmanager
 import logging
@@ -31,6 +31,11 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+@app.get("/", tags=["Health"])
+async def root_health():
+    return {"status": "healthy"}
+
 
 @app.get("/health", tags=["Health"])
 async def health_check():

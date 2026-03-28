@@ -2,13 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Any
 import logging
 
-from core.deps import get_current_active_user
-from core.config import settings
-from schemas.screening import AssistantRequest, AssistantResponse
-from models.user import User
+from ...core.deps import get_optional_current_active_user
+from ...core.config import settings
+from ...schemas.screening import AssistantRequest, AssistantResponse
+from ...models.user import User
 
 try:
-    from services.llm_service import generate_mock_explanation, generate_multilingual_explanation
+    from ...llm_service import generate_mock_explanation, generate_multilingual_explanation
 except ImportError:
     pass
 
@@ -19,7 +19,7 @@ router = APIRouter()
 @router.post("/explain", response_model=AssistantResponse)
 async def assistant_explain(
     request: AssistantRequest,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User | None = Depends(get_optional_current_active_user),
 ) -> Any:
     # Role RBAC inside the function
     try:

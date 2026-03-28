@@ -6,7 +6,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-from core.config import settings
+from ..core.config import settings
 
 def init_db():
     logger.info("Initializing database from schema.sql...")
@@ -39,7 +39,7 @@ def init_db():
         logger.info("Schema execution completed successfully!")
         
         # Optionally insert initial admin user here if needed
-        from core.security import get_password_hash
+        from ..core.security import get_password_hash
         
         admin_email = "admin@bloomcare.health"
         cursor.execute("SELECT id FROM users WHERE email = %s", (admin_email,))

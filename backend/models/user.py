@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import Column, String, Boolean, Enum
 import enum
-from db.base import Base
+from ..db.base import Base
 
 class UserRole(str, enum.Enum):
     ADMIN = "ADMIN"

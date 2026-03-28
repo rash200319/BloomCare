@@ -5,7 +5,8 @@ from jose import jwt
 
 from .config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use pbkdf2_sha256 to avoid system bcrypt backend compatibility issues
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 def create_access_token(
     subject: Union[str, Any], expires_delta: Optional[timedelta] = None

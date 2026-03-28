@@ -1,10 +1,10 @@
 from typing import Any, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from core.deps import get_db, get_current_active_user
-from schemas.patient import Patient, PatientCreate
-from models.patient import Patient as DBPatient
-from models.user import User
+from ...core.deps import get_db, get_current_active_user
+from ...schemas.patient import Patient, PatientCreate
+from ...models.patient import Patient as DBPatient
+from ...models.user import User
 import uuid
 
 router = APIRouter()
