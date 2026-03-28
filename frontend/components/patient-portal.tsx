@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   User,
   Globe,
@@ -53,6 +53,21 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
   const [selectedLanguage, setSelectedLanguage] = useState<Language>("EN")
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [isOffline, setIsOffline] = useState(false)
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsOffline(!navigator.onLine)
+      const handleOnline = () => setIsOffline(false)
+      const handleOffline = () => setIsOffline(true)
+      window.addEventListener("online", handleOnline)
+      window.addEventListener("offline", handleOffline)
+      return () => {
+        window.removeEventListener("online", handleOnline)
+        window.removeEventListener("offline", handleOffline)
+      }
+    }
+  }, [])
 
   const getText = (en: string, si: string, ta: string) => {
     if (selectedLanguage === "SI") return si
@@ -181,6 +196,14 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          {/* Offline Badge */}
+          {isOffline && (
+            <Badge variant="outline" className="h-8 rounded-lg bg-rose-50 border-rose-100 text-rose-500 text-[8px] font-black uppercase tracking-widest px-3 flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+              {getText("Offline", "නොබැඳි", "ஆஃப்லைன்")}
+            </Badge>
+          )}
+
           {/* Notifications */}
           <button className="relative p-3 bg-white border border-slate-100 rounded-xl hover:bg-slate-50 transition-all shadow-sm group hidden sm:inline-flex">
             <Bell className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors" />
