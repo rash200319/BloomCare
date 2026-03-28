@@ -3,6 +3,8 @@ const APP_SHELL = [
   "/",
   "/manifest.json",
   "/scripts/stage1_offline_ai.js",
+  "/images/mother-baby-shadow.png",
+  "/images/baby-painting.png",
   "/icon-light-32x32.png",
   "/apple-icon.png",
 ]
