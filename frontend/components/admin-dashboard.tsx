@@ -123,6 +123,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [dateRange, setDateRange] = useState("this-month")
+  const [isExporting, setIsExporting] = useState(false)
 
   const getText = (en: string, si: string, ta: string) => {
     if (selectedLanguage === "SI") return si
@@ -130,18 +131,49 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
     return en
   }
 
+  const handleExportPDF = async () => {
+    try {
+      setIsExporting(true)
+      const response = await fetch("http://localhost:8000/export/monthly-screening-trends")
+
+      if (!response.ok) {
+        throw new Error("Failed to export PDF")
+      }
+
+      // Get the PDF blob
+      const blob = await response.blob()
+
+      // Create a download link
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = "BloomCare_Monthly_Screening_Report.pdf"
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      console.log("PDF exported successfully")
+    } catch (error) {
+      console.error("Error exporting PDF:", error)
+      alert("Failed to export PDF. Please try again.")
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50/50 flex flex-col font-sans selection:bg-primary/20 relative overflow-hidden">
       {/* Background Decorative Elements */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        <img 
-          src="/images/mother-baby-shadow.png" 
-          alt="" 
+        <img
+          src="/images/mother-baby-shadow.png"
+          alt=""
           className="w-full h-full object-cover opacity-[0.03] scale-110"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-slate-50/30 to-slate-50/10" />
       </div>
-      
+
       <div className="fixed top-0 right-0 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[140px] pointer-events-none" />
       <div className="fixed bottom-0 left-0 w-[600px] h-[600px] bg-accent/5 rounded-full blur-[140px] pointer-events-none" />
 
@@ -159,9 +191,9 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
               </p>
             </div>
           </div>
-          
+
           <div className="h-8 w-px bg-slate-100 hidden sm:block" />
-          
+
           <div className="hidden lg:flex items-center gap-6 px-4">
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
               {getText("Hemas Administration", "හේමාස් පරිපාලනය", "ஹேமாஸ் நிர்வாகம்")}
@@ -211,8 +243,8 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                     }}
                     className={cn(
                       "w-full px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest transition-colors",
-                      selectedLanguage === lang.code 
-                        ? "bg-primary text-white" 
+                      selectedLanguage === lang.code
+                        ? "bg-primary text-white"
                         : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                     )}
                   >
@@ -249,7 +281,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                   <Settings className="w-4 h-4 text-slate-400" />
                   System Settings
                 </button>
-                <button 
+                <button
                   onClick={onLogout}
                   className="w-full px-5 py-3 text-left text-[10px] font-black uppercase tracking-widest text-primary hover:bg-rose-50 flex items-center gap-3"
                 >
@@ -374,9 +406,14 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                       {getText("Monthly Screening Trends", "මාසික පරීක්ෂණ ප්‍රවණතා", "மாதாந்திர ஸ்கிரீனிங் போக்குகள்")}
                     </CardTitle>
                   </div>
-                  <Button variant="outline" className="rounded-xl border-slate-200 text-[10px] font-black uppercase tracking-widest">
+                  <Button
+                    onClick={handleExportPDF}
+                    disabled={isExporting}
+                    variant="outline"
+                    className="rounded-xl border-slate-200 text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+                  >
                     <Download className="w-4 h-4 mr-2" />
-                    {getText("Export", "අපනයනය", "ஏற்றுமதி")}
+                    {isExporting ? getText("Exporting...", "අපනයනය කරමින්...", "ஏற்றுமதி செய்கிறது...") : getText("Export", "අපනයනය", "ஏற்றுமதி")}
                   </Button>
                 </CardHeader>
                 <CardContent className="pt-8">
@@ -385,14 +422,14 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                       <AreaChart data={monthlyScreeningData}>
                         <defs>
                           <linearGradient id="colorScreenings" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#FB7185" stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor="#FB7185" stopOpacity={0}/>
+                            <stop offset="5%" stopColor="#FB7185" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#FB7185" stopOpacity={0} />
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                         <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800 }} />
                         <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800 }} />
-                        <Tooltip 
+                        <Tooltip
                           contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.1)', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}
                         />
                         <Area type="monotone" dataKey="screenings" stroke="var(--primary)" strokeWidth={4} fillOpacity={1} fill="url(#colorScreenings)" />
@@ -474,9 +511,9 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                           <td className="p-6">
                             <div className="flex items-center gap-3">
                               <div className="w-32 h-2 bg-slate-100/50 rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.4)]" 
-                                  style={{ width: `${clinic.efficiency}%` }} 
+                                <div
+                                  className="h-full bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+                                  style={{ width: `${clinic.efficiency}%` }}
                                 />
                               </div>
                               <span className="text-[10px] font-black text-slate-900">{clinic.efficiency}%</span>
@@ -506,8 +543,8 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-slate-600 transition-colors">
                         {condition.name}
                       </p>
-                      <div 
-                        className="w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:rotate-12" 
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:rotate-12"
                         style={{ backgroundColor: `${condition.color}15` }}
                       >
                         <Activity className="w-5 h-5" style={{ color: condition.color }} />
@@ -518,9 +555,9 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Concentration</span>
                     </div>
                     <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden mb-2">
-                      <div 
-                        className="h-full rounded-full transition-all duration-1000" 
-                        style={{ width: `${condition.value}%`, backgroundColor: condition.color }} 
+                      <div
+                        className="h-full rounded-full transition-all duration-1000"
+                        style={{ width: `${condition.value}%`, backgroundColor: condition.color }}
                       />
                     </div>
                   </CardContent>
@@ -529,24 +566,24 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             </div>
 
             <Card className="border-0 glass shadow-2xl shadow-slate-200/50 overflow-hidden">
-               <CardHeader className="border-b border-slate-50/50 pb-6">
-                 <CardTitle className="text-sm font-black text-slate-800 uppercase tracking-widest">
-                    {getText("Weekly Condition Forecast", "සතිපතා තත්ත්ව පුරෝකථනය", "வாராந்திர நிலை முன்னறிவிப்பு")}
-                 </CardTitle>
-               </CardHeader>
-               <CardContent className="pt-8">
-                  <div className="h-64 w-full font-bold">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={weeklyTrendData}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                        <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800 }} />
-                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800 }} />
-                        <Tooltip />
-                        <Line type="monotone" dataKey="screenings" stroke="#0EA5E9" strokeWidth={3} dot={{ r: 4, fill: '#0EA5E9', strokeWidth: 2, stroke: '#fff' }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-               </CardContent>
+              <CardHeader className="border-b border-slate-50/50 pb-6">
+                <CardTitle className="text-sm font-black text-slate-800 uppercase tracking-widest">
+                  {getText("Weekly Condition Forecast", "සතිපතා තත්ත්ව පුරෝකථනය", "வாராந்திர நிலை முன்னறிவிப்பு")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-8">
+                <div className="h-64 w-full font-bold">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={weeklyTrendData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                      <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800 }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800 }} />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="screenings" stroke="#0EA5E9" strokeWidth={3} dot={{ r: 4, fill: '#0EA5E9', strokeWidth: 2, stroke: '#fff' }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
             </Card>
           </TabsContent>
 
@@ -572,12 +609,12 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                       <div className="flex items-center gap-6 mb-4 md:mb-0">
                         <div className={cn(
                           "w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-110",
-                          activity.type === "escalation" ? "bg-rose-50 text-rose-500 shadow-rose-200/50" : 
-                          activity.type === "screening" ? "bg-teal-50 text-teal-500 shadow-teal-200/50" : 
-                          "bg-emerald-50 text-emerald-500 shadow-emerald-200/50"
+                          activity.type === "escalation" ? "bg-rose-50 text-rose-500 shadow-rose-200/50" :
+                            activity.type === "screening" ? "bg-teal-50 text-teal-500 shadow-teal-200/50" :
+                              "bg-emerald-50 text-emerald-500 shadow-emerald-200/50"
                         )}>
-                          {activity.type === "escalation" ? <AlertTriangle className="w-7 h-7" /> : 
-                           activity.type === "screening" ? <Activity className="w-7 h-7" /> : <CheckCircle className="w-7 h-7" />}
+                          {activity.type === "escalation" ? <AlertTriangle className="w-7 h-7" /> :
+                            activity.type === "screening" ? <Activity className="w-7 h-7" /> : <CheckCircle className="w-7 h-7" />}
                         </div>
                         <div>
                           <div className="flex items-center gap-3 mb-1">
@@ -592,23 +629,23 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                           </p>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-center gap-4 flex-wrap">
                         {activity.risk && (
                           <div className="px-4 py-2 bg-slate-900 rounded-xl text-white">
-                             <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Condition Detected</p>
-                             <p className="text-[10px] font-black uppercase tracking-widest">{activity.risk}</p>
+                            <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Condition Detected</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest">{activity.risk}</p>
                           </div>
                         )}
                         <div className={cn(
                           "px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all group-hover:shadow-xl",
-                          activity.type === "escalation" ? "bg-red-500 text-white shadow-red-200/50" : 
-                          activity.type === "screening" ? "bg-teal-500 text-white shadow-teal-200/50" : 
-                          "bg-emerald-500 text-white shadow-emerald-200/50"
+                          activity.type === "escalation" ? "bg-red-500 text-white shadow-red-200/50" :
+                            activity.type === "screening" ? "bg-teal-500 text-white shadow-teal-200/50" :
+                              "bg-emerald-500 text-white shadow-emerald-200/50"
                         )}>
-                          {activity.type === "escalation" ? getText("High Priority Escalation", "ඉහළ ප්‍රමුඛතා උත්සන්න කිරීම", "அதி முக்கியத்துவம்") : 
-                           activity.type === "screening" ? getText("Routine Screening", "සාමාන්‍ය පරීක්ෂණ", "வழக்கமான ஸ்கிரீனிங்") : 
-                           getText("Care Protocol Resolved", "සත්කාර ප්‍රොටෝකෝලය විසඳා ඇත", "தீர்வு கண்டறியப்பட்டது")}
+                          {activity.type === "escalation" ? getText("High Priority Escalation", "ඉහළ ප්‍රමුඛතා උත්සන්න කිරීම", "அதி முக்கியத்துவம்") :
+                            activity.type === "screening" ? getText("Routine Screening", "සාමාන්‍ය පරීක්ෂණ", "வழக்கமான ஸ்கிரீனிங்") :
+                              getText("Care Protocol Resolved", "සත්කාර ප්‍රොටෝකෝලය විසඳා ඇත", "தீர்வு கண்டறியப்பட்டது")}
                         </div>
                       </div>
                     </div>

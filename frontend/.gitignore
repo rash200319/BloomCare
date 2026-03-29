@@ -21,6 +21,7 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+.env.*
 *.pem
 
 # IDE / Editors
@@ -33,6 +34,7 @@ yarn-error.log*
 # Testing
 coverage/
 .nyc_output/
+*.lcov
 
 # Project Specific
 vibration.log

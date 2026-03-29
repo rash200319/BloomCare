@@ -2,7 +2,7 @@ import argparse
 import ast
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 
 import joblib
 import numpy as np
@@ -20,6 +20,96 @@ from sklearn.model_selection import GridSearchCV
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "Data"
 MODEL_PATH = PROJECT_ROOT / "stage1_general_risk_screener.pkl"
+
+
+# Clinical safety thresholds used for local trigger reporting.
+CLINICAL_THRESHOLDS = {
+    "systolic_bp": 140.0,
+    "diastolic_bp": 90.0,
+    "heart_rate": 100.0,
+    "blood_sugar": 7.8,
+}
+
+
+def _to_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if np.isnan(parsed):
+        return None
+    return parsed
+
+
+def _first_numeric(payload: Dict[str, Any], keys: List[str]) -> Optional[float]:
+    for key in keys:
+        if key in payload:
+            parsed = _to_float(payload.get(key))
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def _build_clinical_triggers(patient_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    triggers: List[Dict[str, Any]] = []
+
+    systolic = _first_numeric(patient_payload, ["Systolic_BP", "systolic", "Systolic BP"])
+    diastolic = _first_numeric(patient_payload, ["Diastolic", "diastolic", "Diastolic BP"])
+    heart_rate = _first_numeric(
+        patient_payload,
+        ["Heart_Rate", "heart_rate", "Heart Rate", "heartRate", "HeartRate", "hr", "HR"],
+    )
+    blood_sugar = _first_numeric(patient_payload, ["BS", "bs", "Blood Sugar", "blood_sugar"])
+
+    if (systolic is not None and systolic > CLINICAL_THRESHOLDS["systolic_bp"]) or (
+        diastolic is not None and diastolic > CLINICAL_THRESHOLDS["diastolic_bp"]
+    ):
+        severity = 0.0
+        if systolic is not None:
+            severity = max(severity, systolic / CLINICAL_THRESHOLDS["systolic_bp"] - 1.0)
+        if diastolic is not None:
+            severity = max(severity, diastolic / CLINICAL_THRESHOLDS["diastolic_bp"] - 1.0)
+
+        triggers.append(
+            {
+                "feature": "Blood Pressure",
+                "value": {
+                    "systolic": round(systolic, 2) if systolic is not None else None,
+                    "diastolic": round(diastolic, 2) if diastolic is not None else None,
+                },
+                "clinical_reason": "Hypertensive reading detected",
+                "threshold": "Systolic > 140 or Diastolic > 90",
+                "severity_score": round(max(severity, 0.0), 4),
+            }
+        )
+
+    if heart_rate is not None and heart_rate > CLINICAL_THRESHOLDS["heart_rate"]:
+        triggers.append(
+            {
+                "feature": "Heart Rate",
+                "value": round(heart_rate, 2),
+                "clinical_reason": "Tachycardia detected",
+                "threshold": "Heart Rate > 100 bpm",
+                "severity_score": round(heart_rate / CLINICAL_THRESHOLDS["heart_rate"] - 1.0, 4),
+            }
+        )
+
+    if blood_sugar is not None and blood_sugar > CLINICAL_THRESHOLDS["blood_sugar"]:
+        triggers.append(
+            {
+                "feature": "Blood Sugar",
+                "value": round(blood_sugar, 2),
+                "clinical_reason": "Hyperglycemia detected",
+                "threshold": "Blood Sugar > 7.8",
+                "severity_score": round(blood_sugar / CLINICAL_THRESHOLDS["blood_sugar"] - 1.0, 4),
+            }
+        )
+
+    # Show the most severe trigger first for triage readability.
+    triggers.sort(key=lambda item: float(item.get("severity_score", 0.0)), reverse=True)
+    return triggers
 
 
 # --- DATA ENGINEERING HELPERS ---
@@ -238,12 +328,27 @@ def predict_stage1_risk(patient_payload: Dict[str, Any], model_path: Path = MODE
 
     probability = float(model.predict_proba(payload_df)[0][1])
     threshold = 0.35
+    triggers = _build_clinical_triggers(patient_payload)
+    is_clinically_high = len(triggers) > 0
+    final_risk = "High" if (probability >= threshold or is_clinically_high) else "Low"
+
+    local_feature_importance = [
+        {
+            "feature": trigger["feature"],
+            "severity_score": trigger["severity_score"],
+            "clinical_reason": trigger["clinical_reason"],
+        }
+        for trigger in triggers
+    ]
 
     return {
         "general_risk": {
             "probability": round(probability, 4),
-            "risk": "High" if probability >= threshold else "Low",
+            "risk": final_risk,
             "threshold": threshold,
+            "is_clinically_high": is_clinically_high,
+            "triggers": triggers,
+            "local_feature_importance": local_feature_importance,
         }
     }
 

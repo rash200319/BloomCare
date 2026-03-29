@@ -125,13 +125,20 @@ interface PendingScreening {
   vitals: VitalsInput
 }
 
+interface RiskTrigger {
+  metric: string
+  value: string
+  threshold: string
+  severity: "high" | "moderate"
+  reason: string
+}
+
 declare global {
   interface Window {
     score?: (input: number[]) => number[]
   }
 }
 
-const API_URL = process.env.NEXT_PUBLIC_STAGE1_API_URL ?? "http://127.0.0.1:8000/predict-risk"
 const PENDING_QUEUE_KEY = "bloomcare_stage1_pending_queue"
 const DEFAULT_IMPUTE = {
   age: 28,
@@ -292,7 +299,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
     
     // Multi-tier Risk Logic
     let risk_level: "low" | "moderate" | "high" = "low"
-    if (riskScore >= 0.7 || vitals.systolic >= 140 || vitals.diastolic >= 90) {
+    if (riskScore >= 0.7 || vitals.systolic >= 140 || vitals.diastolic >= 90 || vitals.heart_rate > 100) {
       risk_level = "high"
     } else if (riskScore >= 0.4 || vitals.systolic >= 130 || vitals.diastolic >= 85) {
       risk_level = "moderate"
@@ -310,6 +317,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
     const recommendations = risk_level === "high" 
       ? [
           "Urgent: Repeat BP within 15 minutes",
+          "Recheck heart rate and evaluate tachycardia symptoms",
           "Immediate escalation for Stage 2 Specialist review",
           "Capture advanced biomarkers for differential diagnosis",
         ]
@@ -365,11 +373,208 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
     }
   }
 
-  const syncPendingRecords = async () => {
-    if (typeof window === "undefined" || !navigator.onLine) {
+  const deriveRiskTriggers = (vitals: VitalsInput): RiskTrigger[] => {
+    const triggers: RiskTrigger[] = []
+
+    if (vitals.systolic >= 160 || vitals.diastolic >= 110) {
+      triggers.push({
+        metric: "Blood Pressure",
+        value: `${vitals.systolic}/${vitals.diastolic} mmHg`,
+        threshold: ">= 160/110 mmHg",
+        severity: "high",
+        reason: "Severe hypertension is strongly associated with maternal complications.",
+      })
+    } else if (vitals.systolic >= 140 || vitals.diastolic >= 90) {
+      triggers.push({
+        metric: "Blood Pressure",
+        value: `${vitals.systolic}/${vitals.diastolic} mmHg`,
+        threshold: ">= 140/90 mmHg",
+        severity: "moderate",
+        reason: "Hypertensive range suggests possible preeclampsia risk and requires specialist review.",
+      })
+    }
+
+    if (vitals.bs >= 140) {
+      triggers.push({
+        metric: "Blood Sugar",
+        value: `${vitals.bs} mg/dL`,
+        threshold: ">= 140 mg/dL",
+        severity: "high",
+        reason: "Elevated blood sugar can indicate gestational glycaemic risk.",
+      })
+    } else if (vitals.bs >= 110) {
+      triggers.push({
+        metric: "Blood Sugar",
+        value: `${vitals.bs} mg/dL`,
+        threshold: ">= 110 mg/dL",
+        severity: "moderate",
+        reason: "Borderline elevated blood sugar warrants follow-up testing.",
+      })
+    }
+
+    if (vitals.heart_rate > 100) {
+      triggers.push({
+        metric: "Heart Rate",
+        value: `${vitals.heart_rate} bpm`,
+        threshold: "> 100 bpm",
+        severity: vitals.heart_rate >= 120 ? "high" : "moderate",
+        reason: "Tachycardia can indicate maternal instability and should be clinically reviewed.",
+      })
+    }
+
+    if (vitals.bmi >= 30) {
+      triggers.push({
+        metric: "BMI",
+        value: `${vitals.bmi.toFixed(1)} kg/m²`,
+        threshold: ">= 30 kg/m²",
+        severity: "moderate",
+        reason: "Obesity increases risk of hypertensive and diabetic pregnancy complications.",
+      })
+    }
+
+    if (vitals.hemoglobin < 10.5) {
+      triggers.push({
+        metric: "Hemoglobin",
+        value: `${vitals.hemoglobin.toFixed(1)} g/dL`,
+        threshold: "< 10.5 g/dL",
+        severity: "moderate",
+        reason: "Low hemoglobin may increase risk and should be reviewed by hospital team.",
+      })
+    }
+
+    if (vitals.age >= 35) {
+      triggers.push({
+        metric: "Maternal Age",
+        value: `${vitals.age} years`,
+        threshold: ">= 35 years",
+        severity: "moderate",
+        reason: "Advanced maternal age increases obstetric risk profile.",
+      })
+    }
+
+    return triggers
+  }
+
+  const handlePrintReferralCard = () => {
+    if (!riskData) {
+      setStatusMessage("Run risk analysis first before printing a referral card.")
       return
     }
 
+    const vitals = buildVitalsInput()
+    const triggers = deriveRiskTriggers(vitals)
+    const generatedAt = new Date().toLocaleString()
+    const patientId = selectedPatient?.id || "UNASSIGNED"
+    const priorityLabel =
+      riskData.risk_level === "high"
+        ? "URGENT"
+        : riskData.risk_level === "moderate"
+          ? "CAUTION"
+          : "ROUTINE"
+
+    const triggerRows =
+      triggers.length > 0
+        ? triggers
+            .map(
+              (trigger) => `
+                <tr>
+                  <td>${trigger.metric}</td>
+                  <td>${trigger.value}</td>
+                  <td>${trigger.threshold}</td>
+                  <td>${trigger.severity.toUpperCase()}</td>
+                  <td>${trigger.reason}</td>
+                </tr>
+              `
+            )
+            .join("")
+        : `
+          <tr>
+            <td colspan="5">No single critical trigger identified; referral based on combined model risk pattern.</td>
+          </tr>
+        `
+
+    const recommendationRows = (riskData.recommendations || [])
+      .map((item) => `<li>${item}</li>`)
+      .join("")
+
+    const reportHtml = `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>BloomCare Referral Card - ${patientId}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+            h1 { margin: 0 0 8px; font-size: 22px; }
+            h2 { margin: 24px 0 8px; font-size: 16px; }
+            .meta { font-size: 12px; color: #4b5563; margin-bottom: 8px; }
+            .pill { display: inline-block; padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+            .pill-urgent { background: #fee2e2; color: #b91c1c; }
+            .pill-caution { background: #fef3c7; color: #92400e; }
+            .pill-routine { background: #dcfce7; color: #166534; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+            th, td { border: 1px solid #e5e7eb; padding: 8px; font-size: 12px; vertical-align: top; }
+            th { background: #f9fafb; text-align: left; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+            .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; }
+            ul { margin: 6px 0 0 16px; padding: 0; }
+            li { margin-bottom: 4px; font-size: 12px; }
+            .footer { margin-top: 24px; font-size: 11px; color: #6b7280; }
+          </style>
+        </head>
+        <body>
+          <h1>BloomCare Stage 1 Referral Card</h1>
+          <div class="meta">Generated: ${generatedAt}</div>
+          <div class="meta">Patient ID: <strong>${patientId}</strong> | Patient Name: <strong>${vitals.patient_name}</strong></div>
+          <div class="meta">Referral Priority: <span class="pill ${priorityLabel === "URGENT" ? "pill-urgent" : priorityLabel === "CAUTION" ? "pill-caution" : "pill-routine"}">${priorityLabel}</span></div>
+
+          <h2>Risk Summary</h2>
+          <div class="grid">
+            <div class="card"><strong>Risk Level</strong><br/>${riskData.risk_level.toUpperCase()}</div>
+            <div class="card"><strong>Risk Score</strong><br/>${riskData.risk_score.toFixed(2)}</div>
+            <div class="card"><strong>BP Status</strong><br/>${riskData.bp_status}</div>
+            <div class="card"><strong>Model Observation</strong><br/>${riskData.observation}</div>
+          </div>
+
+          <h2>Triggering Factors For Hospital Review</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>Observed</th>
+                <th>Threshold</th>
+                <th>Severity</th>
+                <th>Why It Triggers Risk</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${triggerRows}
+            </tbody>
+          </table>
+
+          <h2>Clinical Recommendations</h2>
+          <ul>${recommendationRows}</ul>
+
+          <div class="footer">
+            This referral card is generated from Stage 1 frontline screening and should be reviewed by a hospital doctor before Stage 2 diagnostics.
+          </div>
+          <script>window.print();</script>
+        </body>
+      </html>
+    `
+
+    const printWindow = window.open("", "_blank", "width=900,height=700")
+    if (!printWindow) {
+      setStatusMessage("Unable to open print window. Please allow pop-ups and try again.")
+      return
+    }
+
+    printWindow.document.open()
+    printWindow.document.write(reportHtml)
+    printWindow.document.close()
+  }
+
+  const syncPendingRecords = async () => {
     const queue = readPendingQueue()
     if (queue.length === 0) {
       return
@@ -377,33 +582,15 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
 
     setIsSyncing(true)
     try {
-      const unsynced: PendingScreening[] = []
-
-      for (const item of queue) {
-        try {
-          const response = await fetch(API_URL, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Offline-Sync": "true",
-            },
-            body: JSON.stringify(item.vitals),
-          })
-
-          if (!response.ok) {
-            unsynced.push(item)
-          }
-        } catch {
-          unsynced.push(item)
-        }
-      }
-
-      writePendingQueue(unsynced)
-      if (unsynced.length === 0) {
-        setStatusMessage("All offline Stage 1 records synced successfully.")
-      } else {
-        setStatusMessage(`${unsynced.length} record(s) are still pending sync.`)
-      }
+      // Stage 1 is intentionally offline-first. Do not call backend /predict-risk.
+      // Keep records local for referral handover to hospital doctor workflow.
+      setStatusMessage(
+        getText(
+          `Stage 1 runs on-device. ${queue.length} record(s) remain stored locally for hospital referral handover.`,
+          `අදියර 1 උපාංගය තුළ ක්‍රියාත්මක වේ. වාර්තා ${queue.length} ක් රෝහල් යොමු කිරීම සඳහා දේශීයව සුරැකි ඇත.`,
+          `நிலை 1 கருவியிலேயே இயங்குகிறது. ${queue.length} பதிவுகள் மருத்துவமனை பரிந்துரைக்காக உள்ளகமாக சேமிக்கப்பட்டுள்ளன.`
+        )
+      )
     } finally {
       setIsSyncing(false)
     }
@@ -429,13 +616,25 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
     const handleOnline = () => {
       setIsOffline(false)
       syncPendingRecords().catch(() => {
-        setStatusMessage("Back online, but some records are still waiting to sync.")
+        setStatusMessage(
+          getText(
+            "Back online. Stage 1 remains on-device; records stay local for referral handover.",
+            "නැවත සබැඳිය. අදියර 1 උපාංගය තුළම පවතින අතර වාර්තා යොමු කිරීම සඳහා දේශීයව සුරැකේ.",
+            "மீண்டும் ஆன்லைனில். நிலை 1 கருவியிலேயே இருக்கும்; பரிந்துரைக்காக பதிவுகள் உள்ளகமாகவே இருக்கும்."
+          )
+        )
       })
     }
 
     const handleOffline = () => {
       setIsOffline(true)
-      setStatusMessage("Offline mode active. New screenings will be saved locally.")
+      setStatusMessage(
+        getText(
+          "Offline mode active. Stage 1 scoring and storage are local.",
+          "නොබැඳි මාදිලිය සක්‍රීයයි. අදියර 1 ගණනය සහ සුරැකීම දේශීයව සිදුවේ.",
+          "ஆஃப்லைன் நிலை செயலில் உள்ளது. நிலை 1 மதிப்பீடும் சேமிப்பும் உள்ளகமாக நடைபெறும்."
+        )
+      )
     }
 
     window.addEventListener("online", handleOnline)
@@ -452,49 +651,23 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
     setApiError(null)
     setStatusMessage(null)
     setShowStage2Form(false) // Reset Stage 2 form on new analysis
-    
+
     try {
       const vitalsData = buildVitalsInput()
-
-      if (!navigator.onLine) {
-        const offlineResult = getOfflineRisk(vitalsData)
-        setRiskData(offlineResult)
-        setShowResult(true)
-        queueForSync(vitalsData)
-        setStatusMessage("No internet connection. Stage 1 was scored locally and queued for sync.")
-        return
-      }
-
-      const response = await fetch(API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(vitalsData),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const result: RiskResponse = await response.json()
-      setRiskData(result)
+      const offlineResult = getOfflineRisk(vitalsData)
+      setRiskData(offlineResult)
       setShowResult(true)
-      syncPendingRecords().catch(() => {
-        setStatusMessage("Current result saved. Some older offline records are still pending sync.")
-      })
-    } catch {
-      const vitalsData = buildVitalsInput()
+      queueForSync(vitalsData)
 
-      try {
-        const offlineResult = getOfflineRisk(vitalsData)
-        setRiskData(offlineResult)
-        setShowResult(true)
-        queueForSync(vitalsData)
-        setStatusMessage("Backend unavailable. Used offline Stage 1 model and queued record for sync.")
-      } catch {
-        setApiError('Failed to connect to the AI service and offline fallback was not available.')
-      }
+      setStatusMessage(
+        getText(
+          "Stage 1 scored locally using on-device model (stage1_offline_ai.js).",
+          "අදියර 1 stage1_offline_ai.js භාවිතයෙන් දේශීයව ගණනය කරන ලදී.",
+          "நிலை 1 stage1_offline_ai.js மூலம் கருவியிலேயே மதிப்பிடப்பட்டது."
+        )
+      )
+    } catch {
+      setApiError("Stage 1 offline model could not run. Please reload the page and try again.")
     } finally {
       setIsLoading(false)
     }
@@ -1531,11 +1704,12 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
 
                         <div className="flex flex-col sm:flex-row gap-4 mb-10">
                           <Button 
-                            onClick={() => setShowStage2Form(true)}
-                            className="bg-slate-900 border-0 text-white flex-1 h-14 rounded-2xl shadow-xl shadow-slate-900/20 font-black text-xs uppercase tracking-widest hover:scale-[1.02] transition-all"
+                            onClick={() => setStatusMessage(getText("Stage 2 screening must be done by hospital doctors only.", "අදියර 2 පරීක්ෂාව රෝහලේ වෛද්‍යවරුන් විසින් පමණක් කළ යුතුය.", "நிலை 2 பரிசோதனை மருத்துவமனை மருத்துவர்களால் மட்டுமே செய்யப்பட வேண்டும்."))}
+                            variant="outline"
+                            className="border-slate-300 text-slate-600 flex-1 h-14 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50"
                           >
                             <Microscope className="w-4 h-4 mr-2" />
-                            {getText("Capture Stage 2 Data", "අදියර 2 දත්ත ලබාගන්න", "நிலை 2 தரவை சேகரிக்கவும்")}
+                            {getText("Stage 2: Doctor Only", "අදියර 2: වෛද්‍යවරයාට පමණි", "நிலை 2: மருத்துவர் மட்டுமே")}
                           </Button>
                           <Button variant="outline" className="flex-1 border-primary/20 font-black h-14 rounded-2xl text-primary text-xs uppercase tracking-widest hover:bg-primary/5">
                             <Phone className="w-4 h-4 mr-2" />
@@ -1543,7 +1717,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                           </Button>
                         </div>
 
-                        {showStage2Form && (
+                        {false && showStage2Form && (
                           <div className="bg-white rounded-[28px] p-6 sm:p-8 border border-red-100 shadow-inner animate-in slide-in-from-top-4 duration-500">
                              <div className="flex items-center gap-4 mb-8">
                                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -1643,7 +1817,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                             <Phone className="w-4 h-4 mr-3" />
                             {getText("Escalate to Specialist", "විශේෂඥ වෛද්‍යවරයකු වෙත යොමු කරන්න", "நிபுணரிடம் பரிந்துரைக்கவும்")}
                           </Button>
-                          <Button variant="outline" className="flex-1 border-primary/20 font-black h-16 rounded-2xl text-primary text-xs uppercase tracking-[0.2em] hover:bg-primary/5">
+                          <Button variant="outline" onClick={handlePrintReferralCard} className="flex-1 border-primary/20 font-black h-16 rounded-2xl text-primary text-xs uppercase tracking-[0.2em] hover:bg-primary/5">
                             {getText("Print Referral Card", "යොමු කිරීමේ කාඩ්පත මුද්‍රණය කරන්න", "பரிந்துரை அட்டையை அச்சிடுக")}
                           </Button>
                         </div>

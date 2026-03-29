@@ -21,8 +21,19 @@ export const writePendingQueue = async (queue: PendingScreening[]): Promise<void
   await AsyncStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(queue));
 };
 
-export const enqueuePending = async (record: PendingScreening): Promise<void> => {
+export const enqueuePending = async (
+  record: Omit<PendingScreening, 'id' | 'createdAt' | 'is_synced' | 'updatedAt'>,
+  userId?: string
+): Promise<void> => {
   const queue = await readPendingQueue();
-  queue.push(record);
+  queue.push({
+    ...record,
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    is_synced: false,
+    userId,
+    patient_id: record.patient_id ?? undefined,
+  });
   await writePendingQueue(queue);
 };

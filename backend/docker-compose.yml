@@ -44,6 +44,14 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 2003
       POSTGRES_DB: bloomcare
+  db:
+    image: postgres:15
+    container_name: bloomcare_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: bloomcare_user
+      POSTGRES_PASSWORD: bloomcare_pass
+      POSTGRES_DB: bloomcare_db
     ports:
       - "5432:5432"
     volumes:
@@ -63,3 +71,6 @@ volumes:
 networks:
   bloomcare_network:
     name: bloomcare_default_network
+
+volumes:
+  postgres_data:
