@@ -29,7 +29,7 @@ from sklearn.cluster import KMeans
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 
-from .models import (
+from .schemas.screening import (
     ClusterProfile,
     ConditionProbability,
     ConditionType,

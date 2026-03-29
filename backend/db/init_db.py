@@ -6,7 +6,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-from core.config import settings
+from ..core.config import settings
 
 def init_db():
     logger.info("Initializing database from schema.sql...")
@@ -45,38 +45,13 @@ def init_db():
 
         cursor.execute('SET search_path TO "BloomCare"')
         
-        # Insert default users for demo/testing
-        from core.security import get_password_hash
-
-        seed_users = [
-            {
-                "email": "frontline.staff@bloomcare.health",
-                "full_name": "Frontline Staff Demo",
-                "role": "FRONTLINE_STAFF",
-                "password": "rash2003",
-            },
-            {
-                "email": "patient.demo@bloomcare.health",
-                "full_name": "Patient Demo",
-                "role": "PATIENT",
-                "password": "rash2003",
-            },
-            {
-                "email": "hospitaladmin@bloomcare.health",
-                "full_name": "Hospital Admin Demo",
-                "role": "ADMIN",
-                "password": "rash2003",
-            },
-            {
-                "email": "obsertitian@bloomcare.health",
-                "full_name": "Obsertitian Demo",
-                "role": "CLINICAL_SPECIALIST",
-                "password": "rash2003",
-            },
-        ]
-
-        for item in seed_users:
-            pwd_hash = get_password_hash(item["password"])
+        # Optionally insert initial admin user here if needed
+        from ..core.security import get_password_hash
+        
+        admin_email = "admin@bloomcare.health"
+        cursor.execute("SELECT id FROM users WHERE email = %s", (admin_email,))
+        if not cursor.fetchone():
+            pwd_hash = get_password_hash("admin123")
             cursor.execute(
                 """
                 INSERT INTO users (email, hashed_password, full_name, role)

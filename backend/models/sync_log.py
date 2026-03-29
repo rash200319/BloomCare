@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import Column, String, DateTime, Text
 from datetime import datetime
-from db.base import Base
+from ..db.base import Base
 
 class SyncQueueLog(Base):
     __tablename__ = "sync_queue_logs"

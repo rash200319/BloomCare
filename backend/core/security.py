@@ -5,9 +5,8 @@ from jose import jwt
 
 from .config import settings
 
-# Keep bcrypt verification support for older rows, but generate new hashes
-# using pbkdf2_sha256 to avoid bcrypt backend compatibility failures.
-pwd_context = CryptContext(schemes=["pbkdf2_sha256", "bcrypt"], deprecated="auto")
+# Use pbkdf2_sha256 to avoid system bcrypt backend compatibility issues
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 def create_access_token(
     subject: Union[str, Any], expires_delta: Optional[timedelta] = None

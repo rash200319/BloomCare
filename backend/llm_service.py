@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 import openai
 from openai import AsyncOpenAI
 
-from .models import (
+from .schemas.screening import (
     AssistantResponse,
     ConditionType,
     DiagnoseMLOutput,
@@ -248,6 +248,7 @@ async def generate_multilingual_explanation(
         explanations            = explanations,
         generated_at            = datetime.now(timezone.utc).isoformat(),
         model_used              = model,
+        disclaimer              = "This information is decision-support only and not a clinical diagnosis."
     )
 
 
@@ -341,4 +342,5 @@ async def generate_mock_explanation(
                 ),
             ),
         ],
+        disclaimer             = "This information is decision-support only and not a clinical diagnosis."
     )

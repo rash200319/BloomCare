@@ -46,31 +46,13 @@ services:
       POSTGRES_DB: bloomcare
   db:
     image: postgres:15
-    container_name: bloomcare_postgres
+    container_name: postgres-bloomcare
     restart: always
     environment:
-      POSTGRES_USER: bloomcare_user
-      POSTGRES_PASSWORD: bloomcare_pass
-      POSTGRES_DB: bloomcare_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "2003"
+      POSTGRES_DB: bloomcare
     ports:
-      - "5432:5432"
+      - "55432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d bloomcare"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - bloomcare_network
-
-volumes:
-  postgres_data:
-    name: bloomcare_pg_data
-
-networks:
-  bloomcare_network:
-    name: bloomcare_default_network
-
-volumes:
-  postgres_data:
+      - D:\bloomcare\db-data:/var/lib/postgresql/data

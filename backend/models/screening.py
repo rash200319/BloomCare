@@ -4,7 +4,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
-from db.base import Base
+from ..db.base import Base
 
 class RiskTier(str, enum.Enum):
     routine_care = "routine_care"
