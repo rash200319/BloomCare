@@ -15,6 +15,17 @@ import uuid
 
 router = APIRouter()
 
+
+def _serialize_user(user: DBUser) -> User:
+    role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
+    return User(
+        id=str(user.id),
+        email=user.email,
+        full_name=user.full_name,
+        role=role_value,
+        is_active=bool(user.is_active),
+    )
+
 @router.post("/login", response_model=Token)
 def login_access_token(
     db: Session = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()
@@ -57,10 +68,10 @@ def register_user(
     db.add(user)
     db.commit()
     db.refresh(user)
-    return user
+    return _serialize_user(user)
 
 @router.get("/me", response_model=User)
 def read_user_me(
     current_user: DBUser = Depends(get_current_user),
 ) -> Any:
-    return current_user
+    return _serialize_user(current_user)

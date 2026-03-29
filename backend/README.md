@@ -227,7 +227,7 @@ Expected response:
   "diastolic": 96,
   "bmi": 27.5,
   "heart_rate": 88,
-  "bs": 135,
+  "blood_sugar": 135,
   "temperature": 37.2,
   "hemoglobin": 10.5,
   "pcos": 0,

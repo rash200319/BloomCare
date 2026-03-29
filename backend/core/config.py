@@ -26,6 +26,11 @@ class Settings(BaseSettings):
 
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
-        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        server = self.POSTGRES_SERVER.strip()
+        user = self.POSTGRES_USER.strip()
+        password = self.POSTGRES_PASSWORD.strip()
+        port = self.POSTGRES_PORT.strip()
+        database = self.POSTGRES_DB.strip()
+        return f"postgresql://{user}:{password}@{server}:{port}/{database}"
 
 settings = Settings()

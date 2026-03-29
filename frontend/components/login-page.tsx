@@ -34,6 +34,8 @@ import { cn } from "@/lib/utils"
 type UserRole = "frontline" | "doctor" | "admin" | "patient"
 type Language = "EN" | "SI" | "TA"
 
+const AUTH_API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api/v1").replace(/\/$/, "")
+
 interface LoginPageProps {
   onLogin: (role: UserRole) => void
   onBack?: () => void
@@ -90,10 +92,27 @@ const roleOptions = [
 export default function LoginPage({ onLogin, onBack, isSignup = false }: LoginPageProps) {
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null)
   const [language, setLanguage] = useState<Language>("EN")
+  const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState("")
+
+  const toApiRole = (role: UserRole): "FRONTLINE_STAFF" | "CLINICAL_SPECIALIST" | "ADMIN" | "PATIENT" => {
+    if (role === "frontline") return "FRONTLINE_STAFF"
+    if (role === "doctor") return "CLINICAL_SPECIALIST"
+    if (role === "admin") return "ADMIN"
+    return "PATIENT"
+  }
+
+  const fromApiRole = (role: string): UserRole => {
+    const upper = String(role || "").toUpperCase()
+    if (upper === "FRONTLINE_STAFF") return "frontline"
+    if (upper === "CLINICAL_SPECIALIST") return "doctor"
+    if (upper === "ADMIN") return "admin"
+    return "patient"
+  }
 
   const getText = (en: string, si: string, ta: string) => {
     if (language === "SI") return si
@@ -101,13 +120,71 @@ export default function LoginPage({ onLogin, onBack, isSignup = false }: LoginPa
     return en
   }
 
-  const handleLogin = () => {
-    if (selectedRole && email && password) {
-      setIsLoading(true)
-      setTimeout(() => {
-        setIsLoading(false)
-        onLogin(selectedRole)
-      }, 1000)
+  const handleLogin = async () => {
+    if (!selectedRole || !email || !password) {
+      setErrorMessage(getText("Please fill all required fields.", "අවශ්‍ය සියලු ක්ෂේත්‍ර පුරවන්න.", "அனைத்து தேவையான புலங்களையும் நிரப்பவும்."))
+      return
+    }
+
+    setErrorMessage("")
+    setIsLoading(true)
+
+    try {
+      if (isSignup) {
+        const payload = {
+          email,
+          password,
+          full_name: fullName.trim() || email.split("@")[0],
+          role: toApiRole(selectedRole),
+        }
+
+        const registerResponse = await fetch(`${AUTH_API_BASE}/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+
+        if (!registerResponse.ok) {
+          const err = await registerResponse.json().catch(() => ({}))
+          throw new Error(err?.detail || "Sign up failed")
+        }
+      }
+
+      const formBody = new URLSearchParams({
+        username: email,
+        password,
+      }).toString()
+
+      const loginResponse = await fetch(`${AUTH_API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: formBody,
+      })
+
+      if (!loginResponse.ok) {
+        const err = await loginResponse.json().catch(() => ({}))
+        throw new Error(err?.detail || "Sign in failed")
+      }
+
+      const tokenData = await loginResponse.json()
+      const meResponse = await fetch(`${AUTH_API_BASE}/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${tokenData.access_token}`,
+        },
+      })
+
+      if (!meResponse.ok) {
+        throw new Error("Unable to read user profile")
+      }
+
+      const me = await meResponse.json()
+      const apiRole = fromApiRole(me.role)
+      onLogin(apiRole)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Authentication failed"
+      setErrorMessage(message)
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -230,6 +307,22 @@ export default function LoginPage({ onLogin, onBack, isSignup = false }: LoginPa
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6 px-12 pb-12">
+                    {isSignup && (
+                      <div className="space-y-3">
+                        <Label htmlFor="full-name" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                          {getText("Full Name", "සම්පූර්ණ නම", "முழுப் பெயர்")}
+                        </Label>
+                        <Input
+                          id="full-name"
+                          type="text"
+                          placeholder={getText("Enter full name", "සම්පූර්ණ නම ඇතුලත් කරන්න", "முழுப் பெயரை உள்ளிடவும்")}
+                          className="h-12 bg-white/50 border-slate-100 focus:border-primary/30 focus:ring-primary/10 rounded-xl transition-all font-bold text-slate-800"
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
+                        />
+                      </div>
+                    )}
+
                   <div className="space-y-3">
                     <Label htmlFor="email" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
                       {getText("Email / Employee ID", "ඊමේල් / සේවා අංකය", "மின்னஞ்சல்")}
@@ -278,6 +371,12 @@ export default function LoginPage({ onLogin, onBack, isSignup = false }: LoginPa
                     </label>
                     <a href="#" className="text-[11px] font-black text-primary uppercase tracking-widest">{getText("Forgot?", "අමතකද?", "மறந்துவிட்டீர்களா?")}</a>
                   </div>
+
+                  {errorMessage && (
+                    <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3">
+                      <p className="text-[11px] font-bold text-rose-700">{errorMessage}</p>
+                    </div>
+                  )}
 
                   <div className="pt-2">
                     <Button 

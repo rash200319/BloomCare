@@ -29,6 +29,22 @@ type Dictionary = {
     sleepPattern: string;
     exercise: string;
     education: string;
+    // Login/Auth strings
+    login: string;
+    signup: string;
+    email: string;
+    password: string;
+    fullName: string;
+    selectRole: string;
+    frontlineStaff: string;
+    patientPortal: string;
+    forgotPassword: string;
+    dontHaveAccount: string;
+    alreadyHaveAccount: string;
+    loginFailed: string;
+    registrationFailed: string;
+    logout: string;
+    welcome: string;
   };
 };
 
@@ -60,7 +76,22 @@ export const text: Dictionary = {
     mentalHealth: 'Mental Health Score (1-10)',
     sleepPattern: 'Sleep Hours',
     exercise: 'Exercise Score (0-5)',
-    education: 'Education Score (0-5)'
+    education: 'Education Score (0-5)',
+    login: 'Login',
+    signup: 'Sign Up',
+    email: 'Email',
+    password: 'Password',
+    fullName: 'Full Name',
+    selectRole: 'Select Your Role',
+    frontlineStaff: 'Frontline Staff',
+    patientPortal: 'Patient Portal',
+    forgotPassword: 'Forgot Password?',
+    dontHaveAccount: "Don't have an account? Sign up",
+    alreadyHaveAccount: 'Already have an account? Login',
+    loginFailed: 'Login failed. Please check your email and password.',
+    registrationFailed: 'Registration failed. Please try again.',
+    logout: 'Logout',
+    welcome: 'Welcome to BloomCare',
   },
   si: {
     appTitle: 'BloomCare අදියර 1',
@@ -89,7 +120,22 @@ export const text: Dictionary = {
     mentalHealth: 'මානසික සෞඛ්‍ය ලකුණු (1-10)',
     sleepPattern: 'නින්ද පැය',
     exercise: 'ව්‍යායාම ලකුණු (0-5)',
-    education: 'අධ්‍යාපන ලකුණු (0-5)'
+    education: 'අධ්‍යාපන ලකුණු (0-5)',
+    login: 'ඇතුල් වන්න',
+    signup: 'ලියාපදිංචි වන්න',
+    email: 'ඉstepping පෙසුරුව',
+    password: 'මුරපදය',
+    fullName: 'සම්පූර්ණ නම',
+    selectRole: 'ඔබගේ භූමිකාව තෝරන්න',
+    frontlineStaff: 'මුල් පෙළ කාර්ය මණ්ඩලය',
+    patientPortal: 'රෝගී ද්වාරය',
+    forgotPassword: 'මුරපදය අමතක කරেස්ද?',
+    dontHaveAccount: 'ගිණුමක් නැතුවද? ලියාපදිංචි වන්න',
+    alreadyHaveAccount: 'ඔබ ඉතිරි ගිණුමක් ඇතුවද? ඇතුල් වන්න',
+    loginFailed: 'ඇතුල් වීම අසාර්థක විය. කරුණාකර ඔබගේ ඉswimming පෙසුරුව සහ මුරපදය පරීක්ෂා කරන්න.',
+    registrationFailed: 'ලියාපදිංචි කිරීම අසාර්థක විය. කරුණාකර නැවත උත්සාහ කරන්න.',
+    logout: 'ඇතුල් වීම අවසන් කරන්න',
+    welcome: 'BloomCare වෙත සාදරයෙන් පිළිගනිමු',
   },
   ta: {
     appTitle: 'BloomCare நிலை 1',
@@ -118,7 +164,22 @@ export const text: Dictionary = {
     mentalHealth: 'மனநிலை மதிப்பெண் (1-10)',
     sleepPattern: 'தூக்க நேரம்',
     exercise: 'உடற்பயிற்சி மதிப்பெண் (0-5)',
-    education: 'கல்வி மதிப்பெண் (0-5)'
+    education: 'கல்வி மதிப்பெண் (0-5)',
+    login: 'உள்நுழைய',
+    signup: 'பதிவு செய்ய',
+    email: 'மின்னஞ்சல்',
+    password: 'கடவுச்சொல்',
+    fullName: 'முழு பெயர்',
+    selectRole: 'உங்கள் பாத்திரத்தைத் தேர்ந்தெடுக்கவும்',
+    frontlineStaff: 'முன்னணி ஊழியர்கள்',
+    patientPortal: 'நோயாளி போர்டல்',
+    forgotPassword: 'கடவுச்சொல்லை மறந்துவிட்டீர்களா?',
+    dontHaveAccount: 'கணக்கு இல்லையா? பதிவு செய்ய',
+    alreadyHaveAccount: 'ஏற்கனவே கணக்கு உள்ளதா? உள்நுழைய',
+    loginFailed: 'உள்நுழைய முயற்சி தோல்வியடைந்தது. உங்கள் மின்னஞ்சல் மற்றும் கடவுச்சொல்லைச் சரிபார்க்கவும்.',
+    registrationFailed: 'பதிவு தோல்வியடைந்தது. மீண்டும் முயற்சி செய்யவும்.',
+    logout: 'வெளியேறவும்',
+    welcome: 'BloomCare க்கு வரவேற்கிறோம்',
   }
 };
 

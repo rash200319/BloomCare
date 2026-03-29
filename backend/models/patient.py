@@ -12,3 +12,4 @@ class Patient(Base):
     date_of_birth = Column(DateTime, nullable=True)
     contact_number = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

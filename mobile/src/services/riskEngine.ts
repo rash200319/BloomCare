@@ -53,7 +53,44 @@ export const offlineStage1Risk = (vitals: Stage1VitalsInput): RiskResponse => {
     (vitals.mental_health >= 7 ? 0.05 : vitals.mental_health <= 3 ? -0.01 : 0);
 
   const riskScore = Number(clamp(rawRisk + lifestyleAdjustment, 0, 0.99).toFixed(2));
-  const isHighRisk = riskScore >= 0.5 || vitals.systolic >= 140 || vitals.diastolic >= 90;
+  const triggers = [];
+
+  if (vitals.systolic >= 140 || vitals.diastolic >= 90) {
+    triggers.push({
+      feature: 'Blood Pressure',
+      value: { systolic: vitals.systolic, diastolic: vitals.diastolic },
+      clinical_reason: 'Hypertension detected',
+      threshold: 'Systolic >= 140 or Diastolic >= 90 mmHg',
+      severity_score: Number((((Math.max(vitals.systolic / 140, vitals.diastolic / 90)) - 1)).toFixed(4)),
+    });
+  }
+
+  if (vitals.heart_rate > 100) {
+    triggers.push({
+      feature: 'Heart Rate',
+      value: vitals.heart_rate,
+      clinical_reason: 'Tachycardia detected',
+      threshold: 'Heart Rate > 100 bpm',
+      severity_score: Number(((vitals.heart_rate / 100) - 1).toFixed(4)),
+    });
+  }
+
+  if (vitals.bs > 140) {
+    triggers.push({
+      feature: 'Blood Sugar',
+      value: vitals.bs,
+      clinical_reason: 'Elevated blood glucose detected',
+      threshold: 'Blood Sugar > 140 mg/dL',
+      severity_score: Number(((vitals.bs / 140) - 1).toFixed(4)),
+    });
+  }
+
+  const isHighRisk =
+    riskScore >= 0.5 ||
+    vitals.systolic >= 140 ||
+    vitals.diastolic >= 90 ||
+    vitals.heart_rate > 100 ||
+    triggers.length > 0;
 
   const bpStatus: RiskResponse['bp_status'] =
     vitals.systolic >= 140 || vitals.diastolic >= 90
@@ -72,6 +109,7 @@ export const offlineStage1Risk = (vitals: Stage1VitalsInput): RiskResponse => {
     recommendations: isHighRisk
       ? [
           'Repeat BP within 15 minutes.',
+          'Check heart rate again and evaluate for tachycardia symptoms.',
           'Escalate to Stage 2 specialist review.',
           'Request biomarker panel and obstetric consult.'
         ]
@@ -81,6 +119,8 @@ export const offlineStage1Risk = (vitals: Stage1VitalsInput): RiskResponse => {
           'Promote hydration, nutrition, and BP self-checking.'
         ],
     bp_status: bpStatus,
-    observation: `Offline Stage 1 estimate (${mapAlert}: ${map.toFixed(1)} mmHg)`
+    observation: `Offline Stage 1 estimate (${mapAlert}: ${map.toFixed(1)} mmHg)`,
+    triggers,
+    model_probability: riskScore,
   };
 };

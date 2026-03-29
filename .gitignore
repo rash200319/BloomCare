@@ -43,6 +43,7 @@ frontend/next-env.d.ts
 
 # Python / Backend
 .venv/
+.venv-win/
 venv/
 env/
 __pycache__/
@@ -60,6 +61,11 @@ coverage.xml
 *,cover
 .hypothesis/
 .pytest_cache/
+
+# Expo / Mobile
+mobile/.expo/
+mobile/.expo-shared/
+mobile/web-build/
 
 # User specifically requested all needed files. 
 # Typically, datasets and large models shouldn't be tracked in Git.

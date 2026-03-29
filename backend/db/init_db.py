@@ -35,24 +35,61 @@ def init_db():
         with open(schema_path, "r") as f:
             sql = f.read()
             
-        cursor.execute(sql)
-        logger.info("Schema execution completed successfully!")
+        try:
+            cursor.execute(sql)
+            logger.info("Schema execution completed successfully!")
+        except Exception as schema_error:
+            # Schema may be partially present in development; continue with seeding.
+            logger.warning("Schema execution reported: %s", schema_error)
+            conn.rollback()
+
+        cursor.execute('SET search_path TO "BloomCare"')
         
-        # Optionally insert initial admin user here if needed
+        # Insert default users for demo/testing
         from core.security import get_password_hash
-        
-        admin_email = "admin@bloomcare.health"
-        cursor.execute("SELECT id FROM users WHERE email = %s", (admin_email,))
-        if not cursor.fetchone():
-            pwd_hash = get_password_hash("admin123")
+
+        seed_users = [
+            {
+                "email": "frontline.staff@bloomcare.health",
+                "full_name": "Frontline Staff Demo",
+                "role": "FRONTLINE_STAFF",
+                "password": "rash2003",
+            },
+            {
+                "email": "patient.demo@bloomcare.health",
+                "full_name": "Patient Demo",
+                "role": "PATIENT",
+                "password": "rash2003",
+            },
+            {
+                "email": "hospitaladmin@bloomcare.health",
+                "full_name": "Hospital Admin Demo",
+                "role": "ADMIN",
+                "password": "rash2003",
+            },
+            {
+                "email": "obsertitian@bloomcare.health",
+                "full_name": "Obsertitian Demo",
+                "role": "CLINICAL_SPECIALIST",
+                "password": "rash2003",
+            },
+        ]
+
+        for item in seed_users:
+            pwd_hash = get_password_hash(item["password"])
             cursor.execute(
                 """
                 INSERT INTO users (email, hashed_password, full_name, role)
-                VALUES (%s, %s, %s, 'ADMIN')
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (email)
+                DO UPDATE SET
+                    hashed_password = EXCLUDED.hashed_password,
+                    full_name = EXCLUDED.full_name,
+                    role = EXCLUDED.role
                 """,
-                (admin_email, pwd_hash, "System Administrator")
+                (item["email"], pwd_hash, item["full_name"], item["role"])
             )
-            logger.info("Created default admin user (admin@bloomcare.health / admin123)")
+            logger.info("Upserted seed user %s (%s)", item["email"], item["role"])
             
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")

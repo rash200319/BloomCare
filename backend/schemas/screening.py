@@ -40,9 +40,25 @@ class TriageInput(BaseModel):
     bmi: Optional[float] = None
     heart_rate: int = Field(..., ge=30, le=200)
     temperature: float = Field(..., ge=35.0, le=42.0)
+    
+    # Additional fields
+    blood_sugar: Optional[float] = Field(None, alias="bs")
+    hemoglobin: Optional[float] = None
+    pcos: Optional[bool] = None
+    previous_complications: Optional[bool] = None
+    preexisting_diabetes: Optional[bool] = None
+    mental_health: Optional[float] = None
+    sleep_pattern: Optional[float] = None
+    exercise: Optional[float] = None
+    education: Optional[int] = None
+    
+    # Overall risk classification
     edge_risk_classification: RiskTier
     edge_risk_score: float = Field(..., ge=0.0, le=1.0)
+    
     device_id: Optional[str] = None
+
+    model_config = {"populate_by_name": True}
 
 class BatchedTriageSyncInput(BaseModel):
     items: List[TriageInput]
@@ -55,6 +71,7 @@ class TriageSyncResponse(BaseModel):
     triage_flags: List[str] = Field(default_factory=list)
     recommended_action: str
     escalation_required: bool
+    stage2_priority: Optional[Dict[str, Any]] = None
 
 class DopplerData(BaseModel):
     uterine_artery_pi: Optional[float] = None
@@ -78,6 +95,9 @@ class DiagnoseInput(BaseModel):
     patient_id: str
     encounter_id: Optional[str] = None
     gestational_age_weeks: int = Field(..., ge=4, le=42)
+    primary_disease_to_check: Optional[str] = None  # e.g., "preeclampsia", "gdm", "preterm"
+    model_override: Optional[str] = None  # doctor-selected model file, e.g., stage2_preterm_support_ehg.pkl
+    stage1_screening_id: Optional[str] = None  # Link to stage 1 results
     sflt1_plgf_ratio: Optional[float] = None
     plgf_absolute: Optional[float] = None
     papp_a: Optional[float] = None
@@ -87,6 +107,8 @@ class DiagnoseInput(BaseModel):
     cervical_length_mm: Optional[float] = None
     nt_pro_bnp: Optional[float] = None
     fibronectin: Optional[float] = None
+    # Disease-specific inputs (variable structure based on disease)
+    disease_specific_inputs: Optional[Dict[str, Any]] = None
 
     @model_validator(mode="after")
     def at_least_one_biomarker_present(self) -> "DiagnoseInput":
@@ -148,6 +170,45 @@ class LanguageExplanation(BaseModel):
 class AssistantResponse(BaseModel):
     patient_id: str
     dominant_condition: str
+
+
+class Stage2RecommendationResponse(BaseModel):
+    patient_id: str
+    stage1_screening_id: str
+    primary_disease_to_check: str
+    model_to_use: Optional[str] = None
+    clinical_notes: Optional[str] = None
+    created_at: str
+
+
+class PatientReportRequest(BaseModel):
+    stage1_screening_id: str
+    report_type: str = Field(..., pattern="^(stage1|stage2|combined)$")
+    title: Optional[str] = None
+
+
+class PatientReportResponse(BaseModel):
+    id: str
+    patient_id: str
+    report_type: str
+    report_title: str
+    file_path: Optional[str] = None
+    generated_at: str
+    download_url: Optional[str] = None
+    expires_at: Optional[str] = None
+
+
+class Stage1ScreeningReportData(BaseModel):
+    """Data structure for Stage 1 screening report"""
+    patient_name: str
+    gestational_age: int
+    screening_date: str
+    vitals: Dict[str, Any]
+    contributing_factors: Dict[str, float]  # Feature importance
+    risk_score: float
+    risk_classification: str
+    recommendations: List[str]
+    next_steps: str
     overall_severity_score: float
     explanations: List[LanguageExplanation]
     generated_at: str
