@@ -1,0 +1,12 @@
+{
+  "main_model": {
+    "source": "MSF_cleaned.csv",
+    "threshold": 0.10938956662518066,
+    "feature_count": 15
+  },
+  "support_model": {
+    "source": "preterm.csv",
+    "threshold": 0.5,
+    "feature_count": 5
+  }
+}
