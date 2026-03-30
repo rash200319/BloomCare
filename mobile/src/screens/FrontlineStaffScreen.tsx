@@ -87,6 +87,7 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PatientMiniProfile[]>([]);
   const [selectedHistory, setSelectedHistory] = useState<PendingScreening[]>([]);
+  const [syncing, setSyncing] = useState(false);
 
   const t = text[language];
 
@@ -274,6 +275,35 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
     }
   };
 
+  const handleManualSync = async (): Promise<void> => {
+    if (syncing) return;
+
+    if (!online) {
+      Alert.alert('Offline', 'Connect to the internet to sync pending records.');
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      const result = await syncDirtyVitalsUpdates();
+      await refreshQueueCount();
+
+      if (result.synced === 0 && result.pending === 0) {
+        Alert.alert('Sync Complete', 'No pending records to sync.');
+        return;
+      }
+
+      Alert.alert(
+        'Sync Complete',
+        `Synced: ${result.synced}\nPending: ${result.pending}`
+      );
+    } catch (error) {
+      Alert.alert('Sync Failed', 'Could not sync records right now. Please try again.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ExpoStatusBar style="dark" />
@@ -300,6 +330,20 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
             <Text style={styles.pendingBadgeText}>{t.pendingSync}: {pendingCount}</Text>
           </View>
         )}
+        <Pressable
+          style={[
+            styles.syncNowButton,
+            (!online || syncing || pendingCount === 0) && styles.syncNowButtonDisabled,
+          ]}
+          onPress={handleManualSync}
+          disabled={!online || syncing || pendingCount === 0}
+        >
+          {syncing ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.syncNowButtonText}>Sync Now</Text>
+          )}
+        </Pressable>
       </View>
 
       {/* Language Selector */}
@@ -735,9 +779,11 @@ const styles = StyleSheet.create({
   },
   statusBar: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: 16,
     paddingVertical: 10,
     gap: 8,
+    alignItems: 'center',
   },
   badge: {
     paddingHorizontal: 10,
@@ -761,6 +807,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#92400e',
+  },
+  syncNowButton: {
+    backgroundColor: '#2563eb',
+    borderRadius: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    minWidth: 88,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncNowButtonDisabled: {
+    backgroundColor: '#94a3b8',
+  },
+  syncNowButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   languageSelector: {
     flexDirection: 'row',

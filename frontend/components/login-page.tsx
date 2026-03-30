@@ -34,12 +34,53 @@ import { cn } from "@/lib/utils"
 type UserRole = "frontline" | "doctor" | "admin" | "patient"
 type Language = "EN" | "SI" | "TA"
 
-const AUTH_API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api/v1").replace(/\/$/, "")
+const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "")
+
+function getAuthApiBaseCandidates(): string[] {
+  const candidates = [configuredApiBase, "http://localhost:8005/api/v1", "http://127.0.0.1:8005/api/v1"]
+
+  if (typeof window !== "undefined") {
+    const protocol = window.location.protocol || "http:"
+    const host = window.location.hostname || "localhost"
+    candidates.push(
+      `${protocol}//${host}:8005/api/v1`
+    )
+  }
+
+  candidates.push(
+    "http://localhost:8005/api/v1",
+    "http://127.0.0.1:8005/api/v1"
+  )
+
+  return candidates.filter((value, index, arr): value is string => Boolean(value) && arr.indexOf(value as string) === index)
+}
+
+async function authFetch(path: string, init?: RequestInit): Promise<Response> {
+  const authApiBaseCandidates = getAuthApiBaseCandidates()
+  let lastNetworkError: unknown = null
+
+  for (const baseUrl of authApiBaseCandidates) {
+    const url = `${baseUrl}${path}`
+    try {
+      const response = await fetch(url, init)
+      if (response.status === 404) {
+        continue
+      }
+      return response
+    } catch (error) {
+      lastNetworkError = error
+    }
+  }
+
+  if (lastNetworkError instanceof Error) {
+    throw new Error(`Unable to reach backend API. ${lastNetworkError.message}`)
+  }
+  throw new Error("Unable to reach backend API. Please verify backend is running and NEXT_PUBLIC_API_BASE_URL is correct.")
+}
 
 interface LoginPageProps {
   onLogin: (role: UserRole) => void
   onBack?: () => void
-  isSignup?: boolean
 }
 
 const roleOptions = [
@@ -89,22 +130,14 @@ const roleOptions = [
   }
 ]
 
-export default function LoginPage({ onLogin, onBack, isSignup = false }: LoginPageProps) {
+export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null)
   const [language, setLanguage] = useState<Language>("EN")
-  const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
-
-  const toApiRole = (role: UserRole): "FRONTLINE_STAFF" | "CLINICAL_SPECIALIST" | "ADMIN" | "PATIENT" => {
-    if (role === "frontline") return "FRONTLINE_STAFF"
-    if (role === "doctor") return "CLINICAL_SPECIALIST"
-    if (role === "admin") return "ADMIN"
-    return "PATIENT"
-  }
 
   const fromApiRole = (role: string): UserRole => {
     const upper = String(role || "").toUpperCase()
@@ -130,32 +163,12 @@ export default function LoginPage({ onLogin, onBack, isSignup = false }: LoginPa
     setIsLoading(true)
 
     try {
-      if (isSignup) {
-        const payload = {
-          email,
-          password,
-          full_name: fullName.trim() || email.split("@")[0],
-          role: toApiRole(selectedRole),
-        }
-
-        const registerResponse = await fetch(`${AUTH_API_BASE}/auth/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        })
-
-        if (!registerResponse.ok) {
-          const err = await registerResponse.json().catch(() => ({}))
-          throw new Error(err?.detail || "Sign up failed")
-        }
-      }
-
       const formBody = new URLSearchParams({
         username: email,
         password,
       }).toString()
 
-      const loginResponse = await fetch(`${AUTH_API_BASE}/auth/login`, {
+      const loginResponse = await authFetch("/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: formBody,
@@ -167,7 +180,7 @@ export default function LoginPage({ onLogin, onBack, isSignup = false }: LoginPa
       }
 
       const tokenData = await loginResponse.json()
-      const meResponse = await fetch(`${AUTH_API_BASE}/auth/me`, {
+      const meResponse = await authFetch("/auth/me", {
         headers: {
           Authorization: `Bearer ${tokenData.access_token}`,
         },
@@ -179,6 +192,12 @@ export default function LoginPage({ onLogin, onBack, isSignup = false }: LoginPa
 
       const me = await meResponse.json()
       const apiRole = fromApiRole(me.role)
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("bloomcare_access_token", tokenData.access_token)
+        window.localStorage.setItem("bloomcare_user_profile", JSON.stringify(me))
+      }
+
       onLogin(apiRole)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Authentication failed"
@@ -254,7 +273,7 @@ export default function LoginPage({ onLogin, onBack, isSignup = false }: LoginPa
         <div className="w-full max-w-6xl">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-black text-slate-900 mb-4 tracking-tight">
-              {isSignup ? getText("Join BloomCare", "එක්වන්න", "சேரவும்") : getText("Welcome Back", "නැවත සාදරයෙන් පිළිගනිමු", "வரவேற்கிறோம்")}
+              {getText("Welcome Back", "නැවත සාදරයෙන් පිළිගනිමු", "வரவேற்கிறோம்")}
             </h2>
             <p className="text-slate-500 max-w-lg mx-auto font-medium leading-relaxed">
               {getText("Excellence in maternal care powered by advanced predictive AI.", "උසස් AI මගින් බලගැන්වූ විශිෂ්ට මාතෘ රැකවරණය.", "மேம்பட்ட AI மூலம் தாய்வழி பராமரிப்பு.")}
@@ -300,29 +319,13 @@ export default function LoginPage({ onLogin, onBack, isSignup = false }: LoginPa
                     })()}
                   </div>
                   <CardTitle className="text-2xl font-black text-slate-900 uppercase tracking-tight">
-                    {isSignup ? getText("Sign Up", "ලියාපදිංචි වන්න", "பதிவு செய்") : getText("Sign In", "පුරනය වන්න", "உள்நுழை")}
+                    {getText("Sign In", "පුරනය වන්න", "உள்நுழை")}
                   </CardTitle>
                   <CardDescription className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mt-2">
                     {language === "EN" ? roleOptions.find(r => r.id === selectedRole)?.title : language === "SI" ? roleOptions.find(r => r.id === selectedRole)?.titleSi : roleOptions.find(r => r.id === selectedRole)?.titleTa}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6 px-12 pb-12">
-                    {isSignup && (
-                      <div className="space-y-3">
-                        <Label htmlFor="full-name" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
-                          {getText("Full Name", "සම්පූර්ණ නම", "முழுப் பெயர்")}
-                        </Label>
-                        <Input
-                          id="full-name"
-                          type="text"
-                          placeholder={getText("Enter full name", "සම්පූර්ණ නම ඇතුලත් කරන්න", "முழுப் பெயரை உள்ளிடவும்")}
-                          className="h-12 bg-white/50 border-slate-100 focus:border-primary/30 focus:ring-primary/10 rounded-xl transition-all font-bold text-slate-800"
-                          value={fullName}
-                          onChange={(e) => setFullName(e.target.value)}
-                        />
-                      </div>
-                    )}
-
                   <div className="space-y-3">
                     <Label htmlFor="email" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
                       {getText("Email / Employee ID", "ඊමේල් / සේවා අංකය", "மின்னஞ்சல்")}
@@ -391,7 +394,7 @@ export default function LoginPage({ onLogin, onBack, isSignup = false }: LoginPa
                         </span>
                       ) : (
                         <span className="flex items-center gap-2">
-                          {isSignup ? getText("Sign Up", "ලියාපදිංචි වන්න", "பதிவு செய்") : getText("Sign In", "පුරනය වන්න", "உள்நுழை")}
+                          {getText("Sign In", "පුරනය වන්න", "உள்நுழை")}
                           <ChevronRight className="w-5 h-5" />
                         </span>
                       )}

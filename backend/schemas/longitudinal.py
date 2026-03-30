@@ -17,23 +17,23 @@ class ScreeningSubmissionRequest(BaseModel):
     triggers: List[Any] = Field(default_factory=list)
 
     # Stage 1 vitals and risk context persisted for longitudinal/clinical review.
-    systolic: Optional[int] = Field(default=None, ge=50, le=260)
-    diastolic: Optional[int] = Field(default=None, ge=30, le=180)
-    bmi: Optional[float] = Field(default=None, ge=10.0, le=80.0)
-    heart_rate: Optional[int] = Field(default=None, ge=20, le=240)
-    blood_sugar: Optional[float] = Field(default=None, ge=20.0, le=600.0)
-    temperature: Optional[float] = Field(default=None, ge=30.0, le=45.0)
-    hemoglobin: Optional[float] = Field(default=None, ge=2.0, le=25.0)
-    pcos: Optional[int] = Field(default=None, ge=0, le=1)
-    previous_complications: Optional[int] = Field(default=None, ge=0, le=1)
-    preexisting_diabetes: Optional[int] = Field(default=None, ge=0, le=1)
-    mental_health: Optional[int] = Field(default=None, ge=0, le=10)
-    sleep_pattern: Optional[int] = Field(default=None, ge=0, le=24)
-    exercise: Optional[int] = Field(default=None, ge=0, le=24)
-    education: Optional[int] = Field(default=None, ge=0, le=10)
-    map: Optional[float] = Field(default=None, ge=20.0, le=200.0)
-    bp_status: Optional[str] = None
-    observation: Optional[str] = None
+    systolic: int = Field(..., ge=50, le=260)
+    diastolic: int = Field(..., ge=30, le=180)
+    bmi: float = Field(..., ge=10.0, le=80.0)
+    heart_rate: int = Field(..., ge=20, le=240)
+    blood_sugar: float = Field(..., ge=20.0, le=600.0)
+    temperature: float = Field(..., ge=30.0, le=45.0)
+    hemoglobin: float = Field(..., ge=2.0, le=25.0)
+    pcos: int = Field(..., ge=0, le=1)
+    previous_complications: int = Field(..., ge=0, le=1)
+    preexisting_diabetes: int = Field(..., ge=0, le=1)
+    mental_health: int = Field(..., ge=0, le=10)
+    sleep_pattern: int = Field(..., ge=0, le=24)
+    exercise: int = Field(..., ge=0, le=24)
+    education: int = Field(..., ge=0, le=10)
+    map: float = Field(..., ge=20.0, le=200.0)
+    bp_status: str = Field(..., min_length=1)
+    observation: str = Field(..., min_length=1)
 
     screened_at: Optional[datetime] = None
 

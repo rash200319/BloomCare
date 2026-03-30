@@ -21,7 +21,7 @@ interface PendingRecord {
   timestamp: number;
 }
 
-const API_BASE_URL = 'http://192.168.1.100:8000/api/v1';
+const API_BASE_URL = 'http://192.168.56.1:8000/api/v1';
 const PENDING_RECORDS_KEY = 'bloomcare_pending_records';
 
 class BackgroundSyncService {

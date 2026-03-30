@@ -36,10 +36,9 @@ type Language = "EN" | "SI" | "TA"
 
 interface HomePageProps {
   onNavigateToLogin: () => void
-  onNavigateToSignup: () => void
 }
 
-export default function HomePage({ onNavigateToLogin, onNavigateToSignup }: HomePageProps) {
+export default function HomePage({ onNavigateToLogin }: HomePageProps) {
   const [language, setLanguage] = useState<Language>("EN")
 
   const getText = (en: string, si: string, ta: string) => {
@@ -218,7 +217,7 @@ export default function HomePage({ onNavigateToLogin, onNavigateToSignup }: Home
               </Button>
               <Button 
                 className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/25 rounded-full px-6"
-                onClick={onNavigateToSignup}
+                onClick={onNavigateToLogin}
               >
                 {getText("Get Started", "ආරම්භ කරන්න", "தொடங்கு")}
                 <ChevronRight className="w-4 h-4 ml-1" />
@@ -272,7 +271,7 @@ export default function HomePage({ onNavigateToLogin, onNavigateToSignup }: Home
                 <Button 
                   size="lg" 
                   className="bg-primary hover:bg-primary/90 text-white px-10 h-14 text-lg rounded-full shadow-xl shadow-primary/20"
-                  onClick={onNavigateToSignup}
+                  onClick={onNavigateToLogin}
                 >
                   {getText("Start Screening", "පරීක්ෂණය ආරම්භ කරන්න", "திரையிடலைத் தொடங்கு")}
                   <ArrowRight className="w-5 h-5 ml-2" />
@@ -474,7 +473,7 @@ export default function HomePage({ onNavigateToLogin, onNavigateToSignup }: Home
                 </p>
               </CardContent>
             </Card>
-            <Card className="border-0 glass hover:bg-white transition-all hover:-translate-y-2 cursor-pointer group shadow-lg" onClick={onNavigateToSignup}>
+            <Card className="border-0 glass hover:bg-white transition-all hover:-translate-y-2 cursor-pointer group shadow-lg" onClick={onNavigateToLogin}>
               <CardContent className="p-8 text-center">
                 <div className="w-20 h-20 rounded-3xl bg-rose-100 flex items-center justify-center mx-auto mb-6 group-hover:bg-rose-500 group-hover:duration-300 transition-colors">
                   <Baby className="w-10 h-10 text-rose-500 group-hover:text-white transition-colors" />
@@ -518,9 +517,9 @@ export default function HomePage({ onNavigateToLogin, onNavigateToSignup }: Home
               <Button 
                 size="lg" 
                 className="bg-white text-primary hover:bg-white/90 px-10 h-14 text-lg rounded-full shadow-2xl"
-                onClick={onNavigateToSignup}
+                onClick={onNavigateToLogin}
               >
-                {getText("Create Account", "ගිණුමක් සාදන්න", "கணக்கை உருவாக்கு")}
+                {getText("Provider Login", "සෞඛ්‍ය සේවා පිවිසුම", "வழங்குநர் உள்நுழைவு")}
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
               <Button 

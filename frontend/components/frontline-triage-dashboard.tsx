@@ -62,24 +62,6 @@ import {
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 
-// Dummy patient data
-const patients = [
-  { id: "P-1024", name: "Anula Wijesinghe", age: 28, status: "stable", risk: "Low", time: "10 min ago", bloodGroup: "O+", phone: "0771234567", location: "Wattala" },
-  { id: "P-1025", name: "Dilrukshi Perera", age: 31, status: "critical", risk: "High", time: "25 min ago", bloodGroup: "A-", phone: "0719876543", location: "Negombo" },
-  { id: "P-1026", name: "Lakmini Silva", age: 24, status: "warning", risk: "Moderate", time: "1 hour ago", bloodGroup: "B+", phone: "0754433221", location: "Colombo 07" },
-  { id: "P-1027", name: "Samanthi Gunawardena", age: 33, status: "stable", risk: "Low", time: "2 hours ago", bloodGroup: "AB+", phone: "0708877665", location: "Kandy" },
-  { id: "P-1028", name: "Priyanka Herath", age: 29, status: "stable", risk: "Low", time: "3 hours ago", bloodGroup: "O-", phone: "0721112223", location: "Galle" },
-  { id: "P-1029", name: "Nimali Rathnayake", age: 35, status: "critical", risk: "High", time: "5 hours ago", bloodGroup: "A+", phone: "0779998887", location: "Jaffna" },
-]
-
-const recentHistory = [
-  { id: "H-501", patient: "Anula Wijesinghe", date: "2024-03-27", time: "09:15 AM", risk: "Low", vitals: { bp: "110/70", hr: 72, temp: 36.6, sugar: 95 } },
-  { id: "H-502", patient: "Dilrukshi Perera", date: "2024-03-27", time: "10:30 AM", risk: "High", vitals: { bp: "155/95", hr: 88, temp: 37.2, sugar: 145 } },
-  { id: "H-503", patient: "Lakmini Silva", date: "2024-03-27", time: "11:45 AM", risk: "Moderate", vitals: { bp: "135/85", hr: 80, temp: 36.8, sugar: 110 } },
-  { id: "H-504", patient: "Kushani Soyza", date: "2024-03-26", time: "02:20 PM", risk: "Low", vitals: { bp: "115/75", hr: 74, temp: 36.5, sugar: 92 } },
-  { id: "H-505", patient: "Pavithra Gamage", date: "2024-03-26", time: "04:10 PM", risk: "High", vitals: { bp: "160/100", hr: 92, temp: 37.5, sugar: 160 } },
-]
-
 const languages: { code: "EN" | "SI" | "TA"; label: string }[] = [
   { code: "EN", label: "English" },
   { code: "SI", label: "Sinhala" },
@@ -88,6 +70,56 @@ const languages: { code: "EN" | "SI" | "TA"; label: string }[] = [
 
 interface FrontlineTriageDashboardProps {
   onLogout: () => void
+}
+
+interface RegistryPatient {
+  id: string
+  name: string
+  age: number
+  status: "assessed" | "pending"
+  risk: "Low" | "Moderate" | "High"
+  time: string
+  bloodGroup: string
+  phone: string
+  location: string
+}
+
+interface HistoryEntry {
+  id: string
+  patient: string
+  patientId: string
+  collectedAt: string
+  date: string
+  time: string
+  risk: "Low" | "Moderate" | "High"
+  vitals: {
+    bp: string
+    hr: number | string
+    temp: number | string
+    sugar: number | string
+  }
+}
+
+interface BackendPatient {
+  id: string
+  full_name: string
+  date_of_birth?: string | null
+  contact_number?: string | null
+}
+
+interface BackendStage1History {
+  screening_id: string
+  patient_id: string
+  patient_name?: string | null
+  collected_at?: string | null
+  systolic?: number | null
+  diastolic?: number | null
+  heart_rate?: number | null
+  temperature?: number | null
+  blood_sugar?: number | null
+  edge_risk_score?: number | null
+  edge_risk_classification?: string | null
+  risk_label?: string | null
 }
 
 // Types for API responses
@@ -122,7 +154,35 @@ interface RiskResponse {
 interface PendingScreening {
   id: string
   createdAt: string
-  vitals: VitalsInput
+  payload: {
+    patient_unique_id: string | null
+    phone: string | null
+    name: string
+    age: number
+    contact: string | null
+    gestational_age_weeks: number
+    general_risk_flag: "High" | "Low"
+    probability_score: number
+    triggers: string[]
+    screened_at: string
+    systolic: number
+    diastolic: number
+    bmi: number
+    heart_rate: number
+    blood_sugar: number
+    temperature: number
+    hemoglobin: number
+    pcos: number
+    previous_complications: number
+    preexisting_diabetes: number
+    mental_health: number
+    sleep_pattern: number
+    exercise: number
+    education: number
+    map: number
+    bp_status: string
+    observation: string
+  }
 }
 
 interface RiskTrigger {
@@ -139,7 +199,7 @@ declare global {
   }
 }
 
-const PENDING_QUEUE_KEY = "bloomcare_stage1_pending_queue"
+const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "")
 const DEFAULT_IMPUTE = {
   age: 28,
   bmi: 24,
@@ -158,9 +218,28 @@ const DEFAULT_IMPUTE = {
   education: 4,
 }
 
+function getApiBaseCandidates(): string[] {
+  const candidates = [configuredApiBase, "http://localhost:8005/api/v1", "http://127.0.0.1:8005/api/v1"]
+
+  if (typeof window !== "undefined") {
+    const protocol = window.location.protocol || "http:"
+    const host = window.location.hostname || "localhost"
+    candidates.push(`${protocol}//${host}:8005/api/v1`)
+  }
+
+  candidates.push(
+    "http://localhost:8005/api/v1",
+    "http://127.0.0.1:8005/api/v1"
+  )
+
+  return candidates.filter((value, index, arr): value is string => Boolean(value) && arr.indexOf(value as string) === index)
+}
+
 export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDashboardProps) {
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedPatient, setSelectedPatient] = useState(patients[1])
+  const [patients, setPatients] = useState<RegistryPatient[]>([])
+  const [recentHistory, setRecentHistory] = useState<HistoryEntry[]>([])
+  const [selectedPatient, setSelectedPatient] = useState<RegistryPatient | null>(null)
   const [selectedLanguage, setSelectedLanguage] = useState<"EN" | "SI" | "TA">("EN")
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false)
   const [showResult, setShowResult] = useState(false)
@@ -168,13 +247,10 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
   const [isLoading, setIsLoading] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [riskData, setRiskData] = useState<RiskResponse | null>(null)
-  const [isOffline, setIsOffline] = useState(false)
-  const [pendingCount, setPendingCount] = useState(0)
-  const [isSyncing, setIsSyncing] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"triage" | "registry" | "history">("triage")
   const [historyFilter, setHistoryFilter] = useState("all")
-  const [selectedReport, setSelectedReport] = useState<any>(null)
+  const [selectedReport, setSelectedReport] = useState<HistoryEntry | null>(null)
 
   const getText = (en: string, si: string, ta: string) => {
     if (selectedLanguage === "SI") return si
@@ -233,38 +309,111 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
       p.id.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  const readPendingQueue = (): PendingScreening[] => {
-    if (typeof window === "undefined") {
-      return []
-    }
-    const raw = window.localStorage.getItem(PENDING_QUEUE_KEY)
-    if (!raw) {
-      return []
-    }
-    try {
-      const parsed = JSON.parse(raw)
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
+  const isToday = (iso?: string | null): boolean => {
+    if (!iso) return false
+    const target = new Date(iso)
+    if (Number.isNaN(target.getTime())) return false
+    const now = new Date()
+    return (
+      target.getFullYear() === now.getFullYear() &&
+      target.getMonth() === now.getMonth() &&
+      target.getDate() === now.getDate()
+    )
   }
 
-  const writePendingQueue = (queue: PendingScreening[]) => {
-    if (typeof window === "undefined") {
-      return
-    }
-    window.localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(queue))
-    setPendingCount(queue.length)
+  const isThisWeek = (iso?: string | null): boolean => {
+    if (!iso) return false
+    const target = new Date(iso)
+    if (Number.isNaN(target.getTime())) return false
+    const now = new Date()
+    const day = now.getDay()
+    const start = new Date(now)
+    start.setHours(0, 0, 0, 0)
+    start.setDate(now.getDate() - day)
+    return target.getTime() >= start.getTime()
   }
 
-  const queueForSync = (vitals: VitalsInput) => {
-    const queue = readPendingQueue()
-    queue.push({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      createdAt: new Date().toISOString(),
-      vitals,
-    })
-    writePendingQueue(queue)
+  const filteredHistory = recentHistory.filter((entry) => {
+    if (historyFilter === "today") {
+      return isToday(entry.collectedAt)
+    }
+    if (historyFilter === "this-week") {
+      return isThisWeek(entry.collectedAt)
+    }
+    return true
+  })
+
+  const assessedTodayCount = patients.filter((p) => p.status === "assessed").length
+
+  const toRiskLabel = (riskLevel?: string | null, riskScore?: number | null): "Low" | "Moderate" | "High" => {
+    const normalized = String(riskLevel || "").toLowerCase()
+    if (normalized === "high" || normalized === "escalate") return "High"
+    if (normalized === "moderate") return "Moderate"
+    if (typeof riskScore === "number" && riskScore >= 0.75) return "High"
+    if (typeof riskScore === "number" && riskScore >= 0.4) return "Moderate"
+    return "Low"
+  }
+
+  const relativeTime = (iso?: string | null): string => {
+    if (!iso) return "--"
+    const ts = new Date(iso).getTime()
+    if (Number.isNaN(ts)) return "--"
+    const diffMin = Math.max(0, Math.floor((Date.now() - ts) / 60000))
+    if (diffMin < 1) return "just now"
+    if (diffMin < 60) return `${diffMin} min ago`
+    const diffH = Math.floor(diffMin / 60)
+    if (diffH < 24) return `${diffH} hour${diffH > 1 ? "s" : ""} ago`
+    const diffD = Math.floor(diffH / 24)
+    return `${diffD} day${diffD > 1 ? "s" : ""} ago`
+  }
+
+  const getAccessToken = (): string | null => {
+    if (typeof window === "undefined") return null
+    return window.localStorage.getItem("bloomcare_access_token")
+  }
+
+  const apiRequest = async (path: string, init?: RequestInit): Promise<Response> => {
+    const token = getAccessToken()
+    if (!token) {
+      throw new Error("No active session found. Please login again.")
+    }
+
+    const headers = new Headers(init?.headers)
+    headers.set("Authorization", `Bearer ${token}`)
+    if (init?.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json")
+    }
+
+    const candidates = getApiBaseCandidates()
+    let lastError: unknown = null
+
+    for (const base of candidates) {
+      try {
+        const response = await fetch(`${base}${path}`, {
+          ...init,
+          headers,
+        })
+        if (response.status === 404) {
+          continue
+        }
+        return response
+      } catch (error) {
+        lastError = error
+      }
+    }
+
+    if (lastError instanceof Error) {
+      throw new Error(`Unable to reach backend API. ${lastError.message}`)
+    }
+    throw new Error("Unable to reach backend API.")
+  }
+
+  const parseDateToAge = (dateOfBirth?: string | null): number => {
+    if (!dateOfBirth) return 0
+    const birthDate = new Date(dateOfBirth)
+    if (Number.isNaN(birthDate.getTime())) return 0
+    const years = new Date().getFullYear() - birthDate.getFullYear()
+    return Math.max(0, years)
   }
 
   const getOfflineRisk = (vitals: VitalsInput): RiskResponse => {
@@ -574,25 +723,78 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
     printWindow.document.close()
   }
 
-  const syncPendingRecords = async () => {
-    const queue = readPendingQueue()
-    if (queue.length === 0) {
-      return
+  const loadDashboardData = async () => {
+    const [patientsRes, historyRes] = await Promise.all([
+      apiRequest("/patients/?limit=200"),
+      apiRequest("/triage/history?limit=200"),
+    ])
+
+    if (!patientsRes.ok) {
+      throw new Error("Unable to load patients from database")
+    }
+    if (!historyRes.ok) {
+      throw new Error("Unable to load stage 1 history from database")
     }
 
-    setIsSyncing(true)
-    try {
-      // Stage 1 is intentionally offline-first. Do not call backend /predict-risk.
-      // Keep records local for referral handover to hospital doctor workflow.
-      setStatusMessage(
-        getText(
-          `Stage 1 runs on-device. ${queue.length} record(s) remain stored locally for hospital referral handover.`,
-          `අදියර 1 උපාංගය තුළ ක්‍රියාත්මක වේ. වාර්තා ${queue.length} ක් රෝහල් යොමු කිරීම සඳහා දේශීයව සුරැකි ඇත.`,
-          `நிலை 1 கருவியிலேயே இயங்குகிறது. ${queue.length} பதிவுகள் மருத்துவமனை பரிந்துரைக்காக உள்ளகமாக சேமிக்கப்பட்டுள்ளன.`
-        )
-      )
-    } finally {
-      setIsSyncing(false)
+    const patientRows = (await patientsRes.json()) as BackendPatient[]
+    const historyRows = (await historyRes.json()) as BackendStage1History[]
+
+    const latestByPatient = new Map<string, BackendStage1History>()
+    const todayPatientIds = new Set<string>()
+    for (const item of historyRows) {
+      if (isToday(item.collected_at)) {
+        todayPatientIds.add(item.patient_id)
+      }
+      const existing = latestByPatient.get(item.patient_id)
+      if (!existing) {
+        latestByPatient.set(item.patient_id, item)
+        continue
+      }
+      const existingTs = existing.collected_at ? new Date(existing.collected_at).getTime() : 0
+      const currentTs = item.collected_at ? new Date(item.collected_at).getTime() : 0
+      if (currentTs >= existingTs) {
+        latestByPatient.set(item.patient_id, item)
+      }
+    }
+
+    const mappedPatients: RegistryPatient[] = patientRows.map((row) => {
+      const latest = latestByPatient.get(row.id)
+      return {
+        id: row.id,
+        name: row.full_name,
+        age: parseDateToAge(row.date_of_birth),
+        status: todayPatientIds.has(row.id) ? "assessed" : "pending",
+        risk: toRiskLabel(latest?.risk_label, latest?.edge_risk_score ?? null),
+        time: relativeTime(latest?.collected_at),
+        bloodGroup: "--",
+        phone: row.contact_number || "--",
+        location: "--",
+      }
+    })
+
+    const mappedHistory: HistoryEntry[] = historyRows.map((item) => {
+      const dateObj = item.collected_at ? new Date(item.collected_at) : null
+      return {
+        id: item.screening_id,
+        patient: item.patient_name || "Unknown Patient",
+        patientId: item.patient_id,
+        collectedAt: item.collected_at || "",
+        date: dateObj ? dateObj.toISOString().slice(0, 10) : "--",
+        time: dateObj ? dateObj.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--",
+        risk: toRiskLabel(item.risk_label, item.edge_risk_score ?? null),
+        vitals: {
+          bp: item.systolic && item.diastolic ? `${item.systolic}/${item.diastolic}` : "--",
+          hr: item.heart_rate ?? "--",
+          temp: item.temperature ?? "--",
+          sugar: item.blood_sugar ?? "--",
+        },
+      }
+    })
+
+    setPatients(mappedPatients)
+    setRecentHistory(mappedHistory)
+    if (!selectedPatient && mappedPatients.length > 0) {
+      setSelectedPatient(mappedPatients[0])
     }
   }
 
@@ -601,8 +803,10 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
       return
     }
 
-    setPendingCount(readPendingQueue().length)
-    setIsOffline(!navigator.onLine)
+    loadDashboardData().catch((error) => {
+      const message = error instanceof Error ? error.message : "Unable to load dashboard data"
+      setApiError(message)
+    })
 
     const scriptId = "stage1-offline-model"
     if (!document.getElementById(scriptId)) {
@@ -613,36 +817,8 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
       document.body.appendChild(script)
     }
 
-    const handleOnline = () => {
-      setIsOffline(false)
-      syncPendingRecords().catch(() => {
-        setStatusMessage(
-          getText(
-            "Back online. Stage 1 remains on-device; records stay local for referral handover.",
-            "නැවත සබැඳිය. අදියර 1 උපාංගය තුළම පවතින අතර වාර්තා යොමු කිරීම සඳහා දේශීයව සුරැකේ.",
-            "மீண்டும் ஆன்லைனில். நிலை 1 கருவியிலேயே இருக்கும்; பரிந்துரைக்காக பதிவுகள் உள்ளகமாகவே இருக்கும்."
-          )
-        )
-      })
-    }
-
-    const handleOffline = () => {
-      setIsOffline(true)
-      setStatusMessage(
-        getText(
-          "Offline mode active. Stage 1 scoring and storage are local.",
-          "නොබැඳි මාදිලිය සක්‍රීයයි. අදියර 1 ගණනය සහ සුරැකීම දේශීයව සිදුවේ.",
-          "ஆஃப்லைன் நிலை செயலில் உள்ளது. நிலை 1 மதிப்பீடும் சேமிப்பும் உள்ளகமாக நடைபெறும்."
-        )
-      )
-    }
-
-    window.addEventListener("online", handleOnline)
-    window.addEventListener("offline", handleOffline)
-
     return () => {
-      window.removeEventListener("online", handleOnline)
-      window.removeEventListener("offline", handleOffline)
+      // no-op cleanup
     }
   }, [])
 
@@ -657,17 +833,61 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
       const offlineResult = getOfflineRisk(vitalsData)
       setRiskData(offlineResult)
       setShowResult(true)
-      queueForSync(vitalsData)
+      const generalRiskFlag: "Low" | "High" = offlineResult.risk_level.toLowerCase() === "low" ? "Low" : "High"
+      const payload = {
+        patient_unique_id: selectedPatient?.id || null,
+        phone: selectedPatient?.phone && selectedPatient.phone !== "--" ? selectedPatient.phone : null,
+        name: vitalsData.patient_name,
+        age: Math.round(vitalsData.age),
+        contact: selectedPatient?.phone && selectedPatient.phone !== "--" ? selectedPatient.phone : null,
+        gestational_age_weeks: Math.max(4, Number.parseInt(formData.gestationalAge || "20", 10) || 20),
+        general_risk_flag: generalRiskFlag,
+        probability_score: offlineResult.risk_score,
+        triggers: offlineResult.recommendations,
+        screened_at: new Date().toISOString(),
+        systolic: vitalsData.systolic,
+        diastolic: vitalsData.diastolic,
+        bmi: vitalsData.bmi,
+        heart_rate: vitalsData.heart_rate,
+        blood_sugar: vitalsData.bs,
+        temperature: vitalsData.temperature,
+        hemoglobin: vitalsData.hemoglobin,
+        pcos: vitalsData.pcos,
+        previous_complications: vitalsData.previous_complications,
+        preexisting_diabetes: vitalsData.preexisting_diabetes,
+        mental_health: vitalsData.mental_health,
+        sleep_pattern: vitalsData.sleep_pattern,
+        exercise: vitalsData.exercise,
+        education: vitalsData.education,
+        map: vitalsData.map,
+        bp_status: offlineResult.bp_status,
+        observation: offlineResult.observation,
+      }
+
+      const syncResponse = await apiRequest("/submit-screening", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+
+      if (!syncResponse.ok) {
+        const detail = await syncResponse.json().catch(() => ({}))
+        throw new Error(detail?.detail || "Unable to save stage 1 screening")
+      }
+
+      await loadDashboardData().catch(() => {
+        // Keep web assessment online-only and do not surface sync-style banners.
+      })
 
       setStatusMessage(
         getText(
-          "Stage 1 scored locally using on-device model (stage1_offline_ai.js).",
-          "අදියර 1 stage1_offline_ai.js භාවිතයෙන් දේශීයව ගණනය කරන ලදී.",
-          "நிலை 1 stage1_offline_ai.js மூலம் கருவியிலேயே மதிப்பிடப்பட்டது."
+          "Stage 1 screening, patient record, and report saved to database.",
+          "අදියර 1 පරීක්ෂණය, රෝගී වාර්තාව සහ වාර්තාව දත්ත ගබඩාවට සුරකින ලදි.",
+          "நிலை 1 பரிசோதனை, நோயாளர் பதிவு மற்றும் அறிக்கை தரவுத்தளத்தில் சேமிக்கப்பட்டது."
         )
       )
-    } catch {
-      setApiError("Stage 1 offline model could not run. Please reload the page and try again.")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to complete stage 1 screening"
+      setApiError(message)
     } finally {
       setIsLoading(false)
     }
@@ -746,14 +966,6 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
         </div>
 
         <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-          {/* Offline Badge */}
-          {isOffline && (
-            <Badge variant="outline" className="hidden md:flex h-9 rounded-xl bg-orange-50 border-orange-100 text-orange-600 text-[9px] font-black uppercase tracking-widest px-4 items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
-              {getText("Offline", "නොබැඳි", "ஆஃப்லைன்")}
-            </Badge>
-          )}
-
           {/* Emergency Badge */}
           <div className="hidden lg:flex items-center gap-3 px-4 py-2 bg-rose-50 rounded-full border border-rose-100 mr-2">
             <Phone className="w-3.5 h-3.5 text-primary animate-pulse" />
@@ -964,11 +1176,11 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                   <div className="h-2 w-32 bg-slate-100 rounded-full overflow-hidden">
                     <div 
                       className="h-full bg-emerald-500 transition-all duration-1000" 
-                      style={{ width: `${(patients.filter(p => p.status === "assessed").length / patients.length) * 100}%` }}
+                      style={{ width: `${patients.length > 0 ? (assessedTodayCount / patients.length) * 100 : 0}%` }}
                     />
                   </div>
                   <span className="text-xs font-black text-emerald-600">
-                    {patients.filter((p) => p.status === "assessed").length}/{patients.length}
+                    {assessedTodayCount}/{patients.length}
                   </span>
                 </div>
               </div>
@@ -981,30 +1193,6 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
           <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8">
             {activeTab === "triage" && (
               <>
-                <Card className="border border-slate-200 bg-white/80 shadow-sm rounded-2xl">
-                  <CardContent className="px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <span className={cn(
-                        "text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full",
-                        isOffline ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
-                      )}>
-                        {isOffline ? getText("Offline Mode", "නොබැඳි මාදිලිය", "ஆஃப்லைன் பயன்முறை") : getText("Online", "සබැඳි", "ஆன்லைனில்")}
-                      </span>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                        {getText("Pending Sync", "සමමුහුර්ත කිරීමට ඇති", "ஒத்திசைවු நிலුவையில் உள்ளது")}: {pendingCount}
-                      </span>
-                    </div>
-                    <Button
-                      variant="outline"
-                      onClick={() => syncPendingRecords()}
-                      disabled={isSyncing || pendingCount === 0 || isOffline}
-                      className="h-10 rounded-xl font-black text-[10px] uppercase tracking-widest"
-                    >
-                      {isSyncing ? getText("Syncing...", "සමමුහුර්ත වෙමින්...", "ஒத்திசைக்கப்படுகிறது...") : getText("Sync Now", "දැන් සමමුහුර්ත කරන්න", "இப்போது ஒத்திசைக்கவும்")}
-                    </Button>
-                  </CardContent>
-                </Card>
-
                 {statusMessage && (
                   <Card className="border border-blue-100 bg-blue-50/60 shadow-sm rounded-2xl">
                     <CardContent className="px-4 sm:px-6 py-3">
@@ -1146,7 +1334,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                 </div>
 
                 <div className="grid grid-cols-1 gap-6">
-                  {recentHistory.map((entry) => (
+                  {filteredHistory.map((entry) => (
                     <Card key={entry.id} className="border-0 glass shadow-xl shadow-slate-200/50 overflow-hidden rounded-[24px] group hover:scale-[1.01] transition-all">
                       <CardContent className="p-0">
                         <div className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-slate-100">

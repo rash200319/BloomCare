@@ -9,7 +9,7 @@ import AdminDashboard from "./admin-dashboard"
 import PatientPortal from "./patient-portal"
 
 type UserRole = "frontline" | "doctor" | "admin" | "patient" | null
-type AppView = "home" | "login" | "signup" | "dashboard"
+type AppView = "home" | "login" | "dashboard"
 
 export default function BloomCareApp() {
   const [currentRole, setCurrentRole] = useState<UserRole>(null)
@@ -21,16 +21,16 @@ export default function BloomCareApp() {
   }
 
   const handleLogout = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("bloomcare_access_token")
+      window.localStorage.removeItem("bloomcare_user_profile")
+    }
     setCurrentRole(null)
     setCurrentView("home")
   }
 
   const handleNavigateToLogin = () => {
     setCurrentView("login")
-  }
-
-  const handleNavigateToSignup = () => {
-    setCurrentView("signup")
   }
 
   const handleNavigateToHome = () => {
@@ -41,19 +41,17 @@ export default function BloomCareApp() {
   if (currentView === "home") {
     return (
       <HomePage 
-        onNavigateToLogin={handleNavigateToLogin} 
-        onNavigateToSignup={handleNavigateToSignup}
+        onNavigateToLogin={handleNavigateToLogin}
       />
     )
   }
 
-  // Show login or signup page
-  if (currentView === "login" || currentView === "signup") {
+  // Show login page
+  if (currentView === "login") {
     return (
       <LoginPage 
         onLogin={handleLogin} 
         onBack={handleNavigateToHome}
-        isSignup={currentView === "signup"}
       />
     )
   }
@@ -71,8 +69,7 @@ export default function BloomCareApp() {
     default:
       return (
         <HomePage 
-          onNavigateToLogin={handleNavigateToLogin} 
-          onNavigateToSignup={handleNavigateToSignup}
+          onNavigateToLogin={handleNavigateToLogin}
         />
       )
   }

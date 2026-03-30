@@ -1,9 +1,10 @@
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import date, datetime
+from uuid import UUID
 
 class PatientBase(BaseModel):
-    national_id: Optional[str] = None
+    national_id: Optional[UUID] = None
     full_name: str
     date_of_birth: Optional[date] = None
     contact_number: Optional[str] = None
@@ -15,7 +16,7 @@ class PatientUpdate(PatientBase):
     pass
 
 class PatientInDBBase(PatientBase):
-    id: str
+    id: UUID
     created_at: datetime
     updated_at: Optional[datetime] = None
 
