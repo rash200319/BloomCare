@@ -64,6 +64,7 @@ class BatchedTriageSyncInput(BaseModel):
     items: List[TriageInput]
 
 class TriageSyncResponse(BaseModel):
+    screening_id: Optional[str] = None
     patient_id: str
     encounter_id: Optional[str]
     server_risk_tier: RiskTier

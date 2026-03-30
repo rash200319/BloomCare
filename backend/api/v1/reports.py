@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status, FileResponse
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from typing import Any, Optional, Dict, List
 from sqlalchemy.orm import Session
 import logging
@@ -241,10 +242,12 @@ def download_report(
     # Return as JSON for now (can be extended to PDF)
     json_content = json.dumps(report.report_content, indent=2)
     
-    return FileResponse(
-        content=json_content.encode(),
+    return Response(
+        content=json_content,
         media_type="application/json",
-        filename=f"{report.report_type}_report_{report_id}.json"
+        headers={
+            "Content-Disposition": f"attachment; filename={report.report_type}_report_{report_id}.json"
+        },
     )
 
 

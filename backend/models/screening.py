@@ -28,7 +28,7 @@ class Stage1Screening(Base):
     temperature = Column(DECIMAL(4,1))
     
     # Additional screening data
-    Blood_sugar = Column("Blood_sugar", DECIMAL(5,2))
+    Blood_sugar = Column("blood_sugar", DECIMAL(5,2))
     hemoglobin = Column(DECIMAL(4,2))
     pcos = Column(Boolean)
     previous_complications = Column(Boolean)

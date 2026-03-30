@@ -1,30 +1,25 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from core.config import settings
+
 from api.api_router import api_router
+from core.config import settings
 
-from contextlib import asynccontextmanager
-import logging
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("bloomcare.api")
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info("Initializing BloomCare System")
-    yield
-    logger.info("Shutting down BloomCare System")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    lifespan=lifespan
+    version="2.0.0",
+    description="BloomCare FastAPI backend service.",
 )
 
-# CORS
+# Configure CORS to allow frontend requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8005",
+        "http://127.0.0.1:8005",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -32,10 +27,10 @@ app.add_middleware(
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
-@app.get("/health", tags=["Health"])
-async def health_check():
-    return {"status": "healthy"}
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+@app.get("/", tags=["Root"])
+async def root() -> dict[str, str]:
+    return {
+        "service": settings.PROJECT_NAME,
+        "status": "healthy",
+    }

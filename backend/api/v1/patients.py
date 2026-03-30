@@ -16,6 +16,10 @@ import uuid
 
 router = APIRouter()
 
+
+def _role_name(user: User) -> str:
+    return user.role.value if hasattr(user.role, "value") else str(user.role)
+
 @router.get("/", response_model=List[Patient])
 def read_patients(
     db: Session = Depends(get_db),
@@ -23,7 +27,8 @@ def read_patients(
     limit: int = 100,
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    if current_user.role.value == "ADMIN" or current_user.role.value == "CLINICAL_SPECIALIST":
+    role = _role_name(current_user)
+    if role == "ADMIN" or role == "CLINICAL_SPECIALIST":
         patients = db.query(DBPatient).offset(skip).limit(limit).all()
     else:
         patients = db.query(DBPatient).filter(DBPatient.assigned_worker_id == current_user.id).offset(skip).limit(limit).all()
@@ -68,7 +73,7 @@ def get_patient_history(
         raise HTTPException(status_code=404, detail="Patient not found")
 
     # RBAC: admin/clinical specialist full access; frontline only assigned patients
-    if current_user.role.value not in ["ADMIN", "CLINICAL_SPECIALIST"]:
+    if _role_name(current_user) not in ["ADMIN", "CLINICAL_SPECIALIST"]:
         if str(getattr(patient, "assigned_worker_id", "")) != str(current_user.id):
             raise HTTPException(status_code=403, detail="Not authorized to view this patient history")
 

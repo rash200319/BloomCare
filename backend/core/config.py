@@ -1,5 +1,8 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, List
+
+ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
 class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
@@ -22,7 +25,7 @@ class Settings(BaseSettings):
     BLOOMCARE_OPENAI_MODEL: str = "gpt-4o"
     BLOOMCARE_MOCK_LLM: bool = True
 
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(ENV_FILE), case_sensitive=True, extra="ignore")
 
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:

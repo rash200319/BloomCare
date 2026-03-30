@@ -33,7 +33,6 @@ CREATE TABLE IF NOT EXISTS patients (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     national_id VARCHAR(100) UNIQUE,
     full_name VARCHAR(255) NOT NULL,
-    age INT,
     date_of_birth DATE,
     contact_number VARCHAR(50),
     emergency_contact VARCHAR(50),
@@ -41,20 +40,6 @@ CREATE TABLE IF NOT EXISTS patients (
     registered_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     assigned_worker_id UUID REFERENCES users(id) ON DELETE SET NULL
-);
-
-ALTER TABLE patients
-ADD COLUMN IF NOT EXISTS age INT;
-
--- LONGITUDINAL SCREENING REPORTS
-CREATE TABLE IF NOT EXISTS screening_reports (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
-    general_risk_flag VARCHAR(10) NOT NULL CHECK (general_risk_flag IN ('High', 'Low')),
-    probability_score DECIMAL(6,5) NOT NULL CHECK (probability_score >= 0 AND probability_score <= 1),
-    triggers JSONB NOT NULL DEFAULT '[]'::jsonb,
-    screened_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    recorded_by UUID REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- STAGE 1
@@ -71,7 +56,7 @@ CREATE TABLE IF NOT EXISTS stage1_screenings (
     bmi DECIMAL(5,2),
     heart_rate INT,
     temperature DECIMAL(4,1),
-    blood_sugar DECIMAL(5,2),
+    Blood_sugar DECIMAL(5,2),
     hemoglobin DECIMAL(4,2),
     pcos BOOLEAN,
     previous_complications BOOLEAN,
@@ -193,9 +178,6 @@ CREATE TABLE IF NOT EXISTS sync_queue_logs (
 
 -- INDEXES
 CREATE INDEX IF NOT EXISTS idx_patients_national_id ON patients(national_id);
-CREATE INDEX IF NOT EXISTS idx_patients_contact_number ON patients(contact_number);
-CREATE INDEX IF NOT EXISTS idx_screening_reports_patient_time ON screening_reports(patient_id, screened_at DESC);
-CREATE INDEX IF NOT EXISTS idx_screening_reports_risk_flag ON screening_reports(general_risk_flag);
 CREATE INDEX IF NOT EXISTS idx_stage1_patient_date ON stage1_screenings(patient_id, collected_at DESC);
 CREATE INDEX IF NOT EXISTS idx_stage2_patient_date ON stage2_diagnostics(patient_id, evaluated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(appointment_date);
@@ -250,7 +232,6 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- TRIGGER
-DROP TRIGGER IF EXISTS trg_stage1_escalation ON stage1_screenings;
 CREATE TRIGGER trg_stage1_escalation
 AFTER INSERT ON stage1_screenings
 FOR EACH ROW
