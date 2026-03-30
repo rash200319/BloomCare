@@ -11,7 +11,12 @@ def _create_engine_with_fallback():
 	primary_uri = settings.SQLALCHEMY_DATABASE_URI
 
 	try:
-		engine = create_engine(primary_uri, pool_pre_ping=True)
+		engine = create_engine(
+			primary_uri,
+			pool_pre_ping=True,
+			# Ensure ORM queries resolve tables in the BloomCare schema first.
+			connect_args={"options": "-csearch_path=BloomCare,public"},
+		)
 		with engine.connect() as conn:
 			conn.execute(text("SELECT 1"))
 		logger.info("Connected to PostgreSQL: %s", primary_uri)
