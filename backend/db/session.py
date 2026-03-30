@@ -15,7 +15,8 @@ def _create_engine_with_fallback():
 			primary_uri,
 			pool_pre_ping=True,
 			# Ensure ORM queries resolve tables in the BloomCare schema first.
-			connect_args={"options": "-csearch_path=BloomCare,public"},
+			# BloomCare is a quoted mixed-case schema, so search_path must quote it.
+			connect_args={"options": "-csearch_path=\"BloomCare\",public"},
 		)
 		with engine.connect() as conn:
 			conn.execute(text("SELECT 1"))

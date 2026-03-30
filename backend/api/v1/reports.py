@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 from typing import Any, Optional, Dict, List
+from sqlalchemy import String, cast
 from sqlalchemy.orm import Session
 import logging
 from datetime import datetime
@@ -269,7 +270,7 @@ def list_patient_reports(
     
     # Retrieve reports
     reports = db.query(PatientReport).filter(
-        PatientReport.patient_id == patient_id
+        cast(PatientReport.patient_id, String) == str(patient_id)
     ).order_by(PatientReport.generated_at.desc()).all()
     
     return [

@@ -3,7 +3,7 @@ from typing import Any
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import or_
+from sqlalchemy import String, cast, or_
 from sqlalchemy.orm import Session
 
 from core.deps import get_current_active_user, get_db
@@ -33,6 +33,17 @@ def _safe_uuid_or_none(value: Any) -> str | None:
         return None
 
 
+def _to_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    try:
+        return bool(int(value))
+    except Exception:
+        return None
+
+
 @router.post("/submit-screening", response_model=SubmitScreeningResponse)
 def submit_screening(
     payload: ScreeningSubmissionRequest,
@@ -41,84 +52,146 @@ def submit_screening(
 ) -> Any:
     current_user_id = _safe_uuid_or_none(getattr(current_user, "id", None))
 
-    query_filters = []
-    if payload.patient_unique_id:
-        query_filters.append(DBPatient.national_id == payload.patient_unique_id)
-    if payload.phone:
-        query_filters.append(DBPatient.contact_number == payload.phone)
+    try:
+        query_filters = []
+        if payload.patient_unique_id:
+            query_filters.append(DBPatient.national_id == payload.patient_unique_id)
+        if payload.phone:
+            query_filters.append(DBPatient.contact_number == payload.phone)
 
-    patient = db.query(DBPatient).filter(or_(*query_filters)).first() if query_filters else None
-    created_patient = False
+        patient = db.query(DBPatient).filter(or_(*query_filters)).first() if query_filters else None
+        created_patient = False
 
-    if patient is None:
-        patient = DBPatient(
+        if patient is None:
+            patient = DBPatient(
+                id=str(uuid.uuid4()),
+                national_id=payload.patient_unique_id,
+                full_name=payload.name,
+                age=payload.age,
+                contact_number=payload.contact,
+                assigned_worker_id=current_user_id,
+            )
+            db.add(patient)
+            db.flush()
+            created_patient = True
+        else:
+            patient.full_name = payload.name
+            patient.age = payload.age
+            if payload.contact:
+                patient.contact_number = payload.contact
+            if payload.patient_unique_id and not patient.national_id:
+                patient.national_id = payload.patient_unique_id
+            if not patient.assigned_worker_id and current_user_id:
+                patient.assigned_worker_id = current_user_id
+
+        now_ts = payload.screened_at or datetime.utcnow()
+        risk_tier = RiskTier.routine_care if payload.general_risk_flag == "Low" else RiskTier.escalate
+
+        stage1_screening = Stage1Screening(
             id=str(uuid.uuid4()),
-            national_id=payload.patient_unique_id,
-            full_name=payload.name,
+            patient_id=patient.id,
+            worker_id=current_user_id,
+            encounter_id=f"web-{uuid.uuid4().hex[:12]}",
+            gestational_age_weeks=payload.gestational_age_weeks,
             age=payload.age,
-            contact_number=payload.contact,
-            assigned_worker_id=current_user_id,
+            systolic=payload.systolic,
+            diastolic=payload.diastolic,
+            bmi=payload.bmi,
+            heart_rate=payload.heart_rate,
+            temperature=payload.temperature,
+            Blood_sugar=payload.blood_sugar,
+            hemoglobin=payload.hemoglobin,
+            pcos=_to_bool(payload.pcos),
+            previous_complications=_to_bool(payload.previous_complications),
+            preexisting_diabetes=_to_bool(payload.preexisting_diabetes),
+            mental_health=payload.mental_health,
+            sleep_pattern=payload.sleep_pattern,
+            exercise=payload.exercise,
+            education=payload.education,
+            edge_risk_classification=risk_tier,
+            edge_risk_score=payload.probability_score,
+            contributing_factors={
+                "triggers": payload.triggers,
+                "bp_status": payload.bp_status,
+                "observation": payload.observation,
+                "map": payload.map,
+            },
+            stage2_priority={
+                "recommended_primary_disease": "preeclampsia" if payload.general_risk_flag == "High" else "routine_follow_up",
+                "risk_flag": payload.general_risk_flag,
+            },
+            device_id="web-frontline-dashboard",
+            collected_at=now_ts,
         )
-        db.add(patient)
+        db.add(stage1_screening)
         db.flush()
-        created_patient = True
-    else:
-        patient.full_name = payload.name
-        patient.age = payload.age
-        if payload.contact:
-            patient.contact_number = payload.contact
-        if payload.patient_unique_id and not patient.national_id:
-            patient.national_id = payload.patient_unique_id
 
-    now_ts = payload.screened_at or datetime.utcnow()
+        patient_report = PatientReport(
+            id=str(uuid.uuid4()),
+            patient_id=patient.id,
+            stage1_screening_id=stage1_screening.id,
+            stage2_diagnostic_id=None,
+            report_type="stage1",
+            report_title=f"Stage 1 Screening Report - {now_ts.date().isoformat()}",
+            content_type="json",
+            report_content={
+                "patient": {
+                    "id": str(patient.id),
+                    "name": patient.full_name,
+                    "national_id": patient.national_id,
+                    "contact": patient.contact_number,
+                    "age": patient.age,
+                },
+                "stage1_screening": {
+                    "id": str(stage1_screening.id),
+                    "encounter_id": stage1_screening.encounter_id,
+                    "gestational_age_weeks": stage1_screening.gestational_age_weeks,
+                    "vitals": {
+                        "systolic": payload.systolic,
+                        "diastolic": payload.diastolic,
+                        "bmi": payload.bmi,
+                        "heart_rate": payload.heart_rate,
+                        "blood_sugar": payload.blood_sugar,
+                        "temperature": payload.temperature,
+                        "hemoglobin": payload.hemoglobin,
+                        "pcos": payload.pcos,
+                        "previous_complications": payload.previous_complications,
+                        "preexisting_diabetes": payload.preexisting_diabetes,
+                        "mental_health": payload.mental_health,
+                        "sleep_pattern": payload.sleep_pattern,
+                        "exercise": payload.exercise,
+                        "education": payload.education,
+                        "map": payload.map,
+                    },
+                },
+                "risk": {
+                    "general_risk_flag": payload.general_risk_flag,
+                    "probability_score": payload.probability_score,
+                    "triggers": payload.triggers,
+                    "bp_status": payload.bp_status,
+                    "observation": payload.observation,
+                },
+                "screened_at": now_ts.isoformat(),
+            },
+            generated_by=current_user_id,
+        )
+        db.add(patient_report)
 
-    stage1_screening = Stage1Screening(
-        id=str(uuid.uuid4()),
-        patient_id=patient.id,
-        worker_id=current_user_id,
-        encounter_id=f"web-{uuid.uuid4().hex[:12]}",
-        gestational_age_weeks=payload.gestational_age_weeks,
-        age=payload.age,
-        edge_risk_classification=None,
-        edge_risk_score=payload.probability_score,
-        contributing_factors={"triggers": payload.triggers},
-        stage2_priority=None,
-        device_id="web-frontline-dashboard",
-        collected_at=now_ts,
-    )
-    db.add(stage1_screening)
-    db.flush()
-
-    patient_report = PatientReport(
-        id=str(uuid.uuid4()),
-        patient_id=patient.id,
-        stage1_screening_id=stage1_screening.id,
-        stage2_diagnostic_id=None,
-        report_type="stage1",
-        report_title=f"Stage 1 Screening Report - {now_ts.date().isoformat()}",
-        content_type="json",
-        report_content={
-            "general_risk_flag": payload.general_risk_flag,
-            "probability_score": payload.probability_score,
-            "triggers": payload.triggers,
-            "screened_at": now_ts.isoformat(),
-        },
-        generated_by=current_user_id,
-    )
-    db.add(patient_report)
-
-    report = ScreeningReport(
-        id=str(uuid.uuid4()),
-        patient_id=patient.id,
-        general_risk_flag=payload.general_risk_flag,
-        probability_score=payload.probability_score,
-        triggers=payload.triggers,
-        screened_at=now_ts,
-        recorded_by=current_user_id,
-    )
-    db.add(report)
-    db.commit()
-    db.refresh(report)
+        report = ScreeningReport(
+            id=str(uuid.uuid4()),
+            patient_id=patient.id,
+            general_risk_flag=payload.general_risk_flag,
+            probability_score=payload.probability_score,
+            triggers=payload.triggers,
+            screened_at=now_ts,
+            recorded_by=current_user_id,
+        )
+        db.add(report)
+        db.commit()
+        db.refresh(report)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to persist stage 1 screening data: {exc}") from exc
 
     return SubmitScreeningResponse(
         patient_id=str(patient.id),
@@ -149,7 +222,7 @@ def patient_history(
 
     reports = (
         db.query(ScreeningReport)
-        .filter(ScreeningReport.patient_id == patient_id)
+        .filter(cast(ScreeningReport.patient_id, String) == str(patient_id))
         .order_by(ScreeningReport.screened_at.asc())
         .all()
     )

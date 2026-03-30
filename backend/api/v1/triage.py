@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query, status
 from typing import List, Any
 import logging
+from sqlalchemy import String, cast
 from sqlalchemy.orm import Session
 from datetime import datetime
 import hashlib
@@ -152,13 +153,13 @@ def stage1_history(
     role = _role_name(current_user)
     if role in ["ADMIN", "CLINICAL_SPECIALIST"]:
         if patient_id:
-            rows = rows.filter(Stage1Screening.patient_id == patient_id)
+            rows = rows.filter(cast(Stage1Screening.patient_id, String) == str(patient_id))
     elif role == "FRONTLINE_STAFF":
-        rows = rows.filter(Stage1Screening.worker_id == current_user.id)
+        rows = rows.filter(cast(Stage1Screening.worker_id, String) == str(current_user.id))
         if patient_id:
-            rows = rows.filter(Stage1Screening.patient_id == patient_id)
+            rows = rows.filter(cast(Stage1Screening.patient_id, String) == str(patient_id))
     else:
-        rows = rows.filter(Stage1Screening.patient_id == current_user.id)
+        rows = rows.filter(cast(Stage1Screening.patient_id, String) == str(current_user.id))
 
     entries = (
         rows.order_by(Stage1Screening.collected_at.desc(), Stage1Screening.synced_at.desc())

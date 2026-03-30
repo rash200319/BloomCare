@@ -1,5 +1,6 @@
 from typing import Any, List
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import String, cast
 from sqlalchemy.orm import Session
 from core.deps import get_db, get_current_active_user
 from schemas.patient import (
@@ -31,7 +32,13 @@ def read_patients(
     if role == "ADMIN" or role == "CLINICAL_SPECIALIST":
         patients = db.query(DBPatient).offset(skip).limit(limit).all()
     else:
-        patients = db.query(DBPatient).filter(DBPatient.assigned_worker_id == current_user.id).offset(skip).limit(limit).all()
+        patients = (
+            db.query(DBPatient)
+            .filter(cast(DBPatient.assigned_worker_id, String) == str(current_user.id))
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
     return patients
 
 @router.post("/", response_model=Patient)
@@ -84,7 +91,7 @@ def get_patient_history(
             Stage1Screening,
             Stage2Diagnostic.stage1_screening_id == Stage1Screening.id,
         )
-        .filter(Stage2Diagnostic.patient_id == patient_id)
+        .filter(cast(Stage2Diagnostic.patient_id, String) == str(patient_id))
         .order_by(Stage2Diagnostic.evaluated_at.desc())
         .all()
     )
