@@ -3,7 +3,7 @@ from typing import Any
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import String, cast, or_
+from sqlalchemy import String, cast
 from sqlalchemy.orm import Session
 
 from core.deps import get_current_active_user, get_db
@@ -53,36 +53,15 @@ def submit_screening(
     current_user_id = _safe_uuid_or_none(getattr(current_user, "id", None))
 
     try:
-        query_filters = []
-        if payload.patient_unique_id:
-            query_filters.append(DBPatient.national_id == payload.patient_unique_id)
-        if payload.phone:
-            query_filters.append(DBPatient.contact_number == payload.phone)
+        if not payload.patient_unique_id:
+            raise HTTPException(status_code=400, detail="patient_unique_id is required for screening")
 
-        patient = db.query(DBPatient).filter(or_(*query_filters)).first() if query_filters else None
-        created_patient = False
-
+        patient = db.query(DBPatient).filter(DBPatient.national_id == payload.patient_unique_id).first()
         if patient is None:
-            patient = DBPatient(
-                id=str(uuid.uuid4()),
-                national_id=payload.patient_unique_id,
-                full_name=payload.name,
-                age=payload.age,
-                contact_number=payload.contact,
-                assigned_worker_id=current_user_id,
+            raise HTTPException(
+                status_code=404,
+                detail="Patient is not registered. Please register the patient before screening.",
             )
-            db.add(patient)
-            db.flush()
-            created_patient = True
-        else:
-            patient.full_name = payload.name
-            patient.age = payload.age
-            if payload.contact:
-                patient.contact_number = payload.contact
-            if payload.patient_unique_id and not patient.national_id:
-                patient.national_id = payload.patient_unique_id
-            if not patient.assigned_worker_id and current_user_id:
-                patient.assigned_worker_id = current_user_id
 
         now_ts = payload.screened_at or datetime.utcnow()
         risk_tier = RiskTier.routine_care if payload.general_risk_flag == "Low" else RiskTier.escalate
@@ -198,7 +177,7 @@ def submit_screening(
         stage1_screening_id=str(stage1_screening.id),
         patient_report_id=str(patient_report.id),
         report_id=str(report.id),
-        created_patient=created_patient,
+        created_patient=False,
         general_risk_flag=report.general_risk_flag,
         probability_score=float(report.probability_score),
         screened_at=report.screened_at,

@@ -50,13 +50,27 @@ def create_patient(
 ) -> Any:
     patient = db.query(DBPatient).filter(DBPatient.national_id == patient_in.national_id).first()
     if patient and patient_in.national_id:
-        raise HTTPException(status_code=400, detail="Patient with this ID already exists")
+        patient.full_name = patient_in.full_name
+        patient.age = patient_in.age
+        patient.date_of_birth = patient_in.date_of_birth
+        patient.contact_number = patient_in.contact_number
+        patient.emergency_contact = patient_in.emergency_contact
+        patient.blood_group = patient_in.blood_group
+        if not patient.assigned_worker_id:
+            patient.assigned_worker_id = current_user.id
+        db.commit()
+        db.refresh(patient)
+        return patient
+
     db_patient = DBPatient(
         id=str(uuid.uuid4()),
         national_id=patient_in.national_id,
         full_name=patient_in.full_name,
+        age=patient_in.age,
         date_of_birth=patient_in.date_of_birth,
         contact_number=patient_in.contact_number,
+        emergency_contact=patient_in.emergency_contact,
+        blood_group=patient_in.blood_group,
         assigned_worker_id=current_user.id
     )
     db.add(db_patient)
