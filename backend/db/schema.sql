@@ -123,11 +123,19 @@ CREATE TABLE IF NOT EXISTS stage2_diagnostics (
 
     cluster_profile JSONB,
     condition_probabilities JSONB,
+    explainability_data JSONB,
+    input_snapshot JSONB,
     overall_severity_score DECIMAL(4,3),
     dominant_condition VARCHAR(100),
 
     evaluated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE stage2_diagnostics
+ADD COLUMN IF NOT EXISTS explainability_data JSONB;
+
+ALTER TABLE stage2_diagnostics
+ADD COLUMN IF NOT EXISTS input_snapshot JSONB;
 
 -- STAGE 2 RECOMMENDATIONS (doctor manually selects which disease to check based on stage 1 report)
 CREATE TABLE IF NOT EXISTS stage2_recommendations (

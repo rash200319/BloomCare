@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   Search,
   User,
@@ -58,86 +58,123 @@ interface ClinicalDashboardProps {
   onLogout: () => void
 }
 
-// Escalated patients data
-const escalatedPatients = [
-  {
-    id: "P-2024-002",
-    name: "Nimalka Fernando",
-    age: 28,
-    gestationalWeek: 24,
-    escalatedFrom: "Wattala Clinic",
-    escalatedTime: "Today, 10:30 AM",
-    riskScore: 0.78,
-    riskLevel: "high",
-    primaryRisk: "Preeclampsia",
-    status: "pending",
-  },
-  {
-    id: "P-2024-009",
-    name: "Malini Samaraweera",
-    age: 34,
-    gestationalWeek: 28,
-    escalatedFrom: "Thalawathugoda Clinic",
-    escalatedTime: "Today, 09:15 AM",
-    riskScore: 0.65,
-    riskLevel: "moderate",
-    primaryRisk: "GDM",
-    status: "in-review",
-  },
-  {
-    id: "P-2024-010",
-    name: "Priyanka Herath",
-    age: 31,
-    gestationalWeek: 32,
-    escalatedFrom: "Wattala Clinic",
-    escalatedTime: "Yesterday, 03:45 PM",
-    riskScore: 0.82,
-    riskLevel: "high",
-    primaryRisk: "Preterm Risk",
-    status: "reviewed",
-  },
-  {
-    id: "P-2024-011",
-    name: "Sachini Perera",
-    age: 26,
-    gestationalWeek: 20,
-    escalatedFrom: "Negombo Clinic",
-    escalatedTime: "Yesterday, 11:20 AM",
-    riskScore: 0.58,
-    riskLevel: "moderate",
-    primaryRisk: "Preeclampsia",
-    status: "pending",
-  },
-]
+interface BackendPatient {
+  id: string
+  full_name: string
+  age?: number | null
+  date_of_birth?: string | null
+}
 
-// Feature importance data for Explainable AI
-const featureImportanceData = [
-  { feature: "sFlt-1/PlGF Ratio", importance: 0.28, value: "38.5", status: "abnormal" },
-  { feature: "Systolic BP", importance: 0.22, value: "145 mmHg", status: "elevated" },
-  { feature: "Proteinuria", importance: 0.18, value: "+2", status: "abnormal" },
-  { feature: "BMI", importance: 0.12, value: "32.4", status: "elevated" },
-  { feature: "Gestational Age", importance: 0.10, value: "24 weeks", status: "normal" },
-  { feature: "Previous Preeclampsia", importance: 0.06, value: "Yes", status: "risk-factor" },
-  { feature: "Family History", importance: 0.04, value: "Mother", status: "risk-factor" },
-]
+interface BackendStage1History {
+  screening_id: string
+  patient_id: string
+  patient_name?: string | null
+  collected_at?: string | null
+  gestational_age_weeks?: number | null
+  systolic?: number | null
+  diastolic?: number | null
+  heart_rate?: number | null
+  temperature?: number | null
+  blood_sugar?: number | null
+  edge_risk_score?: number | null
+  risk_label?: string | null
+  edge_risk_classification?: string | null
+}
 
-// Risk distribution pie chart data
-const riskDistributionData = [
-  { name: "Preeclampsia", value: 45, color: "#F472B6" }, // primary
-  { name: "GDM", value: 30, color: "#20847F" }, // accent
-  { name: "Preterm Risk", value: 25, color: "#EAB308" }, // highlight
-]
+interface EscalatedPatient {
+  id: string
+  screeningId: string
+  name: string
+  age: number
+  gestationalWeek: number | null
+  escalatedFrom: string
+  escalatedTime: string
+  riskScore: number
+  riskLevel: "high"
+  primaryRisk: string
+  status: "pending" | "completed"
+  collectedAt: string | null
+  vitals: {
+    systolic: number | null
+    diastolic: number | null
+    heartRate: number | null
+    temperature: number | null
+    bloodSugar: number | null
+  }
+}
 
-// Weekly trend data
-const weeklyTrendData = [
-  { day: "Mon", preeclampsia: 3, gdm: 2, preterm: 1 },
-  { day: "Tue", preeclampsia: 4, gdm: 3, preterm: 2 },
-  { day: "Wed", preeclampsia: 2, gdm: 4, preterm: 1 },
-  { day: "Thu", preeclampsia: 5, gdm: 2, preterm: 3 },
-  { day: "Fri", preeclampsia: 3, gdm: 5, preterm: 2 },
-  { day: "Sat", preeclampsia: 2, gdm: 1, preterm: 1 },
-  { day: "Sun", preeclampsia: 1, gdm: 2, preterm: 0 },
-]
+interface DifferentialRequest {
+  patient_id: string
+  stage1_screening_id?: string | null
+  gestational_age_weeks?: number | null
+  age: number
+  bmi: number
+  systolic_bp: number
+  diastolic_bp: number
+  heart_rate: number
+  blood_sugar: number
+  temperature: number
+  sflt1_plgf_ratio: number
+  serum_creatinine: number
+  platelet_count: number
+  hba1c: number
+  ogtt_1hr: number
+  ogtt_2hr: number
+  pregnancies_count: number
+  cervical_length_mm: number
+  ffn_result: boolean
+  mean_pulse_pressure: number
+}
+
+interface DifferentialConditionResult {
+  risk_level: string
+  probability: number
+}
+
+interface ExplainabilityFeature {
+  feature: string
+  importance: number
+  contribution: number
+  direction: "increase" | "decrease" | "neutral"
+  value: string
+  status: string
+  clinical_hint: string
+}
+
+interface DifferentialResponse {
+  stage2_diagnostic_id?: string | null
+  preeclampsia: DifferentialConditionResult
+  gdm: DifferentialConditionResult
+  preterm_birth: DifferentialConditionResult
+  primary_risk: string
+  explainability_model: string
+  explainability: ExplainabilityFeature[]
+}
+
+interface ReportGenerationResponse {
+  id: string
+  patient_id: string
+  report_type: string
+  report_title: string
+  generated_at: string
+  download_url: string
+}
+
+const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "")
+
+function getApiBaseCandidates(): string[] {
+  const candidates = [configuredApiBase, "http://localhost:8005/api/v1", "http://127.0.0.1:8005/api/v1"]
+
+  if (typeof window !== "undefined") {
+    const protocol = window.location.protocol || "http:"
+    const host = window.location.hostname || "localhost"
+    candidates.push(`${protocol}//${host}:8005/api/v1`)
+  }
+
+  candidates.push("http://localhost:8005/api/v1", "http://127.0.0.1:8005/api/v1")
+
+  return candidates.filter((value, index, arr): value is string => Boolean(value) && arr.indexOf(value as string) === index)
+}
 
 const languages = [
   { code: "EN", label: "English" },
@@ -149,11 +186,52 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedLanguage, setSelectedLanguage] = useState<Language>("EN")
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false)
-  const [selectedPatient, setSelectedPatient] = useState(escalatedPatients[0])
+  const [escalatedPatients, setEscalatedPatients] = useState<EscalatedPatient[]>([])
+  const [selectedPatient, setSelectedPatient] = useState<EscalatedPatient | null>(null)
+  const [isLoadingCases, setIsLoadingCases] = useState(false)
+  const [casesError, setCasesError] = useState<string | null>(null)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [activeTab, setActiveTab] = useState("overview")
   const [showChat, setShowChat] = useState(false)
   const [chatMessage, setChatMessage] = useState("")
+  const [specialistInput, setSpecialistInput] = useState<DifferentialRequest>({
+    patient_id: "",
+    stage1_screening_id: null,
+    gestational_age_weeks: null,
+    age: 28,
+    bmi: 24,
+    systolic_bp: 120,
+    diastolic_bp: 80,
+    heart_rate: 78,
+    blood_sugar: 95,
+    temperature: 36.8,
+    sflt1_plgf_ratio: 30,
+    serum_creatinine: 0.8,
+    platelet_count: 180,
+    hba1c: 5.4,
+    ogtt_1hr: 130,
+    ogtt_2hr: 120,
+    pregnancies_count: 1,
+    cervical_length_mm: 30,
+    ffn_result: false,
+    mean_pulse_pressure: 40,
+  })
+  const [differentialResult, setDifferentialResult] = useState<DifferentialResponse | null>(null)
+  const [isEvaluatingDifferential, setIsEvaluatingDifferential] = useState(false)
+  const [differentialError, setDifferentialError] = useState<string | null>(null)
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false)
+  const [overviewActionMessage, setOverviewActionMessage] = useState<string | null>(null)
+  const [patientTimeline, setPatientTimeline] = useState<Array<{
+    stage2_diagnostic_id: string
+    evaluated_at: string | null
+    model_used?: string | null
+    primary_disease_checked?: string | null
+    overall_severity_score?: number | null
+    specialist_id?: string | null
+    stage1_screening_id?: string | null
+    condition_probabilities?: Record<string, unknown>
+  }>>([])
+  const [timelineError, setTimelineError] = useState<string | null>(null)
 
   const getText = (en: string, si: string, ta: string) => {
     if (selectedLanguage === "SI") return si
@@ -161,11 +239,440 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
     return en
   }
 
+  const getAccessToken = (): string | null => {
+    if (typeof window === "undefined") return null
+    return window.localStorage.getItem("bloomcare_access_token")
+  }
+
+  const apiRequest = async (path: string, init?: RequestInit): Promise<Response> => {
+    const token = getAccessToken()
+    if (!token) {
+      throw new Error("No active session found. Please login again.")
+    }
+
+    const headers = new Headers(init?.headers)
+    headers.set("Authorization", `Bearer ${token}`)
+    if (init?.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json")
+    }
+
+    const candidates = getApiBaseCandidates()
+    let lastError: unknown = null
+
+    for (const base of candidates) {
+      try {
+        const response = await fetch(`${base}${path}`, {
+          ...init,
+          headers,
+        })
+        if (response.status === 404) {
+          continue
+        }
+        return response
+      } catch (error) {
+        lastError = error
+      }
+    }
+
+    if (lastError instanceof Error) {
+      throw new Error(`Unable to reach backend API. ${lastError.message}`)
+    }
+    throw new Error("Unable to reach backend API.")
+  }
+
+  const parseDateToAge = (dateOfBirth?: string | null): number => {
+    if (!dateOfBirth) return 0
+    const birthDate = new Date(dateOfBirth)
+    if (Number.isNaN(birthDate.getTime())) return 0
+    const now = new Date()
+    let years = now.getFullYear() - birthDate.getFullYear()
+    if (
+      now.getMonth() < birthDate.getMonth() ||
+      (now.getMonth() === birthDate.getMonth() && now.getDate() < birthDate.getDate())
+    ) {
+      years -= 1
+    }
+    return Math.max(0, years)
+  }
+
+  const relativeTime = (iso?: string | null): string => {
+    if (!iso) return "--"
+    const ts = new Date(iso).getTime()
+    if (Number.isNaN(ts)) return "--"
+    const diffMin = Math.max(0, Math.floor((Date.now() - ts) / 60000))
+    if (diffMin < 1) return "just now"
+    if (diffMin < 60) return `${diffMin} min ago`
+    const diffH = Math.floor(diffMin / 60)
+    if (diffH < 24) return `${diffH} hour${diffH > 1 ? "s" : ""} ago`
+    const diffD = Math.floor(diffH / 24)
+    return `${diffD} day${diffD > 1 ? "s" : ""} ago`
+  }
+
+  const loadEscalatedCases = async () => {
+    setIsLoadingCases(true)
+    setCasesError(null)
+    try {
+      const [historyRes, patientsRes] = await Promise.all([
+        apiRequest("/triage/history?limit=500"),
+        apiRequest("/patients/?limit=500"),
+      ])
+
+      if (!historyRes.ok) {
+        throw new Error("Unable to load escalated triage history")
+      }
+      if (!patientsRes.ok) {
+        throw new Error("Unable to load patients")
+      }
+
+      const historyRows = (await historyRes.json()) as BackendStage1History[]
+      const patientRows = (await patientsRes.json()) as BackendPatient[]
+      const patientsById = new Map(patientRows.map((patient) => [patient.id, patient]))
+
+      const highRiskRows = historyRows.filter((row) => {
+        const score = typeof row.edge_risk_score === "number" ? row.edge_risk_score : 0
+        return String(row.risk_label || "").toLowerCase() === "high" || score >= 0.75
+      })
+
+      const latestByPatient = new Map<string, BackendStage1History>()
+      for (const row of highRiskRows) {
+        const existing = latestByPatient.get(row.patient_id)
+        if (!existing) {
+          latestByPatient.set(row.patient_id, row)
+          continue
+        }
+        const existingTs = existing.collected_at ? new Date(existing.collected_at).getTime() : 0
+        const currentTs = row.collected_at ? new Date(row.collected_at).getTime() : 0
+        if (currentTs >= existingTs) {
+          latestByPatient.set(row.patient_id, row)
+        }
+      }
+
+      const mappedCases: EscalatedPatient[] = Array.from(latestByPatient.values()).map((row) => {
+        const patient = patientsById.get(row.patient_id)
+        return {
+          id: row.patient_id,
+          screeningId: row.screening_id,
+          name: row.patient_name || patient?.full_name || "Unknown Patient",
+          age: patient?.age ?? parseDateToAge(patient?.date_of_birth) ?? 0,
+          gestationalWeek: row.gestational_age_weeks ?? null,
+          escalatedFrom: "Frontline Triage",
+          escalatedTime: relativeTime(row.collected_at),
+          riskScore: typeof row.edge_risk_score === "number" ? row.edge_risk_score : 0,
+          riskLevel: "high",
+          primaryRisk: "High Risk",
+          status: "pending",
+          collectedAt: row.collected_at || null,
+          vitals: {
+            systolic: row.systolic ?? null,
+            diastolic: row.diastolic ?? null,
+            heartRate: row.heart_rate ?? null,
+            temperature: row.temperature ?? null,
+            bloodSugar: row.blood_sugar ?? null,
+          },
+        }
+      })
+
+      setEscalatedPatients(mappedCases)
+      setSelectedPatient((current) => {
+        if (current) {
+          const stillPresent = mappedCases.find((entry) => entry.id === current.id)
+          if (stillPresent) return stillPresent
+        }
+        return mappedCases[0] ?? null
+      })
+    } catch (error) {
+      setCasesError(error instanceof Error ? error.message : "Unable to load escalated cases")
+      setEscalatedPatients([])
+      setSelectedPatient(null)
+    } finally {
+      setIsLoadingCases(false)
+    }
+  }
+
+  useEffect(() => {
+    loadEscalatedCases().catch(() => {
+      // handled by state setters in loadEscalatedCases
+    })
+  }, [])
+
+  useEffect(() => {
+    const loadPatientTimeline = async () => {
+      if (!selectedPatient?.id) {
+        setPatientTimeline([])
+        setTimelineError(null)
+        return
+      }
+
+      try {
+        setTimelineError(null)
+        const response = await apiRequest(`/patients/${selectedPatient.id}/history`)
+        if (!response.ok) {
+          throw new Error("Unable to load patient timeline")
+        }
+        const payload = (await response.json()) as {
+          diagnostics?: Array<{
+            stage2_diagnostic_id: string
+            evaluated_at: string
+            model_used?: string | null
+            primary_disease_checked?: string | null
+            overall_severity_score?: number | null
+            specialist_id?: string | null
+            stage1_screening_id?: string | null
+            condition_probabilities?: Record<string, unknown>
+          }>
+        }
+        setPatientTimeline(payload.diagnostics ?? [])
+      } catch (error) {
+        setTimelineError(error instanceof Error ? error.message : "Unable to load patient timeline")
+        setPatientTimeline([])
+      }
+    }
+
+    loadPatientTimeline().catch(() => {
+      // errors are handled in state above
+    })
+  }, [selectedPatient?.id])
+
   const filteredPatients = escalatedPatients.filter(
     (p) =>
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.id.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  const activePatient = selectedPatient
+
+  const pendingReviewCount = useMemo(
+    () => escalatedPatients.filter((patient) => patient.status === "pending").length,
+    [escalatedPatients],
+  )
+
+  const featureImportanceData = useMemo(() => {
+    if (!differentialResult?.explainability) return [] as ExplainabilityFeature[]
+    return differentialResult.explainability
+  }, [differentialResult])
+
+  const explainabilityDomainMax = useMemo(() => {
+    const maxWeight = featureImportanceData.reduce((currentMax, item) => Math.max(currentMax, item.importance), 0)
+    if (maxWeight <= 0) {
+      return 0.1
+    }
+    return Math.max(0.1, maxWeight * 1.1)
+  }, [featureImportanceData])
+
+  const topClinicalHint = featureImportanceData[0]?.clinical_hint ?? ""
+
+  const explainabilityByFeature = useMemo(() => {
+    const map = new Map<string, ExplainabilityFeature>()
+    featureImportanceData.forEach((item) => {
+      map.set(item.feature.toLowerCase(), item)
+    })
+    return map
+  }, [featureImportanceData])
+
+  const biomarkerRows = useMemo(() => {
+    const rows = [
+      {
+        name: "Systolic BP",
+        value: activePatient?.vitals.systolic != null ? `${activePatient.vitals.systolic} mmHg` : "--",
+        range: "90-139",
+        status: (activePatient?.vitals.systolic ?? 0) >= 140 ? "high" : "normal",
+      },
+      {
+        name: "Diastolic BP",
+        value: activePatient?.vitals.diastolic != null ? `${activePatient.vitals.diastolic} mmHg` : "--",
+        range: "60-89",
+        status: (activePatient?.vitals.diastolic ?? 0) >= 90 ? "high" : "normal",
+      },
+      {
+        name: "Heart Rate",
+        value: activePatient?.vitals.heartRate != null ? `${activePatient.vitals.heartRate} bpm` : "--",
+        range: "60-100",
+        status: (activePatient?.vitals.heartRate ?? 0) > 100 ? "high" : "normal",
+      },
+      {
+        name: "Temperature",
+        value: activePatient?.vitals.temperature != null ? `${activePatient.vitals.temperature.toFixed(1)} C` : "--",
+        range: "36.1-37.2",
+        status: (activePatient?.vitals.temperature ?? 0) >= 38 ? "high" : "normal",
+      },
+      {
+        name: "Blood Sugar",
+        value: activePatient?.vitals.bloodSugar != null ? `${activePatient.vitals.bloodSugar.toFixed(1)} mg/dL` : "--",
+        range: "70-139",
+        status: (activePatient?.vitals.bloodSugar ?? 0) >= 140 ? "high" : "normal",
+      },
+    ]
+
+    return rows.map((row) => {
+      const explainability = explainabilityByFeature.get(row.name.toLowerCase())
+      return {
+        ...row,
+        direction: explainability?.direction ?? "neutral",
+        impact: explainability?.importance ?? null,
+        clinicalHint: explainability?.clinical_hint ?? null,
+      }
+    })
+  }, [activePatient, explainabilityByFeature])
+
+  const peProbability = differentialResult?.preeclampsia.probability ?? 0
+  const gdmProbability = differentialResult?.gdm.probability ?? 0
+  const pretermProbability = differentialResult?.preterm_birth.probability ?? 0
+  const primaryRiskKey = differentialResult?.primary_risk ?? ""
+  const primaryRiskLabel = primaryRiskKey === "preeclampsia"
+    ? "Preeclampsia"
+    : primaryRiskKey === "gdm"
+      ? "GDM"
+      : primaryRiskKey === "preterm_birth"
+        ? "Preterm Birth"
+        : "Not Evaluated"
+  const differentialConfidence = Math.max(peProbability, gdmProbability, pretermProbability)
+
+  const aiRecommendationText = primaryRiskKey === "preeclampsia"
+    ? "Differential diagnosis indicates preeclampsia as primary risk. Prioritize BP/proteinuria monitoring, repeat PE biomarkers in 48-72 hours, and consider specialist escalation based on trend."
+    : primaryRiskKey === "gdm"
+      ? "Differential diagnosis indicates GDM as primary risk. Prioritize glycemic profiling, confirm OGTT pattern, and initiate diet-plus-monitoring plan with diabetes follow-up."
+      : primaryRiskKey === "preterm_birth"
+        ? "Differential diagnosis indicates preterm birth risk as primary. Prioritize cervical surveillance, evaluate fFN trend, and initiate preterm prevention protocol as clinically indicated."
+        : "Run Differential tab evaluation to generate AI-driven condition comparison and specialist recommendation."
+
+  const normalizeApiPath = (pathOrUrl: string): string => {
+    try {
+      const parsed = new URL(pathOrUrl)
+      return normalizeApiPath(parsed.pathname)
+    } catch {
+      if (pathOrUrl.startsWith("/api/v1/")) return pathOrUrl.replace("/api/v1", "")
+      if (pathOrUrl.startsWith("/")) return pathOrUrl
+      return `/${pathOrUrl}`
+    }
+  }
+
+  const handleGenerateReport = async () => {
+    if (!activePatient?.id) {
+      setOverviewActionMessage("Select a patient before generating a report")
+      return
+    }
+
+    const stage2DiagnosticId =
+      differentialResult?.stage2_diagnostic_id || patientTimeline.find((entry) => entry.stage2_diagnostic_id)?.stage2_diagnostic_id
+
+    if (!stage2DiagnosticId) {
+      setOverviewActionMessage("Run Differential first to generate a Stage 2 report")
+      return
+    }
+
+    setIsGeneratingReport(true)
+    setOverviewActionMessage(null)
+
+    try {
+      const createResponse = await apiRequest(`/reports/stage2?stage2_diagnostic_id=${encodeURIComponent(stage2DiagnosticId)}`, {
+        method: "POST",
+      })
+
+      if (!createResponse.ok) {
+        const detail = (await createResponse.json().catch(() => ({}))) as { detail?: string }
+        throw new Error(detail.detail || "Unable to generate report")
+      }
+
+      const createdReport = (await createResponse.json()) as ReportGenerationResponse
+      const downloadPath = normalizeApiPath(createdReport.download_url)
+
+      const downloadResponse = await apiRequest(downloadPath)
+      if (!downloadResponse.ok) {
+        throw new Error("Report created, but download failed")
+      }
+
+      const blob = await downloadResponse.blob()
+      const blobUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = blobUrl
+      link.download = `${activePatient.name.replace(/\s+/g, "_")}_stage2_report.json`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(blobUrl)
+
+      setOverviewActionMessage("Report generated and downloaded")
+    } catch (error) {
+      setOverviewActionMessage(error instanceof Error ? error.message : "Unable to generate report")
+    } finally {
+      setIsGeneratingReport(false)
+    }
+  }
+
+  const handleMarkAsReviewed = () => {
+    if (!activePatient?.id) {
+      setOverviewActionMessage("Select a patient first")
+      return
+    }
+
+    setEscalatedPatients((current) =>
+      current.map((patient) =>
+        patient.id === activePatient.id
+          ? { ...patient, status: "pending" }
+          : patient,
+      ),
+    )
+    setSelectedPatient((current) => (current ? { ...current, status: "pending" } : current))
+    setOverviewActionMessage("Case moved to Pending")
+  }
+
+  const handleEvaluateDifferential = async () => {
+    if (!activePatient?.id) {
+      setDifferentialError("Select a patient before running differential diagnosis")
+      return
+    }
+
+    setIsEvaluatingDifferential(true)
+    setDifferentialError(null)
+
+    try {
+      const payloadWithContext: DifferentialRequest = {
+        ...specialistInput,
+        patient_id: activePatient.id,
+        stage1_screening_id: activePatient.screeningId,
+        gestational_age_weeks: activePatient.gestationalWeek,
+      }
+
+      const response = await apiRequest("/evaluate-differential", {
+        method: "POST",
+        body: JSON.stringify(payloadWithContext),
+      })
+
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({} as unknown)) as {
+          detail?: string | Array<{ loc?: Array<string | number>; msg?: string }>
+        }
+        const validationMessage = Array.isArray(detail?.detail)
+          ? detail.detail
+              .map((item) => `${item?.loc ? item.loc.join(".") : "payload"}: ${item?.msg || "validation error"}`)
+              .join("; ")
+          : detail?.detail
+        throw new Error(validationMessage || "Unable to evaluate differential diagnosis")
+      }
+
+      const payload = (await response.json()) as DifferentialResponse
+      setDifferentialResult(payload)
+      const timelineResponse = await apiRequest(`/patients/${activePatient.id}/history`)
+      if (timelineResponse.ok) {
+        const timelinePayload = (await timelineResponse.json()) as { diagnostics?: Array<{
+          stage2_diagnostic_id: string
+          evaluated_at: string
+          model_used?: string | null
+          primary_disease_checked?: string | null
+          overall_severity_score?: number | null
+          specialist_id?: string | null
+          stage1_screening_id?: string | null
+          condition_probabilities?: Record<string, unknown>
+        }> }
+        setPatientTimeline(timelinePayload.diagnostics ?? [])
+      }
+    } catch (error) {
+      setDifferentialError(error instanceof Error ? error.message : "Unable to evaluate differential diagnosis")
+      setDifferentialResult(null)
+    } finally {
+      setIsEvaluatingDifferential(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-slate-50/50 flex flex-col font-sans relative overflow-hidden">
@@ -301,7 +808,18 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
           </div>
 
           <div className="flex-1 overflow-y-auto p-2">
-            {filteredPatients.map((patient) => (
+            {isLoadingCases && (
+              <div className="p-6 text-center text-sm font-bold text-slate-500 uppercase tracking-widest">Loading escalated cases...</div>
+            )}
+            {!isLoadingCases && casesError && (
+              <div className="p-6 text-center text-sm font-bold text-red-500">{casesError}</div>
+            )}
+            {!isLoadingCases && !casesError && filteredPatients.length === 0 && (
+              <div className="p-6 text-center text-sm font-bold text-slate-500 uppercase tracking-widest">
+                {getText("No high-risk cases found", "ඉහළ අවදානම් අවස්ථා නොමැත", "அதிக ஆபத்து வழக்குகள் இல்லை")}
+              </div>
+            )}
+            {!isLoadingCases && !casesError && filteredPatients.map((patient) => (
               <button
                 key={patient.id}
                 onClick={() => setSelectedPatient(patient)}
@@ -320,9 +838,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                   <Badge
                     className={cn(
                       "text-[10px] font-bold h-6",
-                      patient.riskLevel === "high"
-                        ? "bg-red-500/10 text-red-500 border-red-500/20"
-                        : "bg-accent/10 text-accent border-accent/20"
+                      "bg-red-500/10 text-red-500 border-red-500/20"
                     )}
                   >
                     {patient.riskScore.toFixed(2)}
@@ -331,21 +847,19 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                 <div className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-wider">
                   <span className={cn(
                     "px-2 py-1 rounded-md",
-                    patient.primaryRisk === "Preeclampsia" && "bg-primary/10 text-primary",
-                    patient.primaryRisk === "GDM" && "bg-accent/10 text-accent",
-                    patient.primaryRisk === "Preterm Risk" && "bg-gold-500/10 text-gold-600"
+                    "bg-primary/10 text-primary"
                   )}>
                     {patient.primaryRisk}
                   </span>
-                  <span className={cn(
-                    "px-2 py-1 rounded-md",
-                    patient.status === "pending" && "bg-slate-100 text-slate-600",
-                    patient.status === "in-review" && "bg-blue-100 text-blue-700",
-                    patient.status === "reviewed" && "bg-emerald-100 text-emerald-700"
-                  )}>
-                    {patient.status === "pending" ? getText("Pending", "අපේක්ෂිත", "நிலுவையில்") :
-                     patient.status === "in-review" ? getText("In Review", "සමාලෝචනයේ", "மதிப்பாய்வில்") :
-                     getText("Reviewed", "සමාලෝචිත", "மதிப்பாய்வு செய்யப்பட்டது")}
+                  <span
+                    className={cn(
+                      "px-2 py-1 rounded-md",
+                      patient.status === "completed" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600",
+                    )}
+                  >
+                    {patient.status === "completed"
+                      ? getText("Completed", "සම්පූර්ණ", "முடிந்தது")
+                      : getText("Pending", "අපේක්ෂිත", "நிலுவையில்")}
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-2">
@@ -360,7 +874,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-600">{getText("Pending Review:", "අපේක්ෂිත සමාලෝචන:", "நிலுவையில் உள்ள மதிப்பாய்வு:")}</span>
               <span className="font-semibold text-[#F97316]">
-                {escalatedPatients.filter((p) => p.status === "pending").length}
+                {pendingReviewCount}
               </span>
             </div>
           </div>
@@ -376,6 +890,9 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
               <TabsTrigger value="analysis" className="data-[state=active]:bg-primary data-[state=active]:text-white rounded-lg text-xs font-bold uppercase tracking-wider px-6">
                 {getText("AI Analysis", "AI විශ්ලේෂණය", "AI பகுப்பாய்வு")}
               </TabsTrigger>
+              <TabsTrigger value="differential" className="data-[state=active]:bg-primary data-[state=active]:text-white rounded-lg text-xs font-bold uppercase tracking-wider px-6">
+                {getText("Differential", "වෙනස් නිර්ණය", "வேறுபாட்டு கண்டறிதல்")}
+              </TabsTrigger>
               <TabsTrigger value="biomarkers" className="data-[state=active]:bg-primary data-[state=active]:text-white rounded-lg text-xs font-bold uppercase tracking-wider px-6">
                 {getText("Biomarkers", "ජෛව සලකුණු", "உயிரியல் குறிப்பான்கள்")}
               </TabsTrigger>
@@ -386,6 +903,20 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
 
             {/* Overview Tab */}
             <TabsContent value="overview" className="space-y-6">
+              {!differentialResult && (
+                <Card className="border border-amber-200 bg-amber-50/70 rounded-2xl shadow-sm">
+                  <CardContent className="p-4">
+                    <p className="text-xs font-black uppercase tracking-widest text-amber-700">
+                      {getText(
+                        "Differential diagnosis not run yet. Open Differential tab to compute PE, GDM, and Preterm risks.",
+                        "තවම Differential diagnosis ධාවනය කර නොමැත. PE, GDM, සහ Preterm අවදානම් ගණනය කිරීමට Differential tab විවෘත කරන්න.",
+                        "வேறுபாட்டு மதிப்பீடு இன்னும் இயக்கப்படவில்லை. PE, GDM, மற்றும் Preterm ஆபத்துகளை கணக்கிட Differential தாவலைத் திறக்கவும்."
+                      )}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Patient Header Card */}
               <Card className="border-0 glass shadow-2xl shadow-primary/5 overflow-hidden">
                 <div className="absolute top-0 left-0 w-2 h-full bg-primary" />
@@ -397,46 +928,46 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                       </div>
                       <div>
                         <div className="flex items-center gap-3 mb-1">
-                          <h2 className="text-3xl font-bold tracking-tight text-slate-900">{selectedPatient.name}</h2>
+                          <h2 className="text-3xl font-bold tracking-tight text-slate-900">{activePatient?.name || "--"}</h2>
                           <Badge variant="outline" className="border-primary/20 text-primary bg-primary/5 uppercase font-bold text-[10px]">
-                            {selectedPatient.id}
+                            {activePatient?.id || "--"}
                           </Badge>
                         </div>
                         <div className="flex items-center gap-6 mt-4">
                           <div className="flex flex-col">
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{getText("Age", "වයස", "வயது")}</span>
-                            <span className="text-sm font-bold text-slate-700">{selectedPatient.age} {getText("years", "අවුරුදු", "வயது")}</span>
+                            <span className="text-sm font-bold text-slate-700">{activePatient?.age ?? "--"} {getText("years", "අවුරුදු", "வயது")}</span>
                           </div>
                           <div className="flex flex-col border-l border-slate-200 pl-6">
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{getText("Gestational Week", "ගැබ් සතිය", "கர்ப்ப வாரம்")}</span>
-                            <span className="text-sm font-bold text-slate-700">{selectedPatient.gestationalWeek}</span>
+                            <span className="text-sm font-bold text-slate-700">{activePatient?.gestationalWeek ?? "--"}</span>
                           </div>
                         </div>
                         <p className="text-xs font-medium text-slate-500 mt-4 flex items-center gap-1">
                           <Building2 className="w-3 h-3 text-primary" />
-                          {getText("Referred from:", "යොමු කළේ:", "பரிந்துரைக்கப்பட்டது:")} <span className="text-slate-700 border-b border-dotted border-slate-300">{selectedPatient.escalatedFrom}</span>
+                          {getText("Referred from:", "යොමු කළේ:", "பரிந்துரைக்கப்பட்டது:")} <span className="text-slate-700 border-b border-dotted border-slate-300">{activePatient?.escalatedFrom || "--"}</span>
                         </p>
                       </div>
                     </div>
                     <div className="text-right">
                       <div className={cn(
                         "inline-flex flex-col items-center justify-center w-24 h-24 rounded-2xl shadow-inner",
-                        selectedPatient.riskLevel === "high" ? "bg-red-50 border border-red-100" : "bg-accent/5 border border-accent/10"
+                        activePatient?.riskLevel === "high" ? "bg-red-50 border border-red-100" : "bg-accent/5 border border-accent/10"
                       )}>
                         <div className="flex items-center gap-1 mb-1">
                           <AlertTriangle className={cn(
                             "w-4 h-4",
-                            selectedPatient.riskLevel === "high" ? "text-red-500" : "text-accent"
+                            activePatient?.riskLevel === "high" ? "text-red-500" : "text-accent"
                           )} />
                           <span className={cn(
                             "text-2xl font-black",
-                            selectedPatient.riskLevel === "high" ? "text-red-500" : "text-accent"
+                            activePatient?.riskLevel === "high" ? "text-red-500" : "text-accent"
                           )}>
-                            {selectedPatient.riskScore.toFixed(2)}
+                            {(activePatient?.riskScore ?? 0).toFixed(2)}
                           </span>
                         </div>
                         <p className="text-[8px] font-black uppercase tracking-widest text-slate-500">
-                          {selectedPatient.riskLevel === "high" 
+                          {activePatient?.riskLevel === "high" 
                             ? getText("High Risk", "ඉහළ අවදානම", "அதிக ஆபத்து") 
                             : getText("Moderate Risk", "මධ්‍යම අවදානම", "மிதமான ஆபத்து")}
                         </p>
@@ -450,7 +981,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
               <div className="grid grid-cols-3 gap-6">
                 <Card className={cn(
                   "border-0 glass shadow-lg transition-all hover:-translate-y-1",
-                  selectedPatient.primaryRisk === "Preeclampsia" && "bg-primary/[0.03] ring-1 ring-primary/20"
+                  primaryRiskKey === "preeclampsia" && "bg-primary/[0.03] ring-1 ring-primary/20"
                 )}>
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4">
@@ -459,14 +990,14 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                         <Heart className="w-4 h-4 text-primary" />
                       </div>
                     </div>
-                    <p className="text-4xl font-black text-slate-900">72%</p>
+                    <p className="text-4xl font-black text-slate-900">{(peProbability * 100).toFixed(1)}%</p>
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-2">{getText("Probability", "සම්භාවිතාව", "நிகழ்தகவு")}</p>
                   </CardContent>
                 </Card>
 
                 <Card className={cn(
                   "border-0 glass shadow-lg transition-all hover:-translate-y-1",
-                  selectedPatient.primaryRisk === "GDM" && "bg-accent/[0.03] ring-1 ring-accent/20"
+                  primaryRiskKey === "gdm" && "bg-accent/[0.03] ring-1 ring-accent/20"
                 )}>
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4">
@@ -475,14 +1006,14 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                         <Activity className="w-4 h-4 text-accent" />
                       </div>
                     </div>
-                    <p className="text-4xl font-black text-slate-900">28%</p>
+                    <p className="text-4xl font-black text-slate-900">{(gdmProbability * 100).toFixed(1)}%</p>
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-2">{getText("Probability", "සම්භාවිතාව", "நிகழ்தகவு")}</p>
                   </CardContent>
                 </Card>
 
                 <Card className={cn(
                   "border-0 glass shadow-lg transition-all hover:-translate-y-1 rounded-2xl",
-                  selectedPatient.primaryRisk === "Preterm Risk" && "bg-highlight/[0.03] ring-1 ring-highlight/20"
+                  primaryRiskKey === "preterm_birth" && "bg-highlight/[0.03] ring-1 ring-highlight/20"
                 )}>
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4">
@@ -491,27 +1022,224 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                         <Baby className="w-4 h-4 text-highlight" />
                       </div>
                     </div>
-                    <p className="text-4xl font-black text-slate-900">15%</p>
+                    <p className="text-4xl font-black text-slate-900">{(pretermProbability * 100).toFixed(1)}%</p>
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-2">{getText("Probability", "සම්භාවිතාව", "நிகழ்தகவு")}</p>
                   </CardContent>
                 </Card>
               </div>
 
+              <Card className="border border-primary/20 bg-primary/5 rounded-2xl shadow-sm">
+                <CardContent className="p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">
+                    {getText("Primary Risk", "ප්‍රධාන අවදානම", "முக்கிய ஆபத்து")}: {primaryRiskLabel}
+                  </p>
+                </CardContent>
+              </Card>
+
               {/* Action Buttons */}
               <div className="flex items-center gap-4">
-                <Button className="bg-bloom-gradient hover:opacity-90 text-white flex-1 h-14 rounded-2xl shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] border-0 font-black text-xs uppercase tracking-widest">
+                <Button
+                  onClick={handleGenerateReport}
+                  disabled={isGeneratingReport}
+                  className="bg-bloom-gradient hover:opacity-90 text-white flex-1 h-14 rounded-2xl shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] border-0 font-black text-xs uppercase tracking-widest disabled:opacity-70"
+                >
                   <FileText className="w-4 h-4 mr-2" />
-                  {getText("Generate Report", "වාර්තාව ජනනය කරන්න", "அறிக்கையை உருவாக்கு")}
+                  {isGeneratingReport
+                    ? getText("Generating...", "ජනනය වෙමින්...", "உருவாக்கப்படுகிறது...")
+                    : getText("Generate Report", "වාර්තාව ජනනය කරන්න", "அறிக்கையை உருவாக்கு")}
                 </Button>
-                <Button className="bg-accent hover:bg-accent/90 text-white flex-1 h-14 rounded-2xl shadow-lg shadow-accent/20 transition-all hover:scale-[1.02] font-black text-xs uppercase tracking-widest">
-                  <Activity className="w-4 h-4 mr-2" />
-                  {getText("Order Lab Tests", "රසායනාගාර පරීක්ෂණ ඇණවුම් කරන්න", "ஆய்வக சோதனைகளை ஆர்டர் செய்யவும்")}
-                </Button>
-                <Button variant="outline" className="flex-1 h-14 rounded-2xl border-slate-200 hover:bg-slate-50 font-black text-xs uppercase tracking-widest">
+                <Button
+                  onClick={handleMarkAsReviewed}
+                  variant="outline"
+                  className="flex-1 h-14 rounded-2xl border-slate-200 hover:bg-slate-50 font-black text-xs uppercase tracking-widest"
+                >
                   <CheckCircle className="w-4 h-4 mr-2" />
                   {getText("Mark as Reviewed", "සමාලෝචිත ලෙස සලකුණු කරන්න", "மதிப்பாய்வு செய்யப்பட்டதாக குறிக்கவும்")}
                 </Button>
               </div>
+              {overviewActionMessage && (
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{overviewActionMessage}</p>
+              )}
+            </TabsContent>
+
+            <TabsContent value="differential" className="space-y-6">
+              <Card className="border-0 glass shadow-xl overflow-hidden">
+                <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-6">
+                  <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-500">
+                    <Stethoscope className="w-5 h-5 text-primary" />
+                    {getText("Specialist Input Panel", "විශේෂඥ ආදාන පැනලය", "சிறப்பு நிபுணர் உள்ளீட்டு பலகம்")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6 space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="md:col-span-3 text-xs font-black uppercase tracking-[0.2em] text-slate-400">{getText("Shared Vitals", "පොදු ජීව දත්ත", "பகிரப்பட்ட உயிர்க்குறிகள்")}</div>
+                    {[
+                      ["age", "Age"],
+                      ["bmi", "BMI"],
+                      ["systolic_bp", "Systolic BP"],
+                      ["diastolic_bp", "Diastolic BP"],
+                      ["heart_rate", "Heart Rate"],
+                      ["blood_sugar", "Blood Sugar"],
+                      ["temperature", "Temperature"],
+                    ].map(([key, label]) => (
+                      <div key={key} className="space-y-1">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+                        <Input
+                          type="number"
+                          step="any"
+                          placeholder={label}
+                          value={String(specialistInput[key as keyof DifferentialRequest])}
+                          onChange={(e) =>
+                            setSpecialistInput((prev) => ({
+                              ...prev,
+                              [key]: Number.parseFloat(e.target.value || "0"),
+                            }))
+                          }
+                          className="h-11"
+                        />
+                      </div>
+                    ))}
+
+                    <div className="md:col-span-3 text-xs font-black uppercase tracking-[0.2em] text-slate-400 pt-2">{getText("PE Specific", "PE විශේෂ", "PE குறிப்பான்கள்")}</div>
+                    {[
+                      ["sflt1_plgf_ratio", "sFlt-1/PlGF Ratio"],
+                      ["serum_creatinine", "Serum Creatinine"],
+                      ["platelet_count", "Platelet Count"],
+                    ].map(([key, label]) => (
+                      <div key={key} className="space-y-1">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+                        <Input
+                          type="number"
+                          step="any"
+                          placeholder={label}
+                          value={String(specialistInput[key as keyof DifferentialRequest])}
+                          onChange={(e) =>
+                            setSpecialistInput((prev) => ({
+                              ...prev,
+                              [key]: Number.parseFloat(e.target.value || "0"),
+                            }))
+                          }
+                          className="h-11"
+                        />
+                      </div>
+                    ))}
+
+                    <div className="md:col-span-3 text-xs font-black uppercase tracking-[0.2em] text-slate-400 pt-2">{getText("GDM Specific", "GDM විශේෂ", "GDM குறிப்பான்கள்")}</div>
+                    {[
+                      ["hba1c", "HbA1c"],
+                      ["ogtt_1hr", "OGTT 1hr"],
+                      ["ogtt_2hr", "OGTT 2hr"],
+                      ["pregnancies_count", "No. of Pregnancies"],
+                    ].map(([key, label]) => (
+                      <div key={key} className="space-y-1">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+                        <Input
+                          type="number"
+                          step="any"
+                          placeholder={label}
+                          value={String(specialistInput[key as keyof DifferentialRequest])}
+                          onChange={(e) =>
+                            setSpecialistInput((prev) => ({
+                              ...prev,
+                              [key]: Number.parseFloat(e.target.value || "0"),
+                            }))
+                          }
+                          className="h-11"
+                        />
+                      </div>
+                    ))}
+
+                    <div className="md:col-span-3 text-xs font-black uppercase tracking-[0.2em] text-slate-400 pt-2">{getText("Preterm Specific", "ප්‍රීටර්ම් විශේෂ", "முன்கூட்டிய பிரசவ குறிப்பான்கள்")}</div>
+                    {[
+                      ["cervical_length_mm", "Cervical Length (mm)"],
+                      ["mean_pulse_pressure", "Mean Pulse Pressure"],
+                    ].map(([key, label]) => (
+                      <div key={key} className="space-y-1">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+                        <Input
+                          type="number"
+                          step="any"
+                          placeholder={label}
+                          value={String(specialistInput[key as keyof DifferentialRequest])}
+                          onChange={(e) =>
+                            setSpecialistInput((prev) => ({
+                              ...prev,
+                              [key]: Number.parseFloat(e.target.value || "0"),
+                            }))
+                          }
+                          className="h-11"
+                        />
+                      </div>
+                    ))}
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">fFN Result</p>
+                      <select
+                        value={specialistInput.ffn_result ? "positive" : "negative"}
+                        onChange={(e) =>
+                          setSpecialistInput((prev) => ({
+                            ...prev,
+                            ffn_result: e.target.value === "positive",
+                          }))
+                        }
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                      >
+                        <option value="negative">fFN Negative</option>
+                        <option value="positive">fFN Positive</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {differentialError && <p className="text-sm font-bold text-red-500">{differentialError}</p>}
+
+                  <div className="flex justify-end">
+                    <Button
+                      onClick={handleEvaluateDifferential}
+                      disabled={isEvaluatingDifferential}
+                      className="bg-bloom-gradient text-white font-black uppercase tracking-widest"
+                    >
+                      {isEvaluatingDifferential ? "Evaluating..." : "Evaluate Differential"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {differentialResult && (
+                <Card className="border-0 glass shadow-xl overflow-hidden">
+                  <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-6">
+                    <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-500">
+                      <TrendingUp className="w-5 h-5 text-accent" />
+                      {getText("Comparison Report", "සංසන්දනාත්මක වාර්තාව", "ஒப்பீட்டு அறிக்கை")}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-6">
+                    {[
+                      { label: "Preeclampsia", result: differentialResult.preeclampsia },
+                      { label: "GDM", result: differentialResult.gdm },
+                      { label: "Preterm Birth", result: differentialResult.preterm_birth },
+                    ].map((item) => (
+                      <div key={item.label} className="space-y-2">
+                        <div className="flex items-center justify-between text-sm font-bold">
+                          <span>{item.label}</span>
+                          <span>{(item.result.probability * 100).toFixed(1)}%</span>
+                        </div>
+                        <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
+                          <div
+                            className="h-full bg-primary"
+                            style={{ width: `${Math.max(0, Math.min(100, item.result.probability * 100))}%` }}
+                          />
+                        </div>
+                        <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{item.result.risk_level}</p>
+                      </div>
+                    ))}
+
+                    <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-primary">
+                        {getText("Primary Risk", "ප්‍රධාන අවදානම", "முக்கிய ஆபத்து")}: {differentialResult.primary_risk.replace("_", " ")}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
             {/* AI Analysis Tab - Explainable AI */}
@@ -536,6 +1264,11 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                           "இந்த பகுப்பாய்வு AI இன் ஆபத்து மதிப்பீட்டிற்கு எந்த மருத்துவ காரணிகள் அதிகம் பங்களித்தன என்பதைக் காட்டுகிறது."
                         )}
                       </p>
+                      {differentialResult?.explainability_model && (
+                        <p className="text-xs font-black text-primary uppercase tracking-widest mt-2">
+                          {getText("Model", "ආකෘතිය", "மாதிரி")}: {differentialResult.explainability_model}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -553,17 +1286,43 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                        <XAxis type="number" domain={[0, 0.3]} tickFormatter={(v) => `${(v * 100).toFixed(0)}%`} axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: "bold", fill: "#94a3b8" }} />
+                        <XAxis type="number" domain={[0, explainabilityDomainMax]} tickFormatter={(v) => `${(v * 100).toFixed(0)}%`} axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: "bold", fill: "#94a3b8" }} />
                         <YAxis type="category" dataKey="feature" tick={{ fontSize: 11, fontWeight: "bold", fill: "#64748b" }} axisLine={false} tickLine={false} width={140} />
                         <Tooltip
                           cursor={{ fill: "rgba(0,0,0,0.02)" }}
-                          formatter={(value: number) => [`${(value * 100).toFixed(1)}%`, "Importance"]}
+                          formatter={(value: number, _name: string, payload) => {
+                            const row = payload?.payload as ExplainabilityFeature | undefined
+                            const directionLabel = row?.direction === "increase" ? "Risk Increase" : row?.direction === "decrease" ? "Risk Decrease" : "Neutral"
+                            return [`${(value * 100).toFixed(1)}%`, directionLabel]
+                          }}
                           contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)", padding: "12px", fontSize: "12px", fontWeight: "bold" }}
                         />
-                        <Bar dataKey="importance" fill="url(#barGradient)" radius={[0, 6, 6, 0]} barSize={24} />
+                        <Bar dataKey="importance" radius={[0, 6, 6, 0]} barSize={24}>
+                          {featureImportanceData.map((entry, index) => (
+                            <Cell
+                              key={`${entry.feature}-${index}`}
+                              fill={entry.direction === "increase" ? "#ef4444" : entry.direction === "decrease" ? "#22c55e" : "#64748b"}
+                            />
+                          ))}
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
+
+                  {!!topClinicalHint && (
+                    <div className="rounded-2xl border border-accent/20 bg-accent/5 px-4 py-3 mb-8">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-accent mb-1">
+                        {getText("Clinical Correlation", "සායනික සම්බන්ධතාවය", "மருத்துவ தொடர்பு")}
+                      </p>
+                      <p className="text-sm font-medium text-slate-700">{topClinicalHint}</p>
+                    </div>
+                  )}
+
+                  {!differentialResult && (
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest text-center">
+                      {getText("Run Differential evaluation to generate patient-specific explainability.", "රෝගියාට විශේෂිත විස්තරාත්මක විශ්ලේෂණය සඳහා Differential පරීක්ෂණය ක්‍රියාත්මක කරන්න.", "நோயாளி சார்ந்த விளக்கத்தைக் காண Differential மதிப்பீட்டை இயக்கவும்.")}
+                    </p>
+                  )}
 
                   {/* Feature Details */}
                   <div className="grid grid-cols-2 gap-4">
@@ -579,7 +1338,16 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                           )} />
                           <div>
                             <p className="text-xs font-black text-slate-800 uppercase tracking-wide">{item.feature}</p>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{(item.importance * 100).toFixed(1)}% {getText("Impact", "බලපෑම", "தாக்கம்")}</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                              {(item.importance * 100).toFixed(1)}% {getText("Impact", "බලපෑම", "தாக்கம்")}
+                              {" • "}
+                              {item.direction === "increase"
+                                ? getText("Risk Increase", "අවදානම වැඩිවීම", "ஆபத்து அதிகரிப்பு")
+                                : item.direction === "decrease"
+                                  ? getText("Risk Decrease", "අවදානම අඩුවීම", "ஆபத்து குறைவு")
+                                  : getText("Neutral", "මධ්‍යස්ථ", "நடுநிலை")}
+                            </p>
+                            <p className="text-[11px] text-slate-500 mt-2 max-w-xs leading-snug">{item.clinical_hint}</p>
                           </div>
                         </div>
                         <div className="text-right">
@@ -617,21 +1385,21 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                       </h3>
                       <p className="text-slate-600 font-medium leading-relaxed mb-6">
                         {getText(
-                          "Based on the elevated sFlt-1/PlGF ratio and systolic blood pressure, this patient shows early markers consistent with developing preeclampsia. Recommend close monitoring with weekly BP checks and repeat biomarker testing in 7 days. Consider low-dose aspirin prophylaxis if not already initiated.",
-                          "ඉහළ sFlt-1/PlGF අනුපාතය සහ සිස්ටොලික් රුධිර පීඩනය මත පදනම්ව, මෙම රෝගියා ප්‍රී-එක්ලැම්ප්සියාව වර්ධනය වීමත් සමඟ සමපාත වන මුල් සලකුණු පෙන්වයි.",
-                          "உயர்ந்த sFlt-1/PlGF விகிதம் மற்றும் சிஸ்டாலிக் இரத்த அழுத்தத்தின் அடிப்படையில், இந்த நோயாளி ப்ரீக்ளாம்ப்சியா வளர்ச்சியுடன் ஒத்துப்போகும் ஆரம்ப அறிகுறிகளைக் காட்டுகிறார்."
+                          aiRecommendationText,
+                          aiRecommendationText,
+                          aiRecommendationText
                         )}
                       </p>
                       <div className="flex items-center gap-6">
                         <div className="flex items-center gap-2">
                           <div className="w-2 h-2 rounded-full bg-emerald-500" />
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                            {getText("Confidence: 87%", "විශ්වාසය: 87%", "நம்பகத்தன்மை: 87%")}
+                            {getText(`Confidence: ${(differentialConfidence * 100).toFixed(1)}%`, `විශ්වාසය: ${(differentialConfidence * 100).toFixed(1)}%`, `நம்பகத்தன்மை: ${(differentialConfidence * 100).toFixed(1)}%`)}
                           </span>
                         </div>
                         <div className="h-4 w-px bg-slate-200" />
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                          {getText("Model: Stage 2 Random Forest v2.1", "ආදර්ශය: අදියර 2 Random Forest v2.1", "மாதிரி: நிலை 2 Random Forest v2.1")}
+                          {getText("Model: Differential PE/GDM/PTB", "ආදර්ශය: Differential PE/GDM/PTB", "மாதிரி: Differential PE/GDM/PTB")}
                         </span>
                       </div>
                     </div>
@@ -652,18 +1420,23 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                   </CardHeader>
                   <CardContent className="p-6">
                     <div className="grid grid-cols-1 gap-3">
-                      {[
-                        { name: "sFlt-1/PlGF Ratio", value: "38.5", range: "<38", status: "high" },
-                        { name: "Proteinuria", value: "+2", range: "Negative", status: "high" },
-                        { name: "Serum Creatinine", value: "0.9 mg/dL", range: "0.6-1.2", status: "normal" },
-                        { name: "Uric Acid", value: "6.8 mg/dL", range: "2.5-5.6", status: "high" },
-                        { name: "Platelet Count", value: "145,000/μL", range: "150,000-400,000", status: "low" },
-                        { name: "Hemoglobin", value: "11.2 g/dL", range: "11.0-14.0", status: "normal" },
-                      ].map((lab) => (
+                      {biomarkerRows.map((lab) => (
                         <div key={lab.name} className="flex items-center justify-between p-4 bg-slate-50/50 border border-slate-100 rounded-2xl transition-all hover:bg-white hover:shadow-md">
                           <div>
                             <p className="text-xs font-black text-slate-800 uppercase tracking-wide">{lab.name}</p>
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{getText("Ref:", "යොමු:", "குறிப்பு:")} {lab.range}</p>
+                            {lab.impact !== null && (
+                              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 text-slate-500">
+                                {getText("Impact", "බලපෑම", "தாக்கம்")}: {(lab.impact * 100).toFixed(1)}% • {lab.direction === "increase"
+                                  ? getText("Risk Increase", "අවදානම වැඩිවීම", "ஆபத்து அதிகரிப்பு")
+                                  : lab.direction === "decrease"
+                                    ? getText("Risk Decrease", "අවදානම අඩුවීම", "ஆபத்து குறைவு")
+                                    : getText("Neutral", "මධ්‍යස්ථ", "நடுநிலை")}
+                              </p>
+                            )}
+                            {lab.clinicalHint && (
+                              <p className="text-[11px] text-slate-500 mt-2 max-w-sm leading-snug">{lab.clinicalHint}</p>
+                            )}
                           </div>
                           <div className="text-right">
                             <p className={cn(
@@ -674,6 +1447,20 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                             )}>
                               {lab.value}
                             </p>
+                            {lab.impact !== null && (
+                              <Badge className={cn(
+                                "text-[8px] font-black uppercase tracking-widest mt-1 border-0 h-5",
+                                lab.direction === "increase" && "bg-rose-100 text-rose-700",
+                                lab.direction === "decrease" && "bg-emerald-100 text-emerald-700",
+                                lab.direction === "neutral" && "bg-slate-100 text-slate-700"
+                              )}>
+                                {lab.direction === "increase"
+                                  ? getText("Increase", "වැඩි", "அதிகரிப்பு")
+                                  : lab.direction === "decrease"
+                                    ? getText("Decrease", "අඩු", "குறைவு")
+                                    : getText("Neutral", "මධ්‍යස්ථ", "நடுநிலை")}
+                              </Badge>
+                            )}
                             {lab.status !== "normal" && (
                               <TrendingUp className={cn(
                                 "w-3 h-3 inline ml-1",
@@ -696,16 +1483,19 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-8">
+                    {!!featureImportanceData.length && (
+                      <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                          {getText("Direction Overlay", "දිශා ආවරණය", "திசை மேற்படலம்")}:
+                          <span className="text-rose-600 ml-1">{getText("Red = risk increase", "රතු = අවදානම වැඩි", "சிவப்பு = ஆபத்து அதிகரிப்பு")}</span>
+                          <span className="text-emerald-600 ml-3">{getText("Green = risk decrease", "කොළ = අවදානම අඩු", "பச்சை = ஆபத்து குறைவு")}</span>
+                        </p>
+                      </div>
+                    )}
                     <div className="h-64">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart
-                          data={[
-                            { week: "W20", systolic: 118, diastolic: 76 },
-                            { week: "W21", systolic: 122, diastolic: 78 },
-                            { week: "W22", systolic: 128, diastolic: 82 },
-                            { week: "W23", systolic: 135, diastolic: 85 },
-                            { week: "W24", systolic: 145, diastolic: 92 },
-                          ]}
+                          data={activePatient ? [{ week: "Current", systolic: activePatient.vitals.systolic ?? 0, diastolic: activePatient.vitals.diastolic ?? 0 }] : []}
                           margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                         >
                           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -737,21 +1527,62 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                 <CardContent className="p-10">
                   <div className="space-y-0">
                     {[
-                      { date: "March 27, 2026", event: "Escalated to Stage 2", type: "escalation", details: "Risk score exceeded threshold (0.78)" },
-                      { date: "March 27, 2026", event: "Stage 1 Screening at Wattala Clinic", type: "screening", details: "BP: 145/92, BMI: 32.4" },
-                      { date: "March 20, 2026", event: "Routine Checkup", type: "routine", details: "All vitals within normal range" },
-                      { date: "March 13, 2026", event: "Initial Registration", type: "registration", details: "First prenatal visit at 20 weeks" },
-                    ].map((item, index) => (
+                      ...patientTimeline
+                        .slice()
+                        .reverse()
+                        .flatMap((entry) => {
+                          const probabilities = entry.condition_probabilities ?? {}
+                          const peRisk = probabilities.preeclampsia as { probability?: number } | undefined
+                          const gdmRisk = probabilities.gdm as { probability?: number } | undefined
+                          const pretermRisk = probabilities.preterm_birth as { probability?: number } | undefined
+                          const modelLabel = entry.model_used || "Differential PE/GDM/PTB"
+                          const eventDate = entry.evaluated_at ? new Date(entry.evaluated_at).toLocaleString() : "--"
+
+                          return [
+                            {
+                              date: eventDate,
+                              event: "Preeclampsia Model Run",
+                              type: "diagnostic",
+                              details: `Model: ${modelLabel} | Risk: ${typeof peRisk?.probability === "number" ? `${(peRisk.probability * 100).toFixed(1)}%` : "N/A"} | Specialist: ${entry.specialist_id || "N/A"}`,
+                            },
+                            {
+                              date: eventDate,
+                              event: "GDM Model Run",
+                              type: "diagnostic",
+                              details: `Model: ${modelLabel} | Risk: ${typeof gdmRisk?.probability === "number" ? `${(gdmRisk.probability * 100).toFixed(1)}%` : "N/A"} | Specialist: ${entry.specialist_id || "N/A"}`,
+                            },
+                            {
+                              date: eventDate,
+                              event: "Preterm Birth Model Run",
+                              type: "diagnostic",
+                              details: `Model: ${modelLabel} | Risk: ${typeof pretermRisk?.probability === "number" ? `${(pretermRisk.probability * 100).toFixed(1)}%` : "N/A"} | Specialist: ${entry.specialist_id || "N/A"}`,
+                            },
+                          ]
+                        }),
+                      {
+                        date: activePatient?.collectedAt ? new Date(activePatient.collectedAt).toLocaleString() : "--",
+                        event: "Escalated to Stage 2",
+                        type: "escalation",
+                        details: `Risk score: ${(activePatient?.riskScore ?? 0).toFixed(2)}`,
+                      },
+                      {
+                        date: activePatient?.collectedAt ? new Date(activePatient.collectedAt).toLocaleString() : "--",
+                        event: "Latest Stage 1 Screening",
+                        type: "screening",
+                        details: `BP: ${activePatient?.vitals.systolic ?? "--"}/${activePatient?.vitals.diastolic ?? "--"}`,
+                      },
+                    ].map((item, index, arr) => (
                       <div key={index} className="flex gap-8 group">
                         <div className="flex flex-col items-center">
                           <div className={cn(
                             "w-4 h-4 rounded-full border-4 border-white shadow-md z-10 transition-transform group-hover:scale-125",
                             item.type === "escalation" && "bg-primary shadow-primary/30",
+                            item.type === "diagnostic" && "bg-rose-500 shadow-rose-500/30",
                             item.type === "screening" && "bg-accent shadow-accent/30",
                             item.type === "routine" && "bg-emerald-500 shadow-emerald/30",
                             item.type === "registration" && "bg-slate-400 shadow-slate/30"
                           )} />
-                          {index < 3 && <div className="w-1 h-full bg-slate-100 -mt-1 group-hover:bg-slate-200 transition-colors" />}
+                          {index < arr.length - 1 && <div className="w-1 h-full bg-slate-100 -mt-1 group-hover:bg-slate-200 transition-colors" />}
                         </div>
                         <div className="flex-1 pb-10">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{item.date}</p>
@@ -760,6 +1591,9 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                         </div>
                       </div>
                     ))}
+                    {timelineError && (
+                      <p className="text-sm font-bold text-rose-600 mt-2">{timelineError}</p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -813,9 +1647,9 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                   <div className="bg-white border border-slate-100 p-3 rounded-2xl rounded-tl-none shadow-sm">
                     <p className="text-xs font-medium text-slate-700 leading-relaxed">
                       {getText(
-                        "Hello, I am the BloomCare Intelligence Assistant. How can I help you analyze the risks for " + selectedPatient.name + "?",
-                        "ආයුබෝවන්, මම බ්ලූම්කෙයාර් බුද්ධි සහායකයා. " + selectedPatient.name + " සඳහා අවදානම් විශ්ලේෂණය කිරීමට මම ඔබට උදව් කරන්නේ කෙසේද?",
-                        "வணக்கம், நான் புளூம்கேர் நுண்ணறிவு உதவியாளர். " + selectedPatient.name + " க்கான அபாயங்களை பகுப்பாய்வு செய்ய நான் உங்களுக்கு எவ்வாறு உதவ முடியும்?"
+                        "Hello, I am the BloomCare Intelligence Assistant. How can I help you analyze the risks for " + (activePatient?.name || "this patient") + "?",
+                        "ආයුබෝවන්, මම බ්ලූම්කෙයාර් බුද්ධි සහායකයා. " + (activePatient?.name || "මෙම රෝගියා") + " සඳහා අවදානම් විශ්ලේෂණය කිරීමට මම ඔබට උදව් කරන්නේ කෙසේද?",
+                        "வணக்கம், நான் புளூம்கேர் நுண்ணறிவு உதவியாளர். " + (activePatient?.name || "இந்த நோயாளர்") + " க்கான அபாயங்களை பகுப்பாய்வு செய்ய நான் உங்களுக்கு எவ்வாறு உதவ முடியும்?"
                       )}
                     </p>
                   </div>
