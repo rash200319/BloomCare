@@ -9,10 +9,10 @@ import json
 import uuid
 from io import BytesIO
 
-from core.deps import get_db, get_current_active_user
-from schemas.screening import PatientReportRequest, PatientReportResponse, Stage1ScreeningReportData
-from models.user import User
-from models.screening import Stage1Screening, Stage2Diagnostic, PatientReport
+from backend.core.deps import get_db, get_current_active_user
+from backend.schemas.screening import PatientReportRequest, PatientReportResponse, Stage1ScreeningReportData
+from backend.models.user import User
+from backend.models.screening import Stage1Screening, Stage2Diagnostic, PatientReport
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +23,10 @@ def _format_contributing_factors(factors: Dict[str, float]) -> List[str]:
     """Convert contributing factors dict to human-readable list."""
     if not factors:
         return []
-    
+
     # Sort by importance
     sorted_factors = sorted(factors.items(), key=lambda x: x[1], reverse=True)
-    
+
     factor_descriptions = {
         "severe_hypertension": "Severe high blood pressure (≥160/110 mmHg)",
         "hypertension": "High blood pressure (≥140/90 mmHg)",
@@ -41,13 +41,14 @@ def _format_contributing_factors(factors: Dict[str, float]) -> List[str]:
         "previous_obstetric_complications": "Previous obstetric complications",
         "mental_health_concerns": "Mental health concerns",
     }
-    
+
     descriptions = []
     for factor, importance in sorted_factors:
-        desc = factor_descriptions.get(factor, factor.replace("_", " ").title())
+        desc = factor_descriptions.get(
+            factor, factor.replace("_", " ").title())
         importance_pct = round(importance * 100)
         descriptions.append(f"• {desc} ({importance_pct}%)")
-    
+
     return descriptions
 
 
@@ -58,18 +59,18 @@ def generate_stage1_report(
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """Generate a downloadable Stage 1 screening report."""
-    
+
     # Retrieve stage 1 screening
     stage1 = db.query(Stage1Screening).filter(
         Stage1Screening.id == request.stage1_screening_id
     ).first()
-    
+
     if not stage1:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Stage 1 screening not found"
         )
-    
+
     # Check authorization
     if stage1.patient_id != current_user.id and current_user.role.value != "ADMIN":
         # Allow clinicians to view patient records
@@ -78,10 +79,11 @@ def generate_stage1_report(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not authorized to generate this report"
             )
-    
+
     # Format contributing factors
-    contributing_factor_list = _format_contributing_factors(stage1.contributing_factors or {})
-    
+    contributing_factor_list = _format_contributing_factors(
+        stage1.contributing_factors or {})
+
     # Determine risk category
     risk_category = "HIGH RISK - ESCALATION REQUIRED" if stage1.edge_risk_classification.value == "escalate" else "ROUTINE CARE"
     recommendations = [
@@ -94,7 +96,7 @@ def generate_stage1_report(
         "Maintain regular follow-up appointments",
         "Monitor for any concerning symptoms"
     ]
-    
+
     # Create report content
     report_content = {
         "report_title": request.title or f"Stage 1 Screening Report - {stage1.created_at.strftime('%Y-%m-%d')}",
@@ -119,7 +121,7 @@ def generate_stage1_report(
         "generated_date": datetime.utcnow().isoformat(),
         "generated_by": current_user.full_name or current_user.email,
     }
-    
+
     # Save report to database
     report_id = str(uuid.uuid4())
     db_report = PatientReport(
@@ -135,7 +137,7 @@ def generate_stage1_report(
     )
     db.add(db_report)
     db.commit()
-    
+
     return PatientReportResponse(
         id=report_id,
         patient_id=str(stage1.patient_id),
@@ -153,18 +155,18 @@ def generate_stage2_report(
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """Generate a downloadable Stage 2 diagnostic report."""
-    
+
     # Retrieve stage 2 diagnostic
     stage2 = db.query(Stage2Diagnostic).filter(
         Stage2Diagnostic.id == stage2_diagnostic_id
     ).first()
-    
+
     if not stage2:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Stage 2 diagnostic not found"
         )
-    
+
     # Create report content
     report_content = {
         "report_title": f"Stage 2 Diagnostic Report - {stage2.evaluated_at.strftime('%Y-%m-%d')}",
@@ -186,7 +188,7 @@ def generate_stage2_report(
         "generated_date": datetime.utcnow().isoformat(),
         "generated_by": current_user.full_name or current_user.email,
     }
-    
+
     # Save report to database
     report_id = str(uuid.uuid4())
     db_report = PatientReport(
@@ -202,7 +204,7 @@ def generate_stage2_report(
     )
     db.add(db_report)
     db.commit()
-    
+
     return PatientReportResponse(
         id=report_id,
         patient_id=str(stage2.patient_id),
@@ -220,18 +222,18 @@ def download_report(
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """Download report as JSON or PDF."""
-    
+
     # Retrieve report
     report = db.query(PatientReport).filter(
         PatientReport.id == report_id
     ).first()
-    
+
     if not report:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Report not found"
         )
-    
+
     # Check authorization
     if report.patient_id != current_user.id and current_user.role.value != "ADMIN":
         if current_user.role.value not in ["CLINICAL_SPECIALIST", "FRONTLINE_STAFF"]:
@@ -239,10 +241,10 @@ def download_report(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not authorized to download this report"
             )
-    
+
     # Return as JSON for now (can be extended to PDF)
     json_content = json.dumps(report.report_content, indent=2)
-    
+
     return Response(
         content=json_content,
         media_type="application/json",
@@ -259,7 +261,7 @@ def list_patient_reports(
     current_user: User = Depends(get_current_active_user),
 ) -> List[PatientReportResponse]:
     """List all reports for a patient."""
-    
+
     # Check authorization
     if patient_id != current_user.id and current_user.role.value != "ADMIN":
         if current_user.role.value not in ["CLINICAL_SPECIALIST", "FRONTLINE_STAFF"]:
@@ -267,12 +269,12 @@ def list_patient_reports(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not authorized to view these reports"
             )
-    
+
     # Retrieve reports
     reports = db.query(PatientReport).filter(
         cast(PatientReport.patient_id, String) == str(patient_id)
     ).order_by(PatientReport.generated_at.desc()).all()
-    
+
     return [
         PatientReportResponse(
             id=report.id,

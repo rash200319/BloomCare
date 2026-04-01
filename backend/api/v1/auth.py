@@ -1,77 +1,85 @@
 from datetime import timedelta
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from core import security
-from core.config import settings
-from core.deps import get_db, get_current_user
-from services import auth_service
-from schemas.auth import Token
-from schemas.user import User, UserCreate
-from models.user import User as DBUser
-import uuid
+from backend.core import security
+from backend.core.config import settings
+from backend.core.deps import get_db, get_current_user
+from backend.schemas.auth import LoginRequest, LoginResponse, ChangePasswordRequest
+from backend.models.user import User as DBUser
+from backend.services.staff_patient_service import AuthService
 
 router = APIRouter()
 
 
-def _serialize_user(user: DBUser) -> User:
-    role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
-    return User(
-        id=str(user.id),
-        email=user.email,
-        full_name=user.full_name,
-        role=role_value,
-        is_active=bool(user.is_active),
-    )
+# ============== AUTH ENDPOINTS FOR STAFF & PATIENT MANAGEMENT ==============
 
-@router.post("/login", response_model=Token)
-def login_access_token(
-    db: Session = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()
+@router.post(
+    "/login-user-id",
+    response_model=LoginResponse,
+    summary="Login with User ID",
+    description="Login using user_id and password (for staff and patients)"
+)
+def login_with_user_id(
+    credentials: LoginRequest,
+    db: Session = Depends(get_db)
 ) -> Any:
-    user = auth_service.authenticate(
-        db, email=form_data.username, password=form_data.password
-    )
-    if not user:
-        raise HTTPException(status_code=400, detail="Incorrect email or password")
-    elif not user.is_active:
-        raise HTTPException(status_code=400, detail="Inactive user")
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    return {
-        "access_token": security.create_access_token(
-            user.id, expires_delta=access_token_expires
-        ),
-        "token_type": "bearer",
-    }
+    """
+    Login endpoint for staff and patients using user_id and password.
 
-@router.post("/register", response_model=User)
-def register_user(
-    *,
-    db: Session = Depends(get_db),
-    user_in: UserCreate,
-) -> Any:
-    user = auth_service.get_by_email(db, email=user_in.email)
-    if user:
+    - **user_id**: User ID (FLS-XXXX, DOC-XXXX, or PAT-XXXX)
+    - **password**: Password
+
+    Returns JWT access token and user information.
+    If is_first_login is True, user MUST change password before proceeding.
+    """
+    user = AuthService.authenticate_user(
+        db, credentials.user_id, credentials.password)
+
+    if not user.is_active:
         raise HTTPException(
-            status_code=400,
-            detail="The user with this username already exists in the system",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is inactive"
         )
-    user = DBUser(
-        id=str(uuid.uuid4()),
-        email=user_in.email,
-        hashed_password=security.get_password_hash(user_in.password),
-        full_name=user_in.full_name,
-        role=user_in.role,
-        is_active=True
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return _serialize_user(user)
 
-@router.get("/me", response_model=User)
-def read_user_me(
+    access_token_expires = timedelta(
+        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    return LoginResponse(
+        access_token=security.create_access_token(
+            user.id, expires_delta=access_token_expires),
+        token_type="bearer",
+        user_id=user.user_id,
+        full_name=user.full_name,
+        role=user.role.value,
+        is_first_login=user.is_first_login
+    )
+
+
+@router.post(
+    "/change-password",
+    response_model=dict,
+    summary="Change Password",
+    description="Change user password (must be called on first login)"
+)
+def change_password(
+    change_pwd: ChangePasswordRequest,
     current_user: DBUser = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ) -> Any:
-    return _serialize_user(current_user)
+    """
+    Change user password.
+
+    - **old_password**: Current password
+    - **new_password**: New password (must meet strength requirements)
+
+    Password must have:
+    - Minimum 8 characters
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one digit
+    - At least one special character (!@#$%^&*)
+
+    Sets is_first_login to False after successful change.
+    """
+    return AuthService.change_password(db, current_user.user_id, change_pwd.old_password, change_pwd.new_password)

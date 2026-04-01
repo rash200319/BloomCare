@@ -2,19 +2,20 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Any
 import logging
 
-from core.deps import get_current_active_user
-from core.config import settings
-from schemas.screening import AssistantRequest, AssistantResponse
-from models.user import User
+from backend.core.deps import get_current_active_user
+from backend.core.config import settings
+from backend.schemas.screening import AssistantRequest, AssistantResponse
+from backend.models.user import User
 
 try:
-    from services.llm_service import generate_mock_explanation, generate_multilingual_explanation
+    from backend.services.llm_service import generate_mock_explanation, generate_multilingual_explanation
 except ImportError:
     pass
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
 
 @router.post("/explain", response_model=AssistantResponse)
 async def assistant_explain(

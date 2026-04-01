@@ -4,12 +4,12 @@ from sqlalchemy.orm import Session
 import logging
 import uuid as uuid_lib
 
-from core.deps import get_db, get_current_active_user
-from schemas.screening import DiagnoseInput, DiagnoseResponse
-from models.user import User
-from models.screening import Stage2Diagnostic, Stage1Screening
+from backend.core.deps import get_db, get_current_active_user
+from backend.schemas.screening import DiagnoseInput, DiagnoseResponse
+from backend.models.user import User
+from backend.models.screening import Stage2Diagnostic, Stage1Screening
 # import the ML service properly (assuming we adapted ml_services)
-from services.ml_services import run_selected_stage2_model
+from backend.services.ml_services import run_selected_stage2_model
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,8 @@ DISEASE_MODEL_MAP = {
     "preterm_ehg": "stage2_preterm_support_ehg.pkl",  # Alternative EHG model
 }
 
-MODEL_DISEASE_MAP = {model_file: disease for disease, model_file in DISEASE_MODEL_MAP.items()}
+MODEL_DISEASE_MAP = {model_file: disease for disease,
+                     model_file in DISEASE_MODEL_MAP.items()}
 
 
 def _derive_primary_from_stage1(stage1_screening: Optional[Stage1Screening]) -> str:
@@ -40,6 +41,7 @@ def _derive_primary_from_stage1(stage1_screening: Optional[Stage1Screening]) -> 
             return ranked[0][0]
     return "preeclampsia"
 
+
 @router.post("/", response_model=DiagnoseResponse)
 def run_diagnose(
     payload: DiagnoseInput,
@@ -48,12 +50,14 @@ def run_diagnose(
 ) -> Any:
     # RBAC: Only Clinical Specialist or Admin can perform stage 2
     if current_user.role.value not in ["CLINICAL_SPECIALIST", "ADMIN"]:
-        raise HTTPException(status_code=403, detail="Not authorized to perform Stage-2 diagnosis")
+        raise HTTPException(
+            status_code=403, detail="Not authorized to perform Stage-2 diagnosis")
 
     # Determine which model to use.
     # Priority order: payload explicit choice -> Stage 1 recommended disease -> default preeclampsia.
     primary_disease = payload.primary_disease_to_check or "preeclampsia"
-    model_name = DISEASE_MODEL_MAP.get(primary_disease, "stage2_diagnostic.pkl")
+    model_name = DISEASE_MODEL_MAP.get(
+        primary_disease, "stage2_diagnostic.pkl")
 
     # Doctors can explicitly override the model file if needed.
     if payload.model_override:
@@ -67,7 +71,7 @@ def run_diagnose(
             )
         model_name = payload.model_override
         primary_disease = MODEL_DISEASE_MAP[model_name]
-    
+
     # Retrieve stage 1 screening if provided for context
     stage1_screening = None
     if payload.stage1_screening_id:
@@ -75,10 +79,12 @@ def run_diagnose(
             Stage1Screening.id == payload.stage1_screening_id
         ).first()
         if not stage1_screening:
-            logger.warning(f"Stage 1 screening {payload.stage1_screening_id} not found")
+            logger.warning(
+                f"Stage 1 screening {payload.stage1_screening_id} not found")
         elif payload.primary_disease_to_check is None and payload.model_override is None:
             primary_disease = _derive_primary_from_stage1(stage1_screening)
-            model_name = DISEASE_MODEL_MAP.get(primary_disease, "stage2_diagnostic.pkl")
+            model_name = DISEASE_MODEL_MAP.get(
+                primary_disease, "stage2_diagnostic.pkl")
 
     stage1_context: Optional[Dict[str, Any]] = None
     if stage1_screening:
@@ -109,7 +115,8 @@ def run_diagnose(
         )
 
     # Convert complex lists to dicts for JSONB serialization
-    condition_probs = [c.model_dump() for c in ml_output.condition_probabilities]
+    condition_probs = [c.model_dump()
+                       for c in ml_output.condition_probabilities]
     cluster_prof = ml_output.cluster_profile.model_dump()
 
     # DB Persistence
@@ -139,7 +146,7 @@ def run_diagnose(
     severity = ml_output.overall_severity_score
     urgent = severity >= 0.65
     referral = "Urgent referral to Maternal Fetal Medicine specialist." if urgent else "Monitor closely and follow-up as planned."
-    
+
     return DiagnoseResponse(
         status="success",
         ml_output=ml_output,

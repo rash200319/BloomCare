@@ -1,19 +1,20 @@
 from typing import Generator
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from core import security
-from core.config import settings
-from db.session import SessionLocal
-from models.user import User
-from schemas.auth import TokenPayload
+from backend.core import security
+from backend.core.config import settings
+from backend.db.session import SessionLocal
+from backend.models.user import User
+from backend.schemas.auth import TokenPayload
 
-oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.API_V1_STR}/auth/login"
+security_scheme = HTTPBearer(
+    description="Enter your JWT token here. Get it by calling /auth/login-user-id with your user_id and password."
 )
+
 
 def get_db() -> Generator:
     try:
@@ -22,9 +23,11 @@ def get_db() -> Generator:
     finally:
         db.close()
 
+
 def get_current_user(
-    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
+    db: Session = Depends(get_db), credentials: HTTPAuthorizationCredentials = Depends(security_scheme)
 ) -> User:
+    token = credentials.credentials
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
@@ -40,6 +43,7 @@ def get_current_user(
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
+
 def get_current_active_user(
     current_user: User = Depends(get_current_user),
 ) -> User:
@@ -47,10 +51,12 @@ def get_current_active_user(
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
+
 def get_current_admin(
     current_user: User = Depends(get_current_active_user),
 ) -> User:
-    role_name = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    role_name = current_user.role.value if hasattr(
+        current_user.role, "value") else str(current_user.role)
     if role_name != "ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

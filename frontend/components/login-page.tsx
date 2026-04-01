@@ -163,15 +163,13 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
     setIsLoading(true)
 
     try {
-      const formBody = new URLSearchParams({
-        username: email,
-        password,
-      }).toString()
-
-      const loginResponse = await authFetch("/auth/login", {
+      const loginResponse = await authFetch("/auth/login-user-id", {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: formBody,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: email,
+          password,
+        }),
       })
 
       if (!loginResponse.ok) {
@@ -180,25 +178,13 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
       }
 
       const tokenData = await loginResponse.json()
-      const meResponse = await authFetch("/auth/me", {
-        headers: {
-          Authorization: `Bearer ${tokenData.access_token}`,
-        },
-      })
-
-      if (!meResponse.ok) {
-        throw new Error("Unable to read user profile")
-      }
-
-      const me = await meResponse.json()
-      const apiRole = fromApiRole(me.role)
-
+      
       if (typeof window !== "undefined") {
         window.localStorage.setItem("bloomcare_access_token", tokenData.access_token)
-        window.localStorage.setItem("bloomcare_user_profile", JSON.stringify(me))
+        window.localStorage.setItem("bloomcare_user_profile", JSON.stringify(tokenData))
       }
 
-      onLogin(apiRole)
+      onLogin(selectedRole)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Authentication failed"
       setErrorMessage(message)

@@ -12,7 +12,6 @@ export const metadata: Metadata = {
   description: 'AI-Powered Maternal Risk Intelligence System for Hemas Hospitals',
   generator: 'v0.app',
   manifest: '/manifest.json',
-  themeColor: '#e11d48',
   icons: {
     icon: [
       {
@@ -30,6 +29,10 @@ export const metadata: Metadata = {
     ],
     apple: '/apple-icon.png',
   },
+}
+
+export const viewport = {
+  themeColor: '#e11d48',
 }
 
 export default function RootLayout({

@@ -6,12 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import String, cast
 from sqlalchemy.orm import Session
 
-from core.deps import get_current_active_user, get_db
-from models.longitudinal import ScreeningReport
-from models.patient import Patient as DBPatient
-from models.screening import PatientReport, Stage1Screening, RiskTier
-from models.user import User
-from schemas.longitudinal import (
+from backend.core.deps import get_current_active_user, get_db
+from backend.models.longitudinal import ScreeningReport
+from backend.models.patient import Patient as DBPatient
+from backend.models.screening import PatientReport, Stage1Screening, RiskTier
+from backend.models.user import User
+from backend.schemas.longitudinal import (
     PatientHistoryResponse,
     ScreeningHistoryItem,
     ScreeningSubmissionRequest,
@@ -54,9 +54,11 @@ def submit_screening(
 
     try:
         if not payload.patient_unique_id:
-            raise HTTPException(status_code=400, detail="patient_unique_id is required for screening")
+            raise HTTPException(
+                status_code=400, detail="patient_unique_id is required for screening")
 
-        patient = db.query(DBPatient).filter(DBPatient.national_id == payload.patient_unique_id).first()
+        patient = db.query(DBPatient).filter(
+            DBPatient.national_id == payload.patient_unique_id).first()
         if patient is None:
             raise HTTPException(
                 status_code=404,
@@ -170,7 +172,8 @@ def submit_screening(
         db.refresh(report)
     except Exception as exc:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to persist stage 1 screening data: {exc}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Failed to persist stage 1 screening data: {exc}") from exc
 
     return SubmitScreeningResponse(
         patient_id=str(patient.id),
@@ -197,7 +200,8 @@ def patient_history(
     role = _role_name(current_user)
     if role not in ["ADMIN", "CLINICAL_SPECIALIST"]:
         if str(getattr(patient, "assigned_worker_id", "")) != str(current_user.id):
-            raise HTTPException(status_code=403, detail="Not authorized to view this patient history")
+            raise HTTPException(
+                status_code=403, detail="Not authorized to view this patient history")
 
     reports = (
         db.query(ScreeningReport)
@@ -219,7 +223,8 @@ def patient_history(
 
     total = len(report_items)
     high = sum(1 for item in report_items if item.general_risk_flag == "High")
-    avg_probability = (sum(item.probability_score for item in report_items) / total) if total > 0 else 0.0
+    avg_probability = (sum(
+        item.probability_score for item in report_items) / total) if total > 0 else 0.0
     latest = report_items[-1].general_risk_flag if total > 0 else None
 
     return PatientHistoryResponse(

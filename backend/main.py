@@ -1,8 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
-from api.api_router import api_router
-from core.config import settings
+from backend.api.api_router import api_router
+from backend.core.config import settings
 
 
 app = FastAPI(
@@ -10,6 +11,36 @@ app = FastAPI(
     version="2.0.0",
     description="BloomCare FastAPI backend service.",
 )
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=settings.PROJECT_NAME,
+        version="2.0.0",
+        description="BloomCare FastAPI backend service.",
+        routes=app.routes,
+    )
+    components = openapi_schema.setdefault("components", {})
+    # Clear any auto-generated security schemes
+    security_schemes = components.get("securitySchemes", {})
+    security_schemes.clear()
+    
+    # Add only the simple HTTPBearer scheme
+    security_schemes["HTTPBearer"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Enter your JWT token. Get it by logging in with /auth/login-user-id"
+    }
+    components["securitySchemes"] = security_schemes
+    openapi_schema["security"] = [{"HTTPBearer": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 # Configure CORS to allow frontend requests
 app.add_middleware(
