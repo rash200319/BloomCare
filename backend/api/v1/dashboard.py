@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from backend.core.deps import get_db, get_current_user
 from backend.models.user import User, UserRole
+from backend.models.patient import Patient
 
 router = APIRouter()
 
@@ -117,12 +118,15 @@ def get_patient_dashboard(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only patients can access the patient portal"
         )
+
+    patient = db.query(Patient).filter(Patient.id == current_user.id).first()
     
     return {
         "message": "Welcome to Your Health Portal",
         "id": current_user.id,
         "full_name": current_user.full_name,
         "role": current_user.role.value,
+        "due_date": patient.due_date if patient else None,
         "dashboard": {
             "title": "Patient Portal",
             "description": "View your appointments and health records",

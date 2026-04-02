@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import {
   User,
   Globe,
@@ -49,11 +49,85 @@ interface PatientPortalProps {
   onLogout: () => void
 }
 
+interface PatientDisplayData {
+  name: string
+  email: string
+  gestationalWeek: number
+  bloodGroup: string
+  dueDate: string
+  pregnancyStatus: string
+}
+
+interface StoredProfile {
+  id?: string
+  full_name?: string
+  email?: string
+  national_id?: string
+  due_date?: string
+  role?: string
+}
+
+const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "")
+
+function getApiBaseCandidates(): string[] {
+  const candidates = [configuredApiBase, "http://localhost:8005/api/v1", "http://127.0.0.1:8005/api/v1"]
+
+  if (typeof window !== "undefined") {
+    const protocol = window.location.protocol || "http:"
+    const host = window.location.hostname || "localhost"
+    candidates.push(`${protocol}//${host}:8005/api/v1`)
+  }
+
+  return candidates.filter((value, index, arr): value is string => Boolean(value) && arr.indexOf(value as string) === index)
+}
+
+const DEFAULT_PATIENT_DATA: PatientDisplayData = {
+  name: "Patient",
+  email: "",
+  gestationalWeek: 24,
+  bloodGroup: "-",
+  dueDate: "-",
+  pregnancyStatus: "Monitoring",
+}
+
+function calculateGestationalWeekFromDueDate(dueDateValue?: string): number | null {
+  if (!dueDateValue) return null
+
+  const dueDate = new Date(dueDateValue)
+  if (Number.isNaN(dueDate.getTime())) return null
+
+  const conceptionDate = new Date(dueDate)
+  conceptionDate.setDate(conceptionDate.getDate() - (40 * 7))
+
+  const now = new Date()
+  const elapsedMs = now.getTime() - conceptionDate.getTime()
+  const weekMs = 7 * 24 * 60 * 60 * 1000
+  const elapsedWeeks = Math.floor(elapsedMs / weekMs)
+
+  if (!Number.isFinite(elapsedWeeks)) return null
+  if (elapsedWeeks < 0) return 0
+  if (elapsedWeeks > 40) return 40
+  return elapsedWeeks
+}
+
 const PatientPortal = ({ onLogout }: PatientPortalProps) => {
   const [selectedLanguage, setSelectedLanguage] = useState<Language>("EN")
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
+  const [patientData, setPatientData] = useState<PatientDisplayData>(DEFAULT_PATIENT_DATA)
+  const gestationalWeek = useMemo(() => {
+    const calculated = calculateGestationalWeekFromDueDate(patientData.dueDate)
+    return calculated ?? patientData.gestationalWeek
+  }, [patientData.dueDate, patientData.gestationalWeek])
+  const daysToWelcome = useMemo(() => {
+    if (!patientData.dueDate || patientData.dueDate === "-") return null
+    const dueDate = new Date(patientData.dueDate)
+    if (Number.isNaN(dueDate.getTime())) return null
+    const now = new Date()
+    const msPerDay = 24 * 60 * 60 * 1000
+    return Math.max(0, Math.ceil((dueDate.getTime() - now.getTime()) / msPerDay))
+  }, [patientData.dueDate])
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -69,19 +143,65 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
     }
   }, [])
 
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const hydratePatientProfile = async () => {
+      let baseProfile: StoredProfile | null = null
+
+      const profileRaw = window.localStorage.getItem("bloomcare_user_profile")
+      if (profileRaw) {
+        try {
+          baseProfile = JSON.parse(profileRaw) as StoredProfile
+          setPatientData((prev) => ({
+            ...prev,
+            name: baseProfile?.full_name || prev.name,
+            email: baseProfile?.email || baseProfile?.national_id || prev.email,
+            dueDate: (baseProfile as { due_date?: string; dueDate?: string })?.due_date || (baseProfile as { due_date?: string; dueDate?: string })?.dueDate || prev.dueDate,
+          }))
+        } catch (error) {
+          console.error("Failed to parse stored patient profile", error)
+        }
+      }
+
+      const token = window.localStorage.getItem("bloomcare_access_token")
+      if (!token) return
+
+      for (const baseUrl of getApiBaseCandidates()) {
+        try {
+          const response = await fetch(`${baseUrl}/dashboard/patient/dashboard`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          })
+
+          if (!response.ok) {
+            if (response.status === 404) continue
+            break
+          }
+
+          const payload = await response.json()
+          setPatientData((prev) => ({
+            ...prev,
+            name: payload?.full_name || baseProfile?.full_name || prev.name,
+            email: baseProfile?.email || baseProfile?.national_id || prev.email,
+            dueDate: payload?.due_date || baseProfile?.due_date || prev.dueDate,
+          }))
+          break
+        } catch {
+          // Try next candidate URL
+        }
+      }
+    }
+
+    void hydratePatientProfile()
+  }, [])
+
   const getText = (en: string, si: string, ta: string) => {
     if (selectedLanguage === "SI") return si
     if (selectedLanguage === "TA") return ta
     return en
-  }
-
-  const patientData = {
-    name: "Nimalka Fernando",
-    email: "nimalka.f@outlook.com",
-    gestationalWeek: 24,
-    bloodGroup: "O+",
-    dueDate: "July 15, 2026",
-    pregnancyStatus: "Healthy / Optimal"
   }
 
   const vitalsHistory = [
@@ -268,7 +388,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
             >
               <div className="hidden sm:text-right sm:block">
                 <p className="text-sm font-black text-slate-900 tracking-tight">{patientData.name}</p>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Week {patientData.gestationalWeek} • {patientData.bloodGroup}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Week {gestationalWeek} • {patientData.bloodGroup}</p>
               </div>
               <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center shadow-lg shadow-accent/20 transition-transform group-hover:scale-105">
                 <User className="w-5 h-5 text-white" />
@@ -316,7 +436,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                   <div className="bg-white/50 backdrop-blur-md px-4 py-2 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-primary" />
                     <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">
-                       {getText("Week", "සතිය", "வாரம்")} {patientData.gestationalWeek}
+                       {getText("Week", "සතිය", "வாரம்")} {gestationalWeek}
                     </span>
                   </div>
                   <div className="bg-white/50 backdrop-blur-md px-4 py-2 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-2">
@@ -373,10 +493,10 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                  <CardContent className="p-8">
                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{getText("Gestational progress", "ප්‍රගතිය", "முன்னேற்றம்")}</p>
                    <div className="flex items-end justify-between">
-                     <p className="text-3xl font-black text-slate-900 tracking-tight">{patientData.gestationalWeek} <span className="text-sm text-slate-400">weeks</span></p>
+                    <p className="text-3xl font-black text-slate-900 tracking-tight">{gestationalWeek} <span className="text-sm text-slate-400">weeks</span></p>
                    </div>
                    <div className="w-full h-1.5 bg-slate-100 rounded-full mt-6 overflow-hidden">
-                      <div className="h-full bg-primary rounded-full" style={{ width: `${(patientData.gestationalWeek / 40) * 100}%` }} />
+                     <div className="h-full bg-primary rounded-full" style={{ width: `${(gestationalWeek / 40) * 100}%` }} />
                    </div>
                  </CardContent>
               </Card>
@@ -388,7 +508,9 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                    <div className="flex items-end justify-between">
                      <p className="text-2xl font-black text-slate-900 tracking-tight">{patientData.dueDate}</p>
                    </div>
-                   <p className="text-[10px] font-bold text-accent uppercase tracking-widest mt-4">110 Days to welcome</p>
+                   <p className="text-[10px] font-bold text-accent uppercase tracking-widest mt-4">
+                     {daysToWelcome !== null ? `${daysToWelcome} Days to welcome` : "Due date not available"}
+                   </p>
                  </CardContent>
               </Card>
 
@@ -397,9 +519,11 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                  <CardContent className="p-8">
                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{getText("Next Analytics Sync", "මීළඟ පරීක්ෂාව", "அடுத்த ஸ்கிரீனிங்")}</p>
                    <div className="flex items-end justify-between">
-                     <p className="text-2xl font-black text-slate-900 tracking-tight">Fri, April 3</p>
+                     <p className="text-2xl font-black text-slate-900 tracking-tight">{upcomingAppointments[0]?.date || "No schedule"}</p>
                    </div>
-                   <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mt-4">10:30 AM • Hemas Wattala</p>
+                   <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mt-4">
+                     {upcomingAppointments[0] ? `${upcomingAppointments[0].time} • ${upcomingAppointments[0].location}` : "Not scheduled"}
+                   </p>
                  </CardContent>
               </Card>
             </div>
@@ -575,7 +699,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                          <div className="absolute inset-0 bg-slate-900/40" />
                       </div>
                       <Baby className="w-24 h-24 text-primary relative z-10 mb-6 animate-pulse" />
-                      <h3 className="text-3xl font-black relative z-10 tracking-tight">Week {patientData.gestationalWeek}</h3>
+                      <h3 className="text-3xl font-black relative z-10 tracking-tight">Week {gestationalWeek}</h3>
                       <p className="text-slate-400 font-black uppercase tracking-[0.2em] text-[10px] relative z-10 mt-2">Corn Ear Size</p>
                    </div>
                    <div className="flex-1 p-12 bg-white/40">

@@ -29,6 +29,7 @@ import {
   Stethoscope,
   MessageSquare,
   Send,
+  Pill,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -160,6 +161,33 @@ interface ReportGenerationResponse {
   download_url: string
 }
 
+interface PrescriptionItem {
+  id: string
+  patient_id: string
+  specialist_id?: string | null
+  stage2_diagnostic_id?: string | null
+  medication_name: string
+  dosage?: string | null
+  frequency?: string | null
+  route?: string | null
+  instructions?: string | null
+  start_date?: string | null
+  end_date?: string | null
+  is_active: boolean
+  created_at?: string | null
+}
+
+interface PrescriptionFormState {
+  medication_name: string
+  dosage: string
+  frequency: string
+  route: string
+  instructions: string
+  start_date: string
+  end_date: string
+  is_active: boolean
+}
+
 const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "")
 
 function getApiBaseCandidates(): string[] {
@@ -240,6 +268,21 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
     condition_probabilities?: Record<string, unknown>
   }>>([])
   const [timelineError, setTimelineError] = useState<string | null>(null)
+  const [prescriptions, setPrescriptions] = useState<PrescriptionItem[]>([])
+  const [isLoadingPrescriptions, setIsLoadingPrescriptions] = useState(false)
+  const [prescriptionError, setPrescriptionError] = useState<string | null>(null)
+  const [isSavingPrescription, setIsSavingPrescription] = useState(false)
+  const [prescriptionActionMessage, setPrescriptionActionMessage] = useState<string | null>(null)
+  const [prescriptionForm, setPrescriptionForm] = useState<PrescriptionFormState>({
+    medication_name: "",
+    dosage: "",
+    frequency: "",
+    route: "",
+    instructions: "",
+    start_date: "",
+    end_date: "",
+    is_active: true,
+  })
 
   const getText = (en: string, si: string, ta: string) => {
     if (selectedLanguage === "SI") return si
@@ -266,6 +309,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
 
     const candidates = getApiBaseCandidates()
     let lastError: unknown = null
+    let lastNotFoundResponse: Response | null = null
 
     for (const base of candidates) {
       try {
@@ -274,12 +318,17 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
           headers,
         })
         if (response.status === 404) {
+          lastNotFoundResponse = response
           continue
         }
         return response
       } catch (error) {
         lastError = error
       }
+    }
+
+    if (lastNotFoundResponse) {
+      return lastNotFoundResponse
     }
 
     if (lastError instanceof Error) {
@@ -437,6 +486,36 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
     }
 
     loadPatientTimeline().catch(() => {
+      // errors are handled in state above
+    })
+  }, [selectedPatient?.id])
+
+  const loadPatientPrescriptions = async (patientId: string) => {
+    setIsLoadingPrescriptions(true)
+    setPrescriptionError(null)
+    try {
+      const response = await apiRequest(`/prescriptions/patient/${patientId}`)
+      if (!response.ok) {
+        throw new Error("Unable to load prescriptions")
+      }
+      const payload = (await response.json()) as PrescriptionItem[]
+      setPrescriptions(payload)
+    } catch (error) {
+      setPrescriptionError(error instanceof Error ? error.message : "Unable to load prescriptions")
+      setPrescriptions([])
+    } finally {
+      setIsLoadingPrescriptions(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!selectedPatient?.id) {
+      setPrescriptions([])
+      setPrescriptionError(null)
+      return
+    }
+
+    loadPatientPrescriptions(selectedPatient.id).catch(() => {
       // errors are handled in state above
     })
   }, [selectedPatient?.id])
@@ -682,6 +761,66 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
     }
   }
 
+  const handleCreatePrescription = async () => {
+    if (!activePatient?.id) {
+      setPrescriptionActionMessage("Select a patient first")
+      return
+    }
+
+    if (!prescriptionForm.medication_name.trim()) {
+      setPrescriptionActionMessage("Medication name is required")
+      return
+    }
+
+    setIsSavingPrescription(true)
+    setPrescriptionActionMessage(null)
+
+    const latestDiagnosticId =
+      differentialResult?.stage2_diagnostic_id ||
+      patientTimeline.find((entry) => entry.stage2_diagnostic_id)?.stage2_diagnostic_id ||
+      null
+
+    try {
+      const response = await apiRequest("/prescriptions/", {
+        method: "POST",
+        body: JSON.stringify({
+          patient_id: activePatient.id,
+          stage2_diagnostic_id: latestDiagnosticId,
+          medication_name: prescriptionForm.medication_name.trim(),
+          dosage: prescriptionForm.dosage.trim() || null,
+          frequency: prescriptionForm.frequency.trim() || null,
+          route: prescriptionForm.route.trim() || null,
+          instructions: prescriptionForm.instructions.trim() || null,
+          start_date: prescriptionForm.start_date || null,
+          end_date: prescriptionForm.end_date || null,
+          is_active: prescriptionForm.is_active,
+        }),
+      })
+
+      if (!response.ok) {
+        const detail = (await response.json().catch(() => ({}))) as { detail?: string }
+        throw new Error(detail.detail || "Unable to create prescription")
+      }
+
+      setPrescriptionForm({
+        medication_name: "",
+        dosage: "",
+        frequency: "",
+        route: "",
+        instructions: "",
+        start_date: "",
+        end_date: "",
+        is_active: true,
+      })
+      setPrescriptionActionMessage("Prescription added")
+      await loadPatientPrescriptions(activePatient.id)
+    } catch (error) {
+      setPrescriptionActionMessage(error instanceof Error ? error.message : "Unable to create prescription")
+    } finally {
+      setIsSavingPrescription(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50/50 flex flex-col font-sans relative overflow-hidden">
       {/* Background Decorative Elements */}
@@ -910,6 +1049,9 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
               </TabsTrigger>
               <TabsTrigger value="history" className="data-[state=active]:bg-primary data-[state=active]:text-white rounded-lg text-xs font-bold uppercase tracking-wider px-6">
                 {getText("History", "ඉතිහාසය", "வரலாறு")}
+              </TabsTrigger>
+              <TabsTrigger value="prescriptions" className="data-[state=active]:bg-primary data-[state=active]:text-white rounded-lg text-xs font-bold uppercase tracking-wider px-6">
+                {getText("Prescriptions", "ප්‍රිස්ක්‍රිප්ෂන්", "மருந்துச் சீட்டுகள்")}
               </TabsTrigger>
             </TabsList>
 
@@ -1609,6 +1751,166 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="prescriptions" className="space-y-6">
+              <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+                <Card className="xl:col-span-2 border-0 glass shadow-xl overflow-hidden">
+                  <CardHeader className="bg-slate-50/50 border-b border-slate-100">
+                    <CardTitle className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                      <Pill className="w-5 h-5 text-primary" />
+                      {getText("Add Prescription", "ප්‍රිස්ක්‍රිප්ෂන් එකතු කරන්න", "மருந்துச் சீட்டை சேர்க்கவும்")}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-4">
+                    {!activePatient?.id ? (
+                      <p className="text-sm font-medium text-slate-500">{getText("Select a patient first", "පළමුව රෝගියෙකු තෝරන්න", "முதலில் நோயாளியைத் தேர்ந்தெடுக்கவும்")}</p>
+                    ) : (
+                      <>
+                        <div className="space-y-1">
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{getText("Medication Name", "ඖෂධ නාමය", "மருந்து பெயர்")}</p>
+                          <Input
+                            value={prescriptionForm.medication_name}
+                            onChange={(e) => setPrescriptionForm((prev) => ({ ...prev, medication_name: e.target.value }))}
+                            placeholder={getText("e.g. Labetalol", "උදා: Labetalol", "உதா: Labetalol")}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{getText("Dosage", "මාත්‍රාව", "அளவு")}</p>
+                            <Input
+                              value={prescriptionForm.dosage}
+                              onChange={(e) => setPrescriptionForm((prev) => ({ ...prev, dosage: e.target.value }))}
+                              placeholder={getText("e.g. 100 mg", "උදා: 100 mg", "உதா: 100 mg")}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{getText("Frequency", "වාර ගණන", "அடிக்கடி")}</p>
+                            <Input
+                              value={prescriptionForm.frequency}
+                              onChange={(e) => setPrescriptionForm((prev) => ({ ...prev, frequency: e.target.value }))}
+                              placeholder={getText("e.g. Twice daily", "උදා: දිනකට දෙවරක්", "உதா: நாளுக்கு இருமுறை")}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{getText("Route", "ලබාදෙන ආකාරය", "மருந்தளிக்கும் வழி")}</p>
+                          <Input
+                            value={prescriptionForm.route}
+                            onChange={(e) => setPrescriptionForm((prev) => ({ ...prev, route: e.target.value }))}
+                            placeholder={getText("e.g. Oral", "උදා: Oral", "உதா: Oral")}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{getText("Start Date", "ආරම්භක දිනය", "தொடக்க தேதி")}</p>
+                            <Input
+                              type="date"
+                              value={prescriptionForm.start_date}
+                              onChange={(e) => setPrescriptionForm((prev) => ({ ...prev, start_date: e.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{getText("End Date", "අවසන් දිනය", "முடிவு தேதி")}</p>
+                            <Input
+                              type="date"
+                              value={prescriptionForm.end_date}
+                              onChange={(e) => setPrescriptionForm((prev) => ({ ...prev, end_date: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{getText("Instructions", "උපදෙස්", "வழிமுறைகள்")}</p>
+                          <textarea
+                            value={prescriptionForm.instructions}
+                            onChange={(e) => setPrescriptionForm((prev) => ({ ...prev, instructions: e.target.value }))}
+                            rows={4}
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-primary"
+                            placeholder={getText("Additional clinical instructions...", "අමතර සායනික උපදෙස්...", "கூடுதல் மருத்துவ வழிமுறைகள்...")}
+                          />
+                        </div>
+
+                        <label className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={prescriptionForm.is_active}
+                            onChange={(e) => setPrescriptionForm((prev) => ({ ...prev, is_active: e.target.checked }))}
+                            className="rounded border-slate-300"
+                          />
+                          {getText("Active prescription", "ක්‍රියාකාරී ප්‍රිස්ක්‍රිප්ෂන්", "செயலில் உள்ள மருந்துச் சீட்டு")}
+                        </label>
+
+                        <Button
+                          onClick={handleCreatePrescription}
+                          disabled={isSavingPrescription}
+                          className="w-full bg-bloom-gradient text-white font-black uppercase tracking-widest"
+                        >
+                          {isSavingPrescription
+                            ? getText("Saving...", "සුරැකෙමින්...", "சேமிக்கப்படுகிறது...")
+                            : getText("Issue Prescription", "ප්‍රිස්ක්‍රිප්ෂන් නිකුත් කරන්න", "மருந்துச் சீட்டை வழங்கவும்")}
+                        </Button>
+                      </>
+                    )}
+
+                    {prescriptionActionMessage && (
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{prescriptionActionMessage}</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="xl:col-span-3 border-0 glass shadow-xl overflow-hidden">
+                  <CardHeader className="bg-slate-50/50 border-b border-slate-100">
+                    <CardTitle className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                      <FileText className="w-5 h-5 text-accent" />
+                      {getText("Prescription History", "ප්‍රිස්ක්‍රිප්ෂන් ඉතිහාසය", "மருந்துச் சீட்டு வரலாறு")}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    {isLoadingPrescriptions ? (
+                      <p className="text-sm font-medium text-slate-500">{getText("Loading prescriptions...", "ප්‍රිස්ක්‍රිප්ෂන් පූරණය වෙමින්...", "மருந்துச் சீட்டுகள் ஏற்றப்படுகின்றன...")}</p>
+                    ) : prescriptionError ? (
+                      <p className="text-sm font-bold text-rose-600">{prescriptionError}</p>
+                    ) : prescriptions.length === 0 ? (
+                      <p className="text-sm font-medium text-slate-500">{getText("No prescriptions found for this patient", "මෙම රෝගියා සඳහා ප්‍රිස්ක්‍රිප්ෂන් නොමැත", "இந்த நோயாளிக்கு மருந்துச் சீட்டுகள் இல்லை")}</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {prescriptions.map((item) => (
+                          <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-black text-slate-900 uppercase tracking-wide">{item.medication_name}</p>
+                                <p className="text-xs font-medium text-slate-500 mt-1">
+                                  {[item.dosage, item.frequency, item.route].filter(Boolean).join(" | ") || "--"}
+                                </p>
+                              </div>
+                              <Badge className={cn(
+                                "text-[10px] font-black uppercase tracking-widest border-0 h-6",
+                                item.is_active ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"
+                              )}>
+                                {item.is_active
+                                  ? getText("Active", "ක්‍රියාකාරී", "செயலில்")
+                                  : getText("Inactive", "අක්‍රිය", "செயலற்ற")}
+                              </Badge>
+                            </div>
+                            {item.instructions && (
+                              <p className="text-sm text-slate-600 mt-3 leading-relaxed">{item.instructions}</p>
+                            )}
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-3">
+                              {getText("Period", "කාලය", "காலம்")}: {item.start_date || "--"} {getText("to", "සිට", "முதல்")} {item.end_date || "--"}
+                              {" • "}
+                              {getText("Issued", "නිකුත් කළේ", "வழங்கிய தேதி")}: {item.created_at ? new Date(item.created_at).toLocaleString() : "--"}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
           </Tabs>
         </main>
