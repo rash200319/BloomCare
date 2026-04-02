@@ -15,6 +15,7 @@ import { Feather } from '@expo/vector-icons';
 interface PatientPortalScreenProps {
   user: User;
   onLogout: () => void;
+  isOnline?: boolean;
 }
 
 interface CheckIn {

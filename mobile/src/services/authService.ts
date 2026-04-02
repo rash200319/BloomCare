@@ -1,22 +1,32 @@
-import { LoginCredentials, RegisterData, User, PinLoginCredentials, UserRole } from '../types';
+import { LoginCredentials, User, UserRole } from '../types';
 import secureStore from './secureStore';
+import offlineDatabase from './offlineDatabase';
+import networkStatusService from './networkStatusService';
 import { API_BASE_URL } from '../config/api';
 
-interface AuthResponse {
+interface StaffLoginResponse {
+  id: string;
+  role: string;
+  is_first_login: boolean;
   access_token: string;
-  token_type: string;
 }
 
-const roleToApi = (role: UserRole): string => {
-  const mapping: Record<UserRole, string> = {
-    admin: 'ADMIN',
-    clinical_specialist: 'CLINICAL_SPECIALIST',
-    frontline_staff: 'FRONTLINE_STAFF',
-    patient: 'PATIENT',
-  };
+interface PatientLoginResponse {
+  id: string;
+  role: string;
+  is_first_login: boolean;
+  access_token: string;
+}
 
-  return mapping[role] ?? 'FRONTLINE_STAFF';
-};
+interface LoginResult {
+  user: User;
+  token: string;
+  isFirstLogin: boolean;
+}
+
+interface FirstLoginSetupResponse {
+  message: string;
+}
 
 const roleFromApi = (role: unknown): UserRole => {
   const value = String(role ?? '').toUpperCase();
@@ -26,45 +36,36 @@ const roleFromApi = (role: unknown): UserRole => {
   return 'frontline_staff';
 };
 
-const normalizeUser = (raw: any): User => ({
-  id: String(raw?.id ?? ''),
-  email: String(raw?.email ?? ''),
-  full_name: String(raw?.full_name ?? raw?.fullName ?? ''),
-  role: roleFromApi(raw?.role),
-  is_active: raw?.is_active !== false,
-});
-
 /**
- * AuthService - "Register Once, Sync Many" Strategy
- * 
- * Flow:
- * 1. REGISTRATION (requires internet):
- *    - User registers with email/password/PIN at office/Wi-Fi zone
- *    - Backend returns encrypted JWT token
- *    - Token + user info + PIN hash stored in SecureStore
- * 
- * 2. OFFLINE LOGIN:
- *    - User opens app in remote area (no internet)
- *    - Checks SecureStore for valid session
- *    - User enters PIN (not full credentials)
- *    - If PIN matches, grant offline access
- * 
- * 3. BACKGROUND SYNC:
- *    - When internet returns, retrieve stored token from SecureStore
- *    - Use token to authenticate and sync data to server
+ * AuthService - Offline-First Authentication
+ *
+ * Online-First Login: Users authenticate online for first-time login
+ * - Staff: email + password
+ * - Patients: national_id + password
+ * - Token + credentials stored securely
+ * - User sets 4-6 digit PIN for offline access
+ *
+ * Offline Access: After first login, users can access app offline with PIN
+ * - All data comes from local SQLite cache
+ * - Background sync uploads pending changes when online
  */
 class AuthService {
   private token: string | null = null;
   private user: User | null = null;
   private isOffline: boolean = false;
 
-  async initializeAuth(): Promise<{ token: string | null; user: User | null; isOffline: boolean; hasStoredSession: boolean }> {
+  async initializeAuth(): Promise<{
+    token: string | null;
+    user: User | null;
+    isOffline: boolean;
+    hasStoredSession: boolean;
+  }> {
     try {
-      // Try to retrieve stored session from SecureStore (more secure than AsyncStorage)
+      await offlineDatabase.initialize();
+
       const stored = await secureStore.getSession();
-      
+
       if (stored) {
-        // Session exists - user has registered before
         this.token = stored.token;
         this.user = {
           id: stored.userId,
@@ -73,7 +74,12 @@ class AuthService {
           role: roleFromApi(stored.role),
           is_active: true,
         };
-        
+
+        await offlineDatabase.cacheUserProfile(this.user);
+
+        const isOnline = networkStatusService.getStatus();
+        this.isOffline = !isOnline;
+
         return {
           token: this.token,
           user: this.user,
@@ -82,134 +88,158 @@ class AuthService {
         };
       }
 
-      return { token: null, user: null, isOffline: this.isOffline, hasStoredSession: false };
+      return {
+        token: null,
+        user: null,
+        isOffline: this.isOffline,
+        hasStoredSession: false,
+      };
     } catch (error) {
       console.error('Failed to initialize auth:', error);
-      return { token: null, user: null, isOffline: this.isOffline, hasStoredSession: false };
+      return {
+        token: null,
+        user: null,
+        isOffline: false,
+        hasStoredSession: false,
+      };
     }
   }
 
   /**
-   * Full login with email/password (requires internet)
-   * Used for initial login or when user wants to change credentials
+   * Staff login: email + password (requires internet)
    */
-  async login(credentials: LoginCredentials): Promise<{ user: User; token: string }> {
+  async loginStaff(email: string, password: string): Promise<LoginResult> {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const response = await fetch(`${API_BASE_URL}/auth/login/staff`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          username: credentials.email,
-          password: credentials.password,
-        }).toString(),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Login failed');
+        const error = await response.json();
+        throw new Error(error.detail || 'Login failed');
       }
 
-      const authResponse: AuthResponse = await response.json();
+      const authResponse: StaffLoginResponse = await response.json();
       this.token = authResponse.access_token;
 
-      // Fetch current user info
-      const userResponse = await fetch(`${API_BASE_URL}/auth/me`, {
-        headers: {
-          Authorization: `Bearer ${authResponse.access_token}`,
-        },
-      });
+      const user: User = {
+        id: authResponse.id,
+        email,
+        full_name: email,
+        role: roleFromApi(authResponse.role),
+        is_active: true,
+      };
 
-      if (!userResponse.ok) {
-        throw new Error('Failed to fetch user info');
-      }
-
-      const userRaw = await userResponse.json();
-      const user = normalizeUser(userRaw);
       this.user = user;
+      await offlineDatabase.cacheUserProfile(user);
+      await secureStore.saveSession(user.id, user.email, user.full_name, user.role, this.token, '');
 
-      return { user, token: authResponse.access_token };
+      return { user, token: this.token, isFirstLogin: authResponse.is_first_login };
     } catch (error) {
+      if (error instanceof TypeError) {
+        throw new Error(`Cannot reach backend at ${API_BASE_URL}. Check server and network.`);
+      }
       throw error;
     }
   }
 
   /**
-   * Register with PIN for offline access
-   * User must provide a PIN (4-6 digits) for offline login
-   * Requires internet connection to register
+   * Patient login: national_id + password (requires internet for first-time)
    */
-  async register(data: RegisterData): Promise<{ user: User; token: string }> {
+  async loginPatient(nationalId: string, password: string): Promise<LoginResult> {
     try {
-      if (!data.pin || data.pin.length < 4) {
-        throw new Error('PIN must be at least 4 digits');
-      }
-
-      const response = await fetch(`${API_BASE_URL}/auth/register`, {
+      const response = await fetch(`${API_BASE_URL}/auth/login/patient`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: data.email,
-          password: data.password,
-          full_name: data.full_name,
-          role: roleToApi(data.role),
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ national_id: nationalId, password }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Registration failed');
+        const error = await response.json();
+        throw new Error(error.detail || 'Login failed');
       }
 
-      const userRaw = await response.json();
-      const user = normalizeUser(userRaw);
+      const authResponse: PatientLoginResponse = await response.json();
+      this.token = authResponse.access_token;
 
-      // Auto-login and get encrypted token
-      const loginResult = await this.login({
-        email: data.email,
-        password: data.password,
+      const user: User = {
+        id: authResponse.id,
+        email: nationalId,
+        full_name: nationalId,
+        role: 'patient',
+        is_active: true,
+      };
+
+      this.user = user;
+      await offlineDatabase.cacheUserProfile(user);
+      await secureStore.saveSession(user.id, nationalId, user.full_name, 'patient', this.token, '');
+
+      return { user, token: this.token, isFirstLogin: authResponse.is_first_login };
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new Error(`Cannot reach backend at ${API_BASE_URL}. Check server and network.`);
+      }
+      throw error;
+    }
+  }
+
+  async setupStaffFirstLoginPassword(email: string, password: string, confirmPassword: string): Promise<void> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/first-login/staff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, confirm_password: confirmPassword }),
       });
 
-      // Save session to SecureStore with PIN
-      await secureStore.saveSession(
-        loginResult.user.id,
-        loginResult.user.email,
-        loginResult.user.full_name,
-        loginResult.user.role,
-        loginResult.token,
-        data.pin
-      );
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to set first-time password');
+      }
 
-      return loginResult;
+      await response.json() as FirstLoginSetupResponse;
     } catch (error) {
+      if (error instanceof TypeError) {
+        throw new Error(`Cannot reach backend at ${API_BASE_URL}. Check server and network.`);
+      }
+      throw error;
+    }
+  }
+
+  async setupPatientFirstLoginPassword(nationalId: string, password: string, confirmPassword: string): Promise<void> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/first-login/patient`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ national_id: nationalId, password, confirm_password: confirmPassword }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to set first-time password');
+      }
+
+      await response.json() as FirstLoginSetupResponse;
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new Error(`Cannot reach backend at ${API_BASE_URL}. Check server and network.`);
+      }
       throw error;
     }
   }
 
   /**
-   * PIN-based offline login
-   * User enters their PIN (not email/password) to access app offline
-   * No internet required - completely local
+   * Offline PIN login (no internet required)
    */
-  async loginWithPin(credentials: PinLoginCredentials): Promise<{ user: User; token: string }> {
+  async loginWithPin(pin: string): Promise<{ user: User; token: string }> {
     try {
-      // Verify PIN against stored hash in SecureStore
-      const isPinValid = await secureStore.verifyPin(credentials.pin);
-      
-      if (!isPinValid) {
-        throw new Error('Invalid PIN');
-      }
+      const isPinValid = await secureStore.verifyPin(pin);
+      if (!isPinValid) throw new Error('Invalid PIN');
 
-      // Retrieve session from SecureStore
       const session = await secureStore.getSession();
-      if (!session) {
-        throw new Error('No saved session found. Please register first.');
-      }
+      if (!session) throw new Error('No session. Please login online first.');
 
-      // Restore session
       this.token = session.token;
       this.user = {
         id: session.userId,
@@ -221,17 +251,64 @@ class AuthService {
 
       this.isOffline = true;
 
-      return {
-        user: this.user,
-        token: this.token,
-      };
+      return { user: this.user, token: this.token };
     } catch (error) {
       throw error;
     }
   }
 
   /**
-   * Logout and clear all stored credentials
+   * Set PIN for offline access (after first login)
+   */
+  async setPinForOfflineAccess(pin: string): Promise<void> {
+    try {
+      const session = await secureStore.getSession();
+      if (!session || !this.user) throw new Error('No active session');
+
+      if (!pin || pin.length < 4 || pin.length > 6) {
+        throw new Error('PIN must be 4-6 digits');
+      }
+
+      await secureStore.saveSession(
+        session.userId,
+        session.email,
+        session.fullName,
+        session.role,
+        session.token,
+        pin
+      );
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Update PIN for offline access
+   */
+  async updatePin(newPin: string): Promise<void> {
+    try {
+      const session = await secureStore.getSession();
+      if (!session || !this.user) throw new Error('No active session');
+
+      if (!newPin || newPin.length < 4 || newPin.length > 6) {
+        throw new Error('PIN must be 4-6 digits');
+      }
+
+      await secureStore.saveSession(
+        session.userId,
+        session.email,
+        session.fullName,
+        session.role,
+        session.token,
+        newPin
+      );
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Logout and clear credentials
    */
   async logout(): Promise<void> {
     try {
@@ -240,63 +317,15 @@ class AuthService {
       this.user = null;
       this.isOffline = false;
     } catch (error) {
-      console.error('Failed to logout:', error);
+      console.error('Logout error:', error);
       throw error;
     }
   }
 
-  /**
-   * Fetch fresh user info from server (when online)
-   */
-  async getMe(): Promise<User | null> {
-    if (!this.token) return null;
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/me`, {
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch user info');
-      }
-
-      const user = normalizeUser(await response.json());
-      this.user = user;
-      return user;
-    } catch (error) {
-      console.error('Failed to fetch user info:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Refresh token from server (when online)
-   * Call this periodically when background syncing
-   */
-  async refreshToken(): Promise<string | null> {
-    try {
-      const session = await secureStore.getSession();
-      if (!session) return null;
-
-      // Try to refresh token endpoint if available
-      // For now, just return current token
-      // In production, implement token refresh logic
-      return session.token;
-    } catch (error) {
-      console.error('Failed to refresh token:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Get stored token for background sync
-   * This is used internally by sync services
-   */
   async getStoredToken(): Promise<string | null> {
     if (this.token) return this.token;
-    return await secureStore.getStoredToken();
+    const session = await secureStore.getSession();
+    return session?.token || null;
   }
 
   getToken(): string | null {
@@ -311,11 +340,12 @@ class AuthService {
     return !!this.token && !!this.user;
   }
 
-  /**
-   * Check if app is currently in offline mode
-   */
   isInOfflineMode(): boolean {
     return this.isOffline;
+  }
+
+  setOfflineMode(offline: boolean): void {
+    this.isOffline = offline;
   }
 }
 

@@ -35,6 +35,7 @@ import {
 interface FrontlineStaffScreenProps {
   user: User;
   onLogout: () => void;
+  isOnline?: boolean;
 }
 
 const initialFields = {

@@ -3,6 +3,8 @@ import { ActivityIndicator, View } from 'react-native';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { User, UserRole } from './src/types';
 import authService from './src/services/authService';
+import networkStatusService from './src/services/networkStatusService';
+import backgroundSyncService from './src/services/backgroundSyncService';
 import {
   morningSyncAssignedPatients,
   syncDirtyVitalsUpdates,
@@ -14,29 +16,40 @@ import PatientPortalScreen from './src/screens/PatientPortalScreen';
 export default function App(): React.JSX.Element {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        const { user: savedUser, token } = await authService.initializeAuth();
+        // Initialize network monitoring first
+        await networkStatusService.initialize();
+        setIsOnline(networkStatusService.getStatus());
+
+        // Initialize auth and background sync
+        const { user: savedUser, token, isOffline } = await authService.initializeAuth();
+        
         if (savedUser && token) {
           setUser(savedUser);
 
-          if (savedUser.role === 'frontline_staff') {
-            // Morning Sync: preload assigned patients + mini history while user is online at clinic.
-            try {
-              await morningSyncAssignedPatients(savedUser.id);
-            } catch (error) {
-              // Keep app usable even when sync endpoint/network is unavailable.
-            }
+          // If online, perform relevant syncs
+          if (!isOffline && networkStatusService.getStatus()) {
+            if (savedUser.role === 'frontline_staff') {
+              try {
+                await morningSyncAssignedPatients(savedUser.id);
+              } catch (error) {
+                console.error('Morning sync failed:', error);
+              }
 
-            // Try flushing dirty records from previous offline sessions.
-            try {
-              await syncDirtyVitalsUpdates();
-            } catch (error) {
-              // Ignore transient upload failures.
+              try {
+                await syncDirtyVitalsUpdates();
+              } catch (error) {
+                console.error('Dirty sync failed:', error);
+              }
             }
           }
+
+          // Start background sync
+          await backgroundSyncService.initialize();
         }
       } catch (error) {
         console.error('Failed to initialize app:', error);
@@ -46,6 +59,16 @@ export default function App(): React.JSX.Element {
     };
 
     initializeApp();
+
+    // Subscribe to network changes
+    const unsubscribe = networkStatusService.subscribe((online) => {
+      setIsOnline(online);
+    });
+
+    return () => {
+      unsubscribe();
+      backgroundSyncService.stop();
+    };
   }, []);
 
   const handleLoginSuccess = (role: UserRole) => {
@@ -60,7 +83,6 @@ export default function App(): React.JSX.Element {
     setUser(null);
   };
 
-  // Show loading screen
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
@@ -69,22 +91,20 @@ export default function App(): React.JSX.Element {
     );
   }
 
-  // Show login screen if not authenticated
   if (!user) {
     return (
       <>
         <ExpoStatusBar style="dark" />
-        <LoginScreen onLoginSuccess={handleLoginSuccess} />
+        <LoginScreen onLoginSuccess={handleLoginSuccess} isOnline={isOnline} />
       </>
     );
   }
 
-  // Show appropriate dashboard based on user role
   if (user.role === 'frontline_staff') {
     return (
       <>
         <ExpoStatusBar style="dark" />
-        <FrontlineStaffScreen user={user} onLogout={handleLogout} />
+        <FrontlineStaffScreen user={user} onLogout={handleLogout} isOnline={isOnline} />
       </>
     );
   }
@@ -93,12 +113,11 @@ export default function App(): React.JSX.Element {
     return (
       <>
         <ExpoStatusBar style="dark" />
-        <PatientPortalScreen user={user} onLogout={handleLogout} />
+        <PatientPortalScreen user={user} onLogout={handleLogout} isOnline={isOnline} />
       </>
     );
   }
 
-  // Unsupported role
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
       <ActivityIndicator size="large" color="#e11d48" />

@@ -35,7 +35,7 @@ class SecureStoreService {
     pin: string
   ): Promise<void> {
     try {
-      const pinHash = await this.hashPin(pin);
+      const pinHash = pin ? await this.hashPin(pin) : '';
       console.log('💾 Saving Session:');
       console.log('  Email:', email);
       console.log('  PIN:', pin);
@@ -90,6 +90,11 @@ class SecureStoreService {
       const session = await this.getSession();
       if (!session) {
         console.log('❌ No session found for PIN verification');
+        return false;
+      }
+
+      if (!session.pinHash) {
+        console.log('❌ No PIN has been set for this session');
         return false;
       }
 
