@@ -191,6 +191,14 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
   const [isLoadingCases, setIsLoadingCases] = useState(false)
   const [casesError, setCasesError] = useState<string | null>(null)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [userProfile, setUserProfile] = useState<any>(null)
+
+  useEffect(() => {
+    const profile = localStorage.getItem('bloomcare_user_profile')
+    if (profile) {
+      setUserProfile(JSON.parse(profile))
+    }
+  }, [])
   const [activeTab, setActiveTab] = useState("overview")
   const [showChat, setShowChat] = useState(false)
   const [chatMessage, setChatMessage] = useState("")
@@ -749,7 +757,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
               className="flex items-center gap-3 pl-4 border-l border-slate-200 hover:opacity-80 transition-opacity"
             >
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold text-slate-900">Dr. Saman Kumara</p>
+                <p className="text-sm font-bold text-slate-900">{userProfile?.full_name || "Loading..."}</p>
                 <p className="text-[10px] font-bold text-primary uppercase tracking-tighter">{getText("Obstetrician", "ප්‍රසව වෛද්‍ය", "மகப்பேறு மருத்துவர்")}</p>
               </div>
               <div className="w-10 h-10 bg-accent rounded-full flex items-center justify-center shadow-md shadow-accent/20 border-2 border-white">
@@ -758,6 +766,10 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
             </button>
             {showUserMenu && (
               <div className="absolute top-full right-0 mt-2 bg-white border border-slate-200 rounded-lg shadow-lg z-50 min-w-[200px] py-2">
+                <div className="px-4 py-2 border-b border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Signed in as</p>
+                  <p className="text-xs font-bold text-slate-900">{userProfile?.email || "N/A"}</p>
+                </div>
                 <button className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 flex items-center gap-2">
                   <Settings className="w-4 h-4 text-slate-400" />
                   {getText("Settings", "සැකසුම්", "அமைப்புகள்")}

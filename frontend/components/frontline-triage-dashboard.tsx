@@ -252,6 +252,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false)
   const [showResult, setShowResult] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [userProfile, setUserProfile] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [riskData, setRiskData] = useState<RiskResponse | null>(null)
@@ -262,6 +263,13 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
   const [activeTab, setActiveTab] = useState<"triage" | "registry" | "history">("triage")
   const [historyFilter, setHistoryFilter] = useState("all")
   const [selectedReport, setSelectedReport] = useState<HistoryEntry | null>(null)
+
+  useEffect(() => {
+    const profile = localStorage.getItem('bloomcare_user_profile')
+    if (profile) {
+      setUserProfile(JSON.parse(profile))
+    }
+  }, [])
 
   const getText = (en: string, si: string, ta: string) => {
     if (selectedLanguage === "SI") return si
@@ -1213,8 +1221,8 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
               className="flex items-center gap-3 group"
             >
               <div className="hidden sm:text-right sm:block">
-                <p className="text-sm font-black text-slate-900 tracking-tight">Nurse Kamala</p>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{getText("Wattala Clinic", "වත්තල සායනය", "வத்தளை கிளினிக்")}</p>
+                <p className="text-sm font-black text-slate-900 tracking-tight">{userProfile?.full_name || "Loading..."}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{getText("Frontline Staff", "මුල් පෙළ කාර්ය", "முன்னணி ஊழியர்")}</p>
               </div>
               <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center shadow-lg shadow-accent/20 transition-transform group-hover:scale-105">
                 <UserIcon className="w-5 h-5 text-white" />
@@ -1224,7 +1232,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
               <div className="absolute top-full right-0 mt-3 bg-white border border-slate-100 rounded-2xl shadow-2xl z-50 min-w-[220px] py-2 overflow-hidden animate-in fade-in slide-in-from-top-2">
                 <div className="px-5 py-4 border-b border-slate-50">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Signed in as</p>
-                  <p className="text-xs font-bold text-slate-900">kamala.n@hemas.lk</p>
+                  <p className="text-xs font-bold text-slate-900">{userProfile?.email || "N/A"}</p>
                 </div>
                 <button className="w-full px-5 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 flex items-center gap-3">
                   <Settings className="w-4 h-4 text-slate-400" />
