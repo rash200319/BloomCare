@@ -1,13 +1,14 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any, Union, Optional
+import bcrypt
 from passlib.context import CryptContext
 from jose import jwt
 
 from .config import settings
 
-# Keep bcrypt verification support for older rows, but generate new hashes
-# using pbkdf2_sha256 to avoid bcrypt backend compatibility failures.
-pwd_context = CryptContext(schemes=["pbkdf2_sha256", "bcrypt"], deprecated="auto")
+# Generate and verify passlib-managed hashes using pbkdf2_sha256.
+# Legacy bcrypt rows are verified via bcrypt.checkpw below.
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 def create_access_token(
     subject: Union[str, Any], expires_delta: Optional[timedelta] = None
@@ -23,6 +24,14 @@ def create_access_token(
     return encoded_jwt
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    # Legacy user rows may use bcrypt ($2a$, $2b$, $2y$). Verify directly to avoid
+    # passlib+bcrypt backend version incompatibilities.
+    if hashed_password and hashed_password.startswith("$2"):
+        try:
+            return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+        except ValueError:
+            return False
+
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:

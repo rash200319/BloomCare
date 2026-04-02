@@ -223,3 +223,55 @@ def list_appointments(
         )
     
     return result
+
+
+@router.get(
+    "/patient/{patient_id}",
+    response_model=List[AppointmentResponse],
+    summary="Get Appointments by Patient",
+    description="Retrieve all appointments for a specific patient"
+)
+def get_appointments_by_patient(
+    patient_id: str,
+    status_filter: Optional[str] = Query(
+        None,
+        alias="status",
+        description="Filter by appointment status (SCHEDULED, COMPLETED, CANCELLED, etc.)"
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    Get all appointments for a patient, optionally filtered by status.
+    
+    **Parameters:**
+    - **patient_id**: Patient's user ID (e.g., PAT-0001)
+    - **status**: Optional status filter (SCHEDULED, COMPLETED, CANCELLED, etc.)
+    
+    **Returns:**
+    - List of appointments ordered by appointment date (most recent first)
+    - Includes specialist details and queue information
+    
+    **Access:**
+    - Patients can only view their own appointments
+    - Clinical specialists, admin, and staff can view any patient's appointments
+    """
+    # Authorization: Patient can only view own, others can view any
+    if current_user.role == UserRole.PATIENT:
+        # Patient must match the requested patient_id
+        if current_user.user_id != patient_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Patients can only view their own appointments"
+            )
+    elif current_user.role not in [UserRole.CLINICAL_SPECIALIST, UserRole.ADMIN, UserRole.FRONTLINE_STAFF]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view patient appointments"
+        )
+    
+    return AppointmentService.get_appointments_by_patient(
+        db, 
+        patient_id,
+        status_filter
+    )

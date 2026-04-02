@@ -17,41 +17,28 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
--- SEQUENCES FOR USER ID GENERATION
-CREATE SEQUENCE IF NOT EXISTS fls_id_sequence START 1;
-CREATE SEQUENCE IF NOT EXISTS doc_id_sequence START 1;
-CREATE SEQUENCE IF NOT EXISTS pat_id_sequence START 1;
-
 -- USERS
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
-    nic VARCHAR(100) UNIQUE NOT NULL,
-    telephone VARCHAR(20) NOT NULL,
-    full_name VARCHAR(255) NOT NULL,
-    birthday DATE,
     hashed_password VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255),
     role user_role DEFAULT 'FRONTLINE_STAFF',
-    specialization VARCHAR(255),  -- Only for CLINICAL_SPECIALIST role
     is_active BOOLEAN DEFAULT TRUE,
-    is_first_login BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- PATIENTS
 CREATE TABLE IF NOT EXISTS patients (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id VARCHAR(50) UNIQUE NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
     national_id VARCHAR(100) UNIQUE,
     full_name VARCHAR(255) NOT NULL,
     age INT,
     date_of_birth DATE,
+    due_date DATE,
     contact_number VARCHAR(50),
     emergency_contact VARCHAR(50),
     blood_group VARCHAR(10),
-    hashed_password VARCHAR(255) NOT NULL,
     registered_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     assigned_worker_id UUID REFERENCES users(id) ON DELETE SET NULL
@@ -59,56 +46,6 @@ CREATE TABLE IF NOT EXISTS patients (
 
 ALTER TABLE patients
 ADD COLUMN IF NOT EXISTS age INT;
-
--- INDEXES FOR USER_ID AND NIC
-CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id);
-CREATE INDEX IF NOT EXISTS idx_users_nic ON users(nic);
-CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
-CREATE INDEX IF NOT EXISTS idx_patients_user_id ON patients(user_id);
-CREATE INDEX IF NOT EXISTS idx_patients_national_id ON patients(national_id);
-
--- FUNCTION: Generate unique user_id based on role
-CREATE OR REPLACE FUNCTION generate_user_id(p_role user_role)
-RETURNS VARCHAR AS $$
-DECLARE
-    v_sequence_val BIGINT;
-    v_prefix VARCHAR;
-    v_user_id VARCHAR;
-BEGIN
-    IF p_role = 'FRONTLINE_STAFF' THEN
-        v_sequence_val := nextval('fls_id_sequence');
-        v_prefix := 'FLS';
-    ELSIF p_role = 'CLINICAL_SPECIALIST' THEN
-        v_sequence_val := nextval('doc_id_sequence');
-        v_prefix := 'DOC';
-    ELSIF p_role = 'PATIENT' THEN
-        v_sequence_val := nextval('pat_id_sequence');
-        v_prefix := 'PAT';
-    ELSE
-        RAISE EXCEPTION 'Invalid role for user_id generation: %', p_role;
-    END IF;
-    
-    v_user_id := v_prefix || '-' || LPAD(v_sequence_val::TEXT, 4, '0');
-    RETURN v_user_id;
-END;
-$$ LANGUAGE plpgsql;
-
--- TRIGGER: Auto-generate user_id on insert
-CREATE OR REPLACE FUNCTION trigger_generate_user_id()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF NEW.user_id IS NULL OR NEW.user_id = '' THEN
-        NEW.user_id := generate_user_id(NEW.role);
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_generate_user_id ON users;
-CREATE TRIGGER trg_generate_user_id
-BEFORE INSERT ON users
-FOR EACH ROW
-EXECUTE FUNCTION trigger_generate_user_id();
 
 -- LONGITUDINAL SCREENING REPORTS
 CREATE TABLE IF NOT EXISTS screening_reports (
@@ -195,6 +132,7 @@ CREATE TABLE IF NOT EXISTS stage2_diagnostics (
     evaluated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+
 ALTER TABLE stage2_diagnostics
 ADD COLUMN IF NOT EXISTS explainability_data JSONB;
 
@@ -248,19 +186,32 @@ CREATE TABLE IF NOT EXISTS appointments (
     patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
     specialist_id UUID REFERENCES users(id) ON DELETE SET NULL,
     appointment_date TIMESTAMPTZ NOT NULL,
-    duration_minutes INT DEFAULT 30,  -- Appointment duration in minutes
-    queue_number INT,  -- Queue number for the day (resets daily per specialist)
-    status VARCHAR(50) DEFAULT 'SCHEDULED',  -- SCHEDULED, COMPLETED, CANCELLED
+    status VARCHAR(50) DEFAULT 'SCHEDULED',
     notes TEXT,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- INDEXES FOR APPOINTMENTS
-CREATE INDEX IF NOT EXISTS idx_appointments_specialist_date ON appointments(specialist_id, DATE(appointment_date));
-CREATE INDEX IF NOT EXISTS idx_appointments_patient_id ON appointments(patient_id);
-CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(appointment_date);
-CREATE INDEX IF NOT EXISTS idx_appointments_specialist_queue ON appointments(specialist_id, DATE(appointment_date), queue_number);
+-- NEW CHANGES: PRESCRIPTIONS
+CREATE TABLE IF NOT EXISTS prescriptions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+    specialist_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    stage2_diagnostic_id UUID REFERENCES stage2_diagnostics(id) ON DELETE SET NULL,
+
+    medication_name VARCHAR(255) NOT NULL,
+    dosage VARCHAR(100),
+    frequency VARCHAR(100),
+    route VARCHAR(50),
+    instructions TEXT,
+
+    start_date DATE DEFAULT CURRENT_DATE,
+    end_date DATE,
+    is_active BOOLEAN DEFAULT TRUE,
+
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_prescriptions_patient ON prescriptions(patient_id);
 
 -- SYNC LOGS
 CREATE TABLE IF NOT EXISTS sync_queue_logs (
@@ -304,45 +255,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- FUNCTION: Get next queue number for specialist on a given date
-CREATE OR REPLACE FUNCTION get_next_queue_number(p_specialist_id UUID, p_appointment_date TIMESTAMPTZ)
-RETURNS INT AS $$
-DECLARE
-    v_next_queue INT;
-BEGIN
-    SELECT COALESCE(MAX(queue_number), 0) + 1 INTO v_next_queue
-    FROM appointments
-    WHERE specialist_id = p_specialist_id
-      AND DATE(appointment_date) = DATE(p_appointment_date)
-      AND status != 'CANCELLED';
-    
-    RETURN v_next_queue;
-END;
-$$ LANGUAGE plpgsql;
-
--- FUNCTION: Check for double booking (same specialist, same date, overlapping time)
-CREATE OR REPLACE FUNCTION check_double_booking(
-    p_specialist_id UUID, 
-    p_appointment_date TIMESTAMPTZ, 
-    p_duration_minutes INT
-)
-RETURNS BOOLEAN AS $$
-DECLARE
-    v_appointment_end TIMESTAMPTZ;
-BEGIN
-    v_appointment_end := p_appointment_date + (p_duration_minutes || ' minutes')::INTERVAL;
-    
-    RETURN EXISTS (
-        SELECT 1 FROM appointments
-        WHERE specialist_id = p_specialist_id
-          AND DATE(appointment_date) = DATE(p_appointment_date)
-          AND status != 'CANCELLED'
-          AND appointment_date < v_appointment_end
-          AND (appointment_date + (duration_minutes || ' minutes')::INTERVAL) > p_appointment_date
-    );
-END;
-$$ LANGUAGE plpgsql;
-
 -- FUNCTION: Generic updated_at touch
 CREATE OR REPLACE FUNCTION touch_updated_at()
 RETURNS TRIGGER AS $$
@@ -351,13 +263,6 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
--- TRIGGER: Update appointments updated_at
-DROP TRIGGER IF EXISTS trg_appointments_touch_updated_at ON appointments;
-CREATE TRIGGER trg_appointments_touch_updated_at
-BEFORE UPDATE ON appointments
-FOR EACH ROW
-EXECUTE FUNCTION touch_updated_at();
 
 -- TRIGGER FUNCTION
 CREATE OR REPLACE FUNCTION trigger_auto_escalate()
