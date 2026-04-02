@@ -2,17 +2,17 @@ from typing import Any, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import String, cast
 from sqlalchemy.orm import Session
-from core.deps import get_db, get_current_active_user
-from schemas.patient import (
+from backend.core.deps import get_db, get_current_active_user
+from backend.schemas.patient import (
     Patient,
     PatientCreate,
     PatientHistoryResponse,
     Stage2WithStage1Context,
     Stage1VitalsSnapshot,
 )
-from models.patient import Patient as DBPatient
-from models.screening import Stage1Screening, Stage2Diagnostic
-from models.user import User
+from backend.models.patient import Patient as DBPatient
+from backend.models.screening import Stage1Screening, Stage2Diagnostic
+from backend.models.user import User
 import uuid
 
 router = APIRouter()
@@ -49,6 +49,7 @@ def read_patients(
         )
     return patients
 
+
 @router.post("/", response_model=Patient)
 def create_patient(
     *,
@@ -56,7 +57,8 @@ def create_patient(
     patient_in: PatientCreate,
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    patient = db.query(DBPatient).filter(DBPatient.national_id == patient_in.national_id).first()
+    patient = db.query(DBPatient).filter(
+        DBPatient.national_id == patient_in.national_id).first()
     if patient and patient_in.national_id:
         patient.full_name = patient_in.full_name
         patient.age = patient_in.age
@@ -104,7 +106,8 @@ def get_patient_history(
     # RBAC: admin/clinical specialist full access; frontline only assigned patients
     if _role_name(current_user) not in ["ADMIN", "CLINICAL_SPECIALIST"]:
         if str(getattr(patient, "assigned_worker_id", "")) != str(current_user.id):
-            raise HTTPException(status_code=403, detail="Not authorized to view this patient history")
+            raise HTTPException(
+                status_code=403, detail="Not authorized to view this patient history")
 
     # JOIN Stage-2 with Stage-1 via stage1_screening_id, keeping stage2 rows even if stage1 is missing.
     rows = (
@@ -124,15 +127,21 @@ def get_patient_history(
             screening_id=_as_str_or_none(getattr(stage1, "id", None)),
             encounter_id=getattr(stage1, "encounter_id", None),
             collected_at=getattr(stage1, "collected_at", None),
-            gestational_age_weeks=getattr(stage1, "gestational_age_weeks", None),
+            gestational_age_weeks=getattr(
+                stage1, "gestational_age_weeks", None),
             systolic=getattr(stage1, "systolic", None),
             diastolic=getattr(stage1, "diastolic", None),
-            bmi=float(stage1.bmi) if getattr(stage1, "bmi", None) is not None else None,
+            bmi=float(stage1.bmi) if getattr(
+                stage1, "bmi", None) is not None else None,
             heart_rate=getattr(stage1, "heart_rate", None),
-            temperature=float(stage1.temperature) if getattr(stage1, "temperature", None) is not None else None,
-            blood_sugar=float(stage1.Blood_sugar) if getattr(stage1, "Blood_sugar", None) is not None else None,
-            hemoglobin=float(stage1.hemoglobin) if getattr(stage1, "hemoglobin", None) is not None else None,
-            edge_risk_score=float(stage1.edge_risk_score) if getattr(stage1, "edge_risk_score", None) is not None else None,
+            temperature=float(stage1.temperature) if getattr(
+                stage1, "temperature", None) is not None else None,
+            blood_sugar=float(stage1.Blood_sugar) if getattr(
+                stage1, "Blood_sugar", None) is not None else None,
+            hemoglobin=float(stage1.hemoglobin) if getattr(
+                stage1, "hemoglobin", None) is not None else None,
+            edge_risk_score=float(stage1.edge_risk_score) if getattr(
+                stage1, "edge_risk_score", None) is not None else None,
             edge_risk_classification=(
                 stage1.edge_risk_classification.value
                 if getattr(stage1, "edge_risk_classification", None) is not None

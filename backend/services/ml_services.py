@@ -8,7 +8,7 @@ import joblib
 import pandas as pd
 from sklearn.base import BaseEstimator
 
-from schemas.screening import (
+from backend.schemas.screening import (
     ClusterProfile,
     ConditionProbability,
     ConditionType,
@@ -122,12 +122,14 @@ def _map_payload_to_feature_dict(
 
 
 def _prepare_input_frame(feature_map: Dict[str, float], feature_order: List[str]) -> pd.DataFrame:
-    row = {feature: _safe_float(feature_map.get(feature), 0.0) for feature in feature_order}
+    row = {feature: _safe_float(feature_map.get(feature), 0.0)
+           for feature in feature_order}
     return pd.DataFrame([row], columns=feature_order)
 
 
 def _load_model_artifact(disease: str) -> Tuple[Any, Path]:
-    model_file = MODEL_FILE_BY_DISEASE.get(disease, MODEL_FILE_BY_DISEASE["preeclampsia"])
+    model_file = MODEL_FILE_BY_DISEASE.get(
+        disease, MODEL_FILE_BY_DISEASE["preeclampsia"])
     model_path = MODELS_DIR / model_file
     if not model_path.exists():
         raise FileNotFoundError(f"Model file not found: {model_path}")
@@ -158,7 +160,8 @@ def run_selected_stage2_model(
     if model is None:
         raise ValueError(f"Invalid model artifact in {model_path.name}")
     if not feature_cols:
-        raise ValueError(f"Could not determine feature columns for {model_path.name}")
+        raise ValueError(
+            f"Could not determine feature columns for {model_path.name}")
 
     mapped = _map_payload_to_feature_dict(payload, disease, stage1_context)
     X = _prepare_input_frame(mapped, feature_cols)

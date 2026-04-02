@@ -1,3 +1,4 @@
+from backend.core.config import settings
 import os
 import psycopg2
 from urllib.parse import urlparse
@@ -6,11 +7,10 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-from core.config import settings
 
 def init_db():
     logger.info("Initializing database from schema.sql...")
-    
+
     # Parse SQLAlchemy URI to get psycopg2 parameters
     result = urlparse(settings.SQLALCHEMY_DATABASE_URI)
     username = result.username
@@ -18,7 +18,7 @@ def init_db():
     database = result.path[1:]
     hostname = result.hostname
     port = result.port
-    
+
     try:
         # Connect to DB directly
         conn = psycopg2.connect(
@@ -30,11 +30,11 @@ def init_db():
         )
         conn.autocommit = True
         cursor = conn.cursor()
-        
+
         schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
         with open(schema_path, "r") as f:
             sql = f.read()
-            
+
         try:
             cursor.execute(sql)
             logger.info("Schema execution completed successfully!")
@@ -44,9 +44,9 @@ def init_db():
             conn.rollback()
 
         cursor.execute('SET search_path TO "BloomCare"')
-        
+
         # Insert default users for demo/testing
-        from core.security import get_password_hash
+        from backend.core.security import get_password_hash
 
         seed_users = [
             {
@@ -89,8 +89,9 @@ def init_db():
                 """,
                 (item["email"], pwd_hash, item["full_name"], item["role"])
             )
-            logger.info("Upserted seed user %s (%s)", item["email"], item["role"])
-            
+            logger.info("Upserted seed user %s (%s)",
+                        item["email"], item["role"])
+
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
     finally:
@@ -98,6 +99,7 @@ def init_db():
             cursor.close()
         if 'conn' in locals():
             conn.close()
+
 
 if __name__ == "__main__":
     init_db()

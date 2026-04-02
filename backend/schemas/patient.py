@@ -9,6 +9,7 @@ NIC_PATTERN = re.compile(r"^(?:\d{9}[VvXx]|\d{12})$")
 PHONE_PATTERN = re.compile(r"^(?:\+94\d{9}|0\d{9})$")
 ALLOWED_BLOOD_GROUPS = {"A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"}
 
+
 class PatientBase(BaseModel):
     national_id: Optional[str] = None
     full_name: str
@@ -41,7 +42,8 @@ class PatientCreate(PatientBase):
         if not normalized:
             return None
         if not PHONE_PATTERN.match(normalized):
-            raise ValueError("phone number must be in +94XXXXXXXXX or 0XXXXXXXXX format")
+            raise ValueError(
+                "phone number must be in +94XXXXXXXXX or 0XXXXXXXXX format")
         return normalized
 
     @field_validator("blood_group")
@@ -53,7 +55,8 @@ class PatientCreate(PatientBase):
         if not normalized:
             return None
         if normalized not in ALLOWED_BLOOD_GROUPS:
-            raise ValueError("blood_group must be one of A+, A-, B+, B-, AB+, AB-, O+, O-")
+            raise ValueError(
+                "blood_group must be one of A+, A-, B+, B-, AB+, AB-, O+, O-")
         return normalized
 
     @field_validator("age")
@@ -89,12 +92,14 @@ class PatientCreate(PatientBase):
 class PatientUpdate(PatientCreate):
     pass
 
+
 class PatientInDBBase(PatientBase):
     id: UUID
     created_at: datetime
     updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
 
 class Patient(PatientInDBBase):
     pass
@@ -137,3 +142,37 @@ class PatientHistoryResponse(BaseModel):
     patient_id: str
     patient_name: Optional[str] = None
     diagnostics: List[Stage2WithStage1Context] = []
+
+
+# ============== NEW SCHEMAS FOR STAFF & PATIENT MANAGEMENT ==============
+
+class CreatePatientRequest(BaseModel):
+    """Request schema for admin to create patients"""
+    full_name: str
+    national_id: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    age: Optional[int] = None
+    contact_number: Optional[str] = None
+    emergency_contact: Optional[str] = None
+    blood_group: Optional[str] = None
+
+
+class PatientManagementResponse(BaseModel):
+    """Response schema for patient in management context"""
+    id: str
+    user_id: str
+    full_name: str
+    national_id: Optional[str]
+    date_of_birth: Optional[date]
+    age: Optional[int]
+    contact_number: Optional[str]
+    emergency_contact: Optional[str]
+    blood_group: Optional[str]
+
+    model_config = {"from_attributes": True}
+
+
+class PatientFilterRequest(BaseModel):
+    """Request schema for filtering patients"""
+    full_name: Optional[str] = None
+    user_id: Optional[str] = None

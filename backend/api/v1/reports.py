@@ -9,10 +9,10 @@ import json
 import uuid
 from io import BytesIO
 
-from core.deps import get_db, get_current_active_user
-from schemas.screening import PatientReportRequest, PatientReportResponse, Stage1ScreeningReportData
-from models.user import User
-from models.screening import Stage1Screening, Stage2Diagnostic, PatientReport
+from backend.core.deps import get_db, get_current_active_user
+from backend.schemas.screening import PatientReportRequest, PatientReportResponse, Stage1ScreeningReportData
+from backend.models.user import User
+from backend.models.screening import Stage1Screening, Stage2Diagnostic, PatientReport
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +23,10 @@ def _format_contributing_factors(factors: Dict[str, float]) -> List[str]:
     """Convert contributing factors dict to human-readable list."""
     if not factors:
         return []
-    
+
     # Sort by importance
     sorted_factors = sorted(factors.items(), key=lambda x: x[1], reverse=True)
-    
+
     factor_descriptions = {
         "severe_hypertension": "Severe high blood pressure (≥160/110 mmHg)",
         "hypertension": "High blood pressure (≥140/90 mmHg)",
@@ -41,13 +41,14 @@ def _format_contributing_factors(factors: Dict[str, float]) -> List[str]:
         "previous_obstetric_complications": "Previous obstetric complications",
         "mental_health_concerns": "Mental health concerns",
     }
-    
+
     descriptions = []
     for factor, importance in sorted_factors:
-        desc = factor_descriptions.get(factor, factor.replace("_", " ").title())
+        desc = factor_descriptions.get(
+            factor, factor.replace("_", " ").title())
         importance_pct = round(importance * 100)
         descriptions.append(f"• {desc} ({importance_pct}%)")
-    
+
     return descriptions
 
 

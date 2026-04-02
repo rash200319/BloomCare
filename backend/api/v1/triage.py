@@ -8,12 +8,12 @@ import hashlib
 import json
 import uuid
 
-from core.deps import get_db, get_current_active_user
-from schemas.screening import BatchedTriageSyncInput, TriageSyncResponse, RiskTier
-from models.sync_log import SyncQueueLog
-from models.screening import PatientReport, Stage1Screening
-from models.patient import Patient as DBPatient
-from models.user import User
+from backend.core.deps import get_db, get_current_active_user
+from backend.schemas.screening import BatchedTriageSyncInput, TriageSyncResponse, RiskTier
+from backend.models.sync_log import SyncQueueLog
+from backend.models.screening import PatientReport, Stage1Screening
+from backend.models.patient import Patient as DBPatient
+from backend.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +23,10 @@ router = APIRouter()
 def _role_name(user: User) -> str:
     return user.role.value if hasattr(user.role, "value") else str(user.role)
 
+
 def compute_hash(payload: dict) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
 
 @router.post("/sync", response_model=List[TriageSyncResponse], status_code=status.HTTP_201_CREATED)
 def triage_sync(
@@ -33,25 +35,27 @@ def triage_sync(
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     responses = []
-    
+
     for payload in payload_batch.items:
         payload_dict = payload.model_dump()
         payload_hash = compute_hash(payload_dict)
-        
+
         # Conflict Resolution
-        existing_log = db.query(SyncQueueLog).filter(SyncQueueLog.payload_hash == payload_hash).first()
+        existing_log = db.query(SyncQueueLog).filter(
+            SyncQueueLog.payload_hash == payload_hash).first()
         if existing_log and existing_log.sync_status == "SUCCESS":
             logger.info("Skipping duplicated payload based on hash.")
             continue
-            
+
         # Parse Dates
         try:
-            coll_at = datetime.fromisoformat(payload.collected_at) if payload.collected_at else datetime.utcnow()
+            coll_at = datetime.fromisoformat(
+                payload.collected_at) if payload.collected_at else datetime.utcnow()
         except Exception:
             coll_at = datetime.utcnow()
 
         escalation_required = payload.edge_risk_classification == RiskTier.ESCALATE
-        
+
         # Save to DB
         screening_id = str(uuid.uuid4())
         db_screening = Stage1Screening(
@@ -112,7 +116,7 @@ def triage_sync(
             generated_by=current_user.id,
         )
         db.add(db_report)
-        
+
         # Logging sync
         db_log = SyncQueueLog(
             device_id=payload.device_id,
@@ -133,7 +137,7 @@ def triage_sync(
             "escalation_required": escalation_required,
             "stage2_priority": None,
         })
-        
+
     return responses
 
 
@@ -153,16 +157,21 @@ def stage1_history(
     role = _role_name(current_user)
     if role in ["ADMIN", "CLINICAL_SPECIALIST"]:
         if patient_id:
-            rows = rows.filter(cast(Stage1Screening.patient_id, String) == str(patient_id))
+            rows = rows.filter(
+                cast(Stage1Screening.patient_id, String) == str(patient_id))
     elif role == "FRONTLINE_STAFF":
-        rows = rows.filter(cast(Stage1Screening.worker_id, String) == str(current_user.id))
+        rows = rows.filter(cast(Stage1Screening.worker_id,
+                           String) == str(current_user.id))
         if patient_id:
-            rows = rows.filter(cast(Stage1Screening.patient_id, String) == str(patient_id))
+            rows = rows.filter(
+                cast(Stage1Screening.patient_id, String) == str(patient_id))
     else:
-        rows = rows.filter(cast(Stage1Screening.patient_id, String) == str(current_user.id))
+        rows = rows.filter(cast(Stage1Screening.patient_id,
+                           String) == str(current_user.id))
 
     entries = (
-        rows.order_by(Stage1Screening.collected_at.desc(), Stage1Screening.synced_at.desc())
+        rows.order_by(Stage1Screening.collected_at.desc(),
+                      Stage1Screening.synced_at.desc())
         .limit(limit)
         .all()
     )
@@ -170,7 +179,8 @@ def stage1_history(
     response_rows = []
     for screening, patient in entries:
         risk_raw = screening.edge_risk_classification
-        risk_value = risk_raw.value if hasattr(risk_raw, "value") else (str(risk_raw) if risk_raw is not None else None)
+        risk_value = risk_raw.value if hasattr(risk_raw, "value") else (
+            str(risk_raw) if risk_raw is not None else None)
 
         response_rows.append(
             {
