@@ -7,6 +7,7 @@ import FrontlineTriageDashboard from "./frontline-triage-dashboard"
 import ClinicalDashboard from "./clinical-dashboard"
 import AdminDashboard from "./admin-dashboard"
 import PatientPortal from "./patient-portal"
+import SiteChatbot from "./site-chatbot"
 
 type UserRole = "frontline" | "doctor" | "admin" | "patient" | null
 type AppView = "home" | "login" | "dashboard"
@@ -24,6 +25,7 @@ export default function BloomCareApp() {
   const [currentRole, setCurrentRole] = useState<UserRole>(null)
   const [currentView, setCurrentView] = useState<AppView>("home")
   const [isLoading, setIsLoading] = useState(true)
+  const [pendingSectionId, setPendingSectionId] = useState<string | null>(null)
 
   // Restore session on app mount
   useEffect(() => {
@@ -102,44 +104,86 @@ export default function BloomCareApp() {
     setCurrentView("home")
   }
 
+  const handleChatbotNavigate = (target: "home" | "login" | "features" | "conditions" | "dashboard") => {
+    if (target === "home") {
+      setCurrentRole(null)
+      setCurrentView("home")
+      setPendingSectionId(null)
+      return
+    }
+
+    if (target === "login") {
+      setCurrentView("login")
+      setPendingSectionId(null)
+      return
+    }
+
+    if (target === "features" || target === "conditions") {
+      setCurrentRole(null)
+      setCurrentView("home")
+      setPendingSectionId(target)
+      return
+    }
+
+    if (target === "dashboard") {
+      if (currentRole) {
+        setCurrentView("dashboard")
+      } else {
+        setCurrentView("login")
+      }
+      setPendingSectionId(null)
+    }
+  }
+
+  useEffect(() => {
+    if (currentView !== "home" || !pendingSectionId || typeof window === "undefined") return
+
+    const timeout = window.setTimeout(() => {
+      const section = document.getElementById(pendingSectionId)
+      if (section) {
+        section.scrollIntoView({ behavior: "smooth", block: "start" })
+      }
+      setPendingSectionId(null)
+    }, 100)
+
+    return () => window.clearTimeout(timeout)
+  }, [currentView, pendingSectionId])
+
+  const renderMainView = () => {
+    if (currentView === "home") {
+      return <HomePage onNavigateToLogin={handleNavigateToLogin} />
+    }
+
+    if (currentView === "login") {
+      return <LoginPage onLogin={handleLogin} onBack={handleNavigateToHome} />
+    }
+
+    switch (currentRole) {
+      case "frontline":
+        return <FrontlineTriageDashboard onLogout={handleLogout} />
+      case "doctor":
+        return <ClinicalDashboard onLogout={handleLogout} />
+      case "admin":
+        return <AdminDashboard onLogout={handleLogout} />
+      case "patient":
+        return <PatientPortal onLogout={handleLogout} />
+      default:
+        return <HomePage onNavigateToLogin={handleNavigateToLogin} />
+    }
+  }
+
   if (isLoading) {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>
   }
 
-  // Show home page
-  if (currentView === "home") {
-    return (
-      <HomePage 
-        onNavigateToLogin={handleNavigateToLogin}
+  return (
+    <>
+      {renderMainView()}
+      <SiteChatbot
+        currentView={currentView}
+        currentRole={currentRole}
+        onNavigate={handleChatbotNavigate}
       />
-    )
-  }
-
-  // Show login page
-  if (currentView === "login") {
-    return (
-      <LoginPage 
-        onLogin={handleLogin} 
-        onBack={handleNavigateToHome}
-      />
-    )
-  }
-
-  // ✅ ROLE ENFORCEMENT: Only render the dashboard that matches user's actual role
-  switch (currentRole) {
-    case "frontline":
-      return <FrontlineTriageDashboard onLogout={handleLogout} />
-    case "doctor":
-      return <ClinicalDashboard onLogout={handleLogout} />
-    case "admin":
-      return <AdminDashboard onLogout={handleLogout} />
-    case "patient":
-      return <PatientPortal onLogout={handleLogout} />
-    default:
-      return (
-        <HomePage 
-          onNavigateToLogin={handleNavigateToLogin}
-        />
-      )
-  }
+    </>
+  )
 }
