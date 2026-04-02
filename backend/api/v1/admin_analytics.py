@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any, List
 import logging
 
-from core.deps import get_db, get_current_active_user
-from models.user import User
-from services.admin_service import (
+from backend.core.deps import get_db, get_current_active_user
+from backend.models.user import User
+from backend.services.admin_service import (
     AdminService,
     AdminMetrics,
     TrendDataPoint,

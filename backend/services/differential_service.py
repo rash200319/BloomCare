@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from sklearn.exceptions import InconsistentVersionWarning
 
-from schemas.differential import DifferentialEvaluationRequest
+from backend.schemas.differential import DifferentialEvaluationRequest
 
 try:
     import shap  # type: ignore

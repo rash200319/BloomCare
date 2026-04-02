@@ -12,12 +12,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
-from core.deps import get_current_active_user, get_db
-from models.patient import Patient as DBPatient
-from models.screening import Stage1Screening, Stage2Diagnostic, Stage2Recommendation
-from models.user import User
-from schemas.differential import DifferentialEvaluationRequest, DifferentialEvaluationResponse
-from services.differential_service import evaluate_differential
+from backend.core.deps import get_current_active_user, get_db
+from backend.models.patient import Patient as DBPatient
+from backend.models.screening import Stage1Screening, Stage2Diagnostic, Stage2Recommendation
+from backend.models.user import User
+from backend.schemas.differential import DifferentialEvaluationRequest, DifferentialEvaluationResponse
+from backend.services.differential_service import evaluate_differential
 
 router = APIRouter()
 
