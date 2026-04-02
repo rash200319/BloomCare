@@ -13,7 +13,6 @@ ALLOWED_BLOOD_GROUPS = {"A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"}
 class PatientBase(BaseModel):
     national_id: Optional[str] = None
     full_name: str
-    date_of_birth: Optional[date] = None
     due_date: Optional[date] = None
     emergency_contact: Optional[str] = None
     blood_group: Optional[str] = None
@@ -69,24 +68,8 @@ class PatientCreate(PatientBase):
             raise ValueError("age must be between 0 and 120")
         return value
 
-    @field_validator("date_of_birth")
-    @classmethod
-    def validate_date_of_birth(cls, value: Optional[date]) -> Optional[date]:
-        if value is None:
-            return None
-        if value > date.today():
-            raise ValueError("date_of_birth cannot be in the future")
-        return value
-
     @model_validator(mode="after")
     def validate_age_alignment(self) -> "PatientBase":
-        if self.date_of_birth and self.age is not None:
-            today = date.today()
-            years = today.year - self.date_of_birth.year
-            if (today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day):
-                years -= 1
-            if abs(years - self.age) > 1:
-                raise ValueError("age does not match date_of_birth")
         return self
 
 
@@ -150,8 +133,7 @@ class PatientHistoryResponse(BaseModel):
 class CreatePatientRequest(BaseModel):
     """Request schema for admin to create patients"""
     full_name: str
-    national_id: Optional[str] = None
-    date_of_birth: Optional[date] = None
+    national_id: str
     due_date: Optional[date] = None
     age: Optional[int] = None
     contact_number: Optional[str] = None
@@ -162,10 +144,8 @@ class CreatePatientRequest(BaseModel):
 class PatientManagementResponse(BaseModel):
     """Response schema for patient in management context"""
     id: str
-    user_id: str
     full_name: str
     national_id: Optional[str]
-    date_of_birth: Optional[date]
     due_date: Optional[date]
     age: Optional[int]
     contact_number: Optional[str]
@@ -178,4 +158,4 @@ class PatientManagementResponse(BaseModel):
 class PatientFilterRequest(BaseModel):
     """Request schema for filtering patients"""
     full_name: Optional[str] = None
-    user_id: Optional[str] = None
+    id: Optional[str] = None

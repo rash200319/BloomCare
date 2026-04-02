@@ -133,8 +133,10 @@ const roleOptions = [
 export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null)
   const [language, setLanguage] = useState<Language>("EN")
-  const [email, setEmail] = useState("")
+  const [identifier, setIdentifier] = useState("")
   const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [isFirstLoginMode, setIsFirstLoginMode] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
@@ -153,9 +155,42 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
     return en
   }
 
+  const isPatientRole = selectedRole === "patient"
+
+  const getIdentifierLabel = () => {
+    if (isPatientRole) {
+      return getText("National ID", "ජාතික හැඳුනුම්පත් අංකය", "தேசிய அடையாள எண்")
+    }
+    return getText("Email", "ඊමේල්", "மின்னஞ்சல்")
+  }
+
+  const getIdentifierPlaceholder = () => {
+    if (isPatientRole) {
+      return "199912345678"
+    }
+    return "name@hemas.lk"
+  }
+
+  const getIdentifierPayload = () => {
+    if (isPatientRole) {
+      return { national_id: identifier }
+    }
+    return { email: identifier }
+  }
+
   const handleLogin = async () => {
-    if (!selectedRole || !email || !password) {
+    if (!selectedRole || !identifier || !password) {
       setErrorMessage(getText("Please fill all required fields.", "අවශ්‍ය සියලු ක්ෂේත්‍ර පුරවන්න.", "அனைத்து தேவையான புலங்களையும் நிரப்பவும்."))
+      return
+    }
+
+    if (isFirstLoginMode && !confirmPassword) {
+      setErrorMessage(getText("Please confirm your password.", "කරුණාකර මුරපදය තහවුරු කරන්න.", "கடவுச்சொல்லை உறுதிப்படுத்தவும்."))
+      return
+    }
+
+    if (isFirstLoginMode && password !== confirmPassword) {
+      setErrorMessage(getText("Passwords do not match.", "මුරපද ගැළපෙන්නේ නැත.", "கடவுச்சொற்கள் பொருந்தவில்லை."))
       return
     }
 
@@ -163,11 +198,39 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
     setIsLoading(true)
 
     try {
-      const loginResponse = await authFetch("/auth/login-user-id", {
+      if (isFirstLoginMode) {
+        const setupEndpoint = isPatientRole ? "/auth/first-login/patient" : "/auth/first-login/staff"
+        const setupResponse = await authFetch(setupEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...getIdentifierPayload(),
+            password,
+            confirm_password: confirmPassword,
+          }),
+        })
+
+        if (!setupResponse.ok) {
+          const err = await setupResponse.json().catch(() => ({}))
+          throw new Error(err?.detail || "Password setup failed")
+        }
+
+        setIsFirstLoginMode(false)
+        setConfirmPassword("")
+        setErrorMessage(getText(
+          "Password set successfully. Please sign in.",
+          "මුරපදය සාර්ථකව සකසා ඇත. දැන් පුරනය වන්න.",
+          "கடவுச்சொல் வெற்றிகரமாக அமைக்கப்பட்டது. தயவுசெய்து உள்நுழையவும்."
+        ))
+        return
+      }
+
+      const loginEndpoint = isPatientRole ? "/auth/login/patient" : "/auth/login/staff"
+      const loginResponse = await authFetch(loginEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: email,
+          ...getIdentifierPayload(),
           password,
         }),
       })
@@ -363,17 +426,17 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
                 <CardContent className="space-y-6 px-12 pb-12">
                   <div className="space-y-3">
                     <Label htmlFor="email" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
-                      {getText("Email / Employee ID", "ඊමේල් / සේවා අංකය", "மின்னஞ்சல்")}
+                      {getIdentifierLabel()}
                     </Label>
                     <div className="relative group">
                       <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-primary transition-colors" />
                       <Input 
                         id="email"
-                        type="email" 
-                        placeholder="name@hemas.lk"
+                        type={isPatientRole ? "text" : "email"}
+                        placeholder={getIdentifierPlaceholder()}
                         className="h-12 pl-12 bg-white/50 border-slate-100 focus:border-primary/30 focus:ring-primary/10 rounded-xl transition-all font-bold text-slate-800"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        value={identifier}
+                        onChange={(e) => setIdentifier(e.target.value)}
                       />
                     </div>
                   </div>
@@ -402,6 +465,25 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
                     </div>
                   </div>
 
+                  {isFirstLoginMode && (
+                    <div className="space-y-3">
+                      <Label htmlFor="confirm-password" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                        {getText("Confirm Password", "මුරපදය තහවුරු කරන්න", "கடவுச்சொல்லை உறுதிப்படுத்தவும்")}
+                      </Label>
+                      <div className="relative group">
+                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-primary transition-colors" />
+                        <Input
+                          id="confirm-password"
+                          type={showPassword ? "text" : "password"}
+                          placeholder="••••••••"
+                          className="h-12 pl-12 bg-white/50 border-slate-100 focus:border-primary/30 focus:ring-primary/10 rounded-xl transition-all font-bold text-slate-800"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between">
                     <label className="flex items-center gap-3 cursor-pointer group">
                       <input type="checkbox" className="w-4 h-4 rounded border-slate-200 text-primary focus:ring-primary/20" />
@@ -420,7 +502,7 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
                     <Button 
                       className="w-full bg-primary hover:bg-primary/90 text-white h-14 rounded-2xl shadow-xl shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] font-black uppercase tracking-[0.2em] text-xs"
                       onClick={handleLogin}
-                      disabled={!email || !password || isLoading}
+                      disabled={!identifier || !password || (isFirstLoginMode && !confirmPassword) || isLoading}
                     >
                       {isLoading ? (
                         <span className="flex items-center gap-3">
@@ -429,17 +511,43 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
                         </span>
                       ) : (
                         <span className="flex items-center gap-2">
-                          {getText("Sign In", "පුරනය වන්න", "உள்நுழை")}
+                          {isFirstLoginMode
+                            ? getText("Set Password", "මුරපදය සකසන්න", "கடவுச்சொல்லை அமைக்க")
+                            : getText("Sign In", "පුරනය වන්න", "உள்நுழை")}
                           <ChevronRight className="w-5 h-5" />
                         </span>
                       )}
                     </Button>
                   </div>
 
+                  {selectedRole !== "admin" && (
+                    <Button
+                      variant="ghost"
+                      className="w-full text-[10px] font-black text-primary hover:text-primary uppercase tracking-[0.2em] h-10"
+                      onClick={() => {
+                        setIsFirstLoginMode(!isFirstLoginMode)
+                        setPassword("")
+                        setConfirmPassword("")
+                        setErrorMessage("")
+                      }}
+                    >
+                      {isFirstLoginMode
+                        ? getText("Back to Sign In", "පුරනයට ආපසු", "உள்நுழைவுக்கு திரும்பு")
+                        : getText("First Time Access? Set Password", "පළමු ප්‍රවේශයද? මුරපදය සකසන්න", "முதல் அணுகலா? கடவுச்சொல் அமைக்க")}
+                    </Button>
+                  )}
+
                   <Button 
                     variant="ghost" 
                     className="w-full text-[10px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-[0.2em] h-10"
-                    onClick={() => setSelectedRole(null)}
+                    onClick={() => {
+                      setSelectedRole(null)
+                      setIdentifier("")
+                      setPassword("")
+                      setConfirmPassword("")
+                      setIsFirstLoginMode(false)
+                      setErrorMessage("")
+                    }}
                   >
                     {getText("Change Role", "කාර්යභාරය වෙනස් කරන්න", "பங்கை மாற்றவும்")}
                   </Button>

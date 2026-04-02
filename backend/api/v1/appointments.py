@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from backend.core.deps import get_db, get_current_user
 from backend.models.user import User, UserRole
+from backend.models.patient import Patient
 from backend.schemas.appointment import (
     AppointmentCreate, AppointmentResponse, SpecialistResponse,
     AvailabilityResponse, AppointmentListResponse, SpecializationResponse
@@ -47,7 +48,7 @@ def get_specialists_by_specialization(
     - **specialization**: Name of specialization (e.g., "Obstetrics", "Cardiology")
     
     Returns list of specialists with their details:
-    - user_id, full_name, specialization, contact info
+    - id, full_name, specialization, contact info
     """
     return AppointmentService.get_specialists_by_specialization(db, specialization)
 
@@ -96,7 +97,7 @@ def book_appointment(
     Book an appointment for a patient with a specialist.
     
     **Request:**
-    - **patient_id**: Patient's user ID (PAT-XXXX)
+    - **patient_id**: Patient primary key
     - **specialist_name**: Specialist's full name
     - **appointment_date**: Date and time (ISO format)
     - **duration_minutes**: Duration in minutes (default: 30)
@@ -117,6 +118,14 @@ def book_appointment(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only patients and admins can book appointments"
         )
+
+    if current_user.role == UserRole.PATIENT:
+        patient = db.query(Patient).filter(Patient.id == appointment_in.patient_id).first()
+        if not patient or patient.national_id != getattr(current_user, "national_id", None):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Patients can only book appointments for their own profile"
+            )
     
     return AppointmentService.book_appointment(
         db,
@@ -245,7 +254,7 @@ def get_appointments_by_patient(
     Get all appointments for a patient, optionally filtered by status.
     
     **Parameters:**
-    - **patient_id**: Patient's user ID (e.g., PAT-0001)
+    - **patient_id**: Patient primary key
     - **status**: Optional status filter (SCHEDULED, COMPLETED, CANCELLED, etc.)
     
     **Returns:**
@@ -258,8 +267,8 @@ def get_appointments_by_patient(
     """
     # Authorization: Patient can only view own, others can view any
     if current_user.role == UserRole.PATIENT:
-        # Patient must match the requested patient_id
-        if current_user.user_id != patient_id:
+        patient = db.query(Patient).filter(Patient.id == patient_id).first()
+        if not patient or patient.national_id != getattr(current_user, "national_id", None):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Patients can only view their own appointments"

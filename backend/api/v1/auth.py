@@ -6,7 +6,14 @@ from sqlalchemy.orm import Session
 from backend.core import security
 from backend.core.config import settings
 from backend.core.deps import get_db, get_current_user
-from backend.schemas.auth import LoginRequest, LoginResponse, ChangePasswordRequest
+from backend.schemas.auth import (
+    PatientLoginRequest,
+    StaffLoginRequest,
+    FirstLoginPatientSetupRequest,
+    FirstLoginStaffSetupRequest,
+    LoginResponse,
+    ChangePasswordRequest,
+)
 from backend.models.user import User as DBUser
 from backend.services.staff_patient_service import AuthService
 
@@ -16,26 +23,47 @@ router = APIRouter()
 # ============== AUTH ENDPOINTS FOR STAFF & PATIENT MANAGEMENT ==============
 
 @router.post(
-    "/login-user-id",
+    "/login/patient",
     response_model=LoginResponse,
-    summary="Login with User ID",
-    description="Login using user_id and password (for staff and patients)"
+    summary="Patient Login",
+    description="Login using national_id and password"
 )
-def login_with_user_id(
-    credentials: LoginRequest,
+def login_patient(
+    credentials: PatientLoginRequest,
     db: Session = Depends(get_db)
 ) -> Any:
-    """
-    Login endpoint for staff and patients using user_id and password.
+    user = AuthService.authenticate_patient(db, credentials.national_id, credentials.password)
 
-    - **user_id**: User ID (FLS-XXXX, DOC-XXXX, or PAT-XXXX)
-    - **password**: Password
+    if not getattr(user, "is_active", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is inactive"
+        )
 
-    Returns JWT access token and user information.
-    If is_first_login is True, user MUST change password before proceeding.
-    """
-    user = AuthService.authenticate_user(
-        db, credentials.user_id, credentials.password)
+    access_token_expires = timedelta(
+        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    return LoginResponse(
+        access_token=security.create_access_token(
+            str(user.id), expires_delta=access_token_expires),
+        token_type="bearer",
+        id=str(user.id),
+        full_name=user.full_name,
+        role="PATIENT",
+        is_first_login=user.first_time_login
+    )
+
+
+@router.post(
+    "/login/staff",
+    response_model=LoginResponse,
+    summary="Staff/Doctor Login",
+    description="Login using email and password"
+)
+def login_staff(
+    credentials: StaffLoginRequest,
+    db: Session = Depends(get_db)
+) -> Any:
+    user = AuthService.authenticate_staff(db, credentials.email, credentials.password)
 
     if not user.is_active:
         raise HTTPException(
@@ -47,12 +75,48 @@ def login_with_user_id(
         minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return LoginResponse(
         access_token=security.create_access_token(
-            user.id, expires_delta=access_token_expires),
+            str(user.id), expires_delta=access_token_expires),
         token_type="bearer",
-        user_id=user.user_id,
+        id=str(user.id),
         full_name=user.full_name,
         role=user.role.value,
-        is_first_login=user.is_first_login
+        is_first_login=user.first_time_login
+    )
+
+
+@router.post(
+    "/first-login/patient",
+    response_model=dict,
+    summary="Patient First Login Password Setup",
+    description="Set password on first login using national ID"
+)
+def setup_patient_first_login_password(
+    payload: FirstLoginPatientSetupRequest,
+    db: Session = Depends(get_db)
+) -> Any:
+    return AuthService.setup_patient_first_login_password(
+        db,
+        payload.national_id,
+        payload.password,
+        payload.confirm_password,
+    )
+
+
+@router.post(
+    "/first-login/staff",
+    response_model=dict,
+    summary="Staff/Doctor First Login Password Setup",
+    description="Set password on first login using email"
+)
+def setup_staff_first_login_password(
+    payload: FirstLoginStaffSetupRequest,
+    db: Session = Depends(get_db)
+) -> Any:
+    return AuthService.setup_staff_first_login_password(
+        db,
+        payload.email,
+        payload.password,
+        payload.confirm_password,
     )
 
 
@@ -82,4 +146,4 @@ def change_password(
 
     Sets is_first_login to False after successful change.
     """
-    return AuthService.change_password(db, current_user.user_id, change_pwd.old_password, change_pwd.new_password)
+    return AuthService.change_password(db, current_user.id, change_pwd.old_password, change_pwd.new_password)

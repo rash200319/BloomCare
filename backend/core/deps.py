@@ -8,11 +8,12 @@ from sqlalchemy.orm import Session
 from backend.core import security
 from backend.core.config import settings
 from backend.db.session import SessionLocal
-from backend.models.user import User
+from backend.models.user import User, UserRole
+from backend.models.patient import Patient
 from backend.schemas.auth import TokenPayload
 
 security_scheme = HTTPBearer(
-    description="Enter your JWT token here. Get it by calling /auth/login-user-id with your user_id and password."
+    description="Enter your JWT token here. Get it by calling /auth/login/staff or /auth/login/patient."
 )
 
 
@@ -39,9 +40,24 @@ def get_current_user(
             detail="Could not validate credentials",
         )
     user = db.query(User).filter(User.id == token_data.sub).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
+    if user:
+        return user
+
+    patient = db.query(Patient).filter(Patient.id == token_data.sub).first()
+    if patient:
+        # Patients are managed in patients table, but protected routes expect role/full_name attrs.
+        class PatientPrincipal:
+            pass
+
+        principal = PatientPrincipal()
+        principal.id = patient.id
+        principal.full_name = patient.full_name
+        principal.role = UserRole.PATIENT
+        principal.is_active = True
+        principal.national_id = patient.national_id
+        return principal
+
+    raise HTTPException(status_code=404, detail="User not found")
 
 
 def get_current_active_user(

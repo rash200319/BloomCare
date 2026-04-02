@@ -35,7 +35,7 @@ def get_admin_dashboard(
     
     return {
         "message": "Welcome to Admin Dashboard",
-        "user_id": current_user.user_id,
+        "id": current_user.id,
         "full_name": current_user.full_name,
         "role": current_user.role.value,
         "dashboard": {
@@ -77,7 +77,7 @@ def get_doctor_dashboard(
     
     return {
         "message": "Welcome to Doctor Dashboard",
-        "user_id": current_user.user_id,
+        "id": current_user.id,
         "full_name": current_user.full_name,
         "role": current_user.role.value,
         "specialization": current_user.specialization,
@@ -120,7 +120,7 @@ def get_patient_dashboard(
     
     return {
         "message": "Welcome to Your Health Portal",
-        "user_id": current_user.user_id,
+        "id": current_user.id,
         "full_name": current_user.full_name,
         "role": current_user.role.value,
         "dashboard": {
@@ -162,7 +162,7 @@ def get_frontline_dashboard(
     
     return {
         "message": "Welcome to Triage Dashboard",
-        "user_id": current_user.user_id,
+        "id": current_user.id,
         "full_name": current_user.full_name,
         "role": current_user.role.value,
         "dashboard": {

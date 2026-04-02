@@ -160,7 +160,7 @@ class InsightsService:
         """Get weekly development insight for a specific patient"""
         
         # Verify patient exists
-        patient = db.query(Patient).filter(Patient.user_id == patient_id).first()
+        patient = db.query(Patient).filter(Patient.id == patient_id).first()
         if not patient:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -289,7 +289,7 @@ class InsightsService:
         monday, sunday = InsightsService.get_this_week_dates()
         
         # Get all patients that have screenings this week
-        patients_with_screenings = db.query(Patient.user_id, Patient.full_name).join(
+        patients_with_screenings = db.query(Patient.id, Patient.full_name).join(
             Stage1Screening,
             Patient.id == Stage1Screening.patient_id
         ).filter(
@@ -300,9 +300,9 @@ class InsightsService:
         ).distinct().all()
         
         insights = []
-        for patient_user_id, _ in patients_with_screenings:
+        for patient_pk, _ in patients_with_screenings:
             try:
-                insight = InsightsService.get_patient_weekly_insight(db, patient_user_id)
+                insight = InsightsService.get_patient_weekly_insight(db, patient_pk)
                 insights.append(insight)
             except:
                 continue
@@ -317,7 +317,7 @@ class InsightsService:
         """Get quick stats for a patient this week"""
         
         # Verify patient exists
-        patient = db.query(Patient).filter(Patient.user_id == patient_id).first()
+        patient = db.query(Patient).filter(Patient.id == patient_id).first()
         if not patient:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

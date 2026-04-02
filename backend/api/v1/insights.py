@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from backend.core.deps import get_db, get_current_user
 from backend.models.user import User, UserRole
+from backend.models.patient import Patient
 from backend.schemas.insights import (
     WeeklyDevelopmentInsight, PatientWeeklyStats, InsightListResponse
 )
@@ -33,7 +34,7 @@ def get_patient_weekly_insight(
     Get comprehensive weekly development insight for a patient.
     
     **Parameters:**
-    - **patient_id**: Patient's user ID (e.g., PAT-0001)
+    - **patient_id**: Patient primary key
     
     **Returns:**
     - Development metrics (gestational age, estimated size, development %)
@@ -48,7 +49,8 @@ def get_patient_weekly_insight(
     """
     # Authorization: Patient can only view own, others can view any
     if current_user.role == UserRole.PATIENT:
-        if current_user.user_id != patient_id:
+        patient = db.query(Patient).filter(Patient.id == patient_id).first()
+        if not patient or patient.national_id != getattr(current_user, "national_id", None):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Patients can only view their own insights"
@@ -77,7 +79,7 @@ def get_patient_weekly_stats(
     Get quick statistics for a patient this week.
     
     **Parameters:**
-    - **patient_id**: Patient's user ID (e.g., PAT-0001)
+    - **patient_id**: Patient primary key
     
     **Returns:**
     - Number of screenings this week
@@ -91,7 +93,8 @@ def get_patient_weekly_stats(
     """
     # Authorization: Patient can only view own, others can view any
     if current_user.role == UserRole.PATIENT:
-        if current_user.user_id != patient_id:
+        patient = db.query(Patient).filter(Patient.id == patient_id).first()
+        if not patient or patient.national_id != getattr(current_user, "national_id", None):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Patients can only view their own stats"

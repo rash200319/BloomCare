@@ -17,15 +17,28 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
     return res.text();
 }
 
-export async function login(user_id: string, password: string) {
-    const res = await fetch(`${BACKEND_URL}/api/v1/auth/login-user-id`, {
+export async function loginPatient(national_id: string, password: string) {
+    const res = await fetch(`${BACKEND_URL}/api/v1/auth/login/patient`, {
         method: 'POST',
-        body: JSON.stringify({ user_id, password }),
+        body: JSON.stringify({ national_id, password }),
         headers: { 'Content-Type': 'application/json' },
     });
     if (!res.ok) {
         const txt = await res.text();
-        throw new Error(txt || `Login failed ${res.status}`);
+        throw new Error(txt || `Patient login failed ${res.status}`);
+    }
+    return res.json();
+}
+
+export async function loginStaff(email: string, password: string) {
+    const res = await fetch(`${BACKEND_URL}/api/v1/auth/login/staff`, {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+        headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || `Staff login failed ${res.status}`);
     }
     return res.json();
 }

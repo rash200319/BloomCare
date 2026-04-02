@@ -62,7 +62,10 @@ def _create_engine_with_fallback():
 					hashed_password TEXT NOT NULL,
 					full_name TEXT,
 					role TEXT NOT NULL DEFAULT 'FRONTLINE_STAFF',
-					is_active BOOLEAN NOT NULL DEFAULT 1
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    first_time_login BOOLEAN NOT NULL DEFAULT 1,
+                    specialization TEXT,
+                    phone_number TEXT
 				);
 				"""
             )

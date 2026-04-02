@@ -1,6 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
-from datetime import date
 from uuid import UUID
 from backend.models.user import UserRole
 
@@ -8,10 +7,8 @@ from backend.models.user import UserRole
 class CreateStaffRequest(BaseModel):
     """Request schema for creating staff members"""
     full_name: str = Field(..., description="Full name of the staff member")
-    nic: str = Field(..., description="National ID/NIC")
-    telephone: str = Field(..., description="Telephone number")
-    birthday: Optional[date] = Field(None, description="Date of birth")
     email: EmailStr = Field(..., description="Email address")
+    phone_number: Optional[str] = Field(None, description="Phone number")
     role: UserRole = Field(...,
                            description="Role: FRONTLINE_STAFF or CLINICAL_SPECIALIST")
     specialization: Optional[str] = Field(
@@ -21,12 +18,9 @@ class CreateStaffRequest(BaseModel):
 class StaffResponse(BaseModel):
     """Response schema for staff members"""
     id: str | UUID
-    user_id: Optional[str] = None
     full_name: str
-    nic: Optional[str] = None
-    telephone: Optional[str] = None
     email: str
-    birthday: Optional[date] = None
+    phone_number: Optional[str] = None
     role: str
     specialization: Optional[str] = None
     is_active: bool
@@ -42,17 +36,17 @@ class StaffResponse(BaseModel):
 
 
 class TemporaryPasswordResponse(BaseModel):
-    """Response when staff/patient is created with temporary password"""
-    user_id: str
-    temporary_password: str
+    """Response when staff or patient is registered"""
+    id: str
     full_name: str
     email: str
     role: str
+    is_first_login: bool
 
 
 class StaffFilterRequest(BaseModel):
     """Request schema for filtering staff"""
     full_name: Optional[str] = None
-    user_id: Optional[str] = None
-    nic: Optional[str] = None
+    id: Optional[str] = None
+    email: Optional[str] = None
     role: Optional[UserRole] = None

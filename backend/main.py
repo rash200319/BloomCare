@@ -32,7 +32,7 @@ def custom_openapi():
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "Enter your JWT token. Get it by logging in with /auth/login-user-id"
+        "description": "Enter your JWT token. Get it by logging in with /auth/login/staff or /auth/login/patient"
     }
     components["securitySchemes"] = security_schemes
     openapi_schema["security"] = [{"HTTPBearer": []}]

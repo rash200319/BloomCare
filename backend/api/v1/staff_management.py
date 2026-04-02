@@ -24,19 +24,17 @@ def create_staff(
     db: Session = Depends(get_db)
 ):
     """
-    Create a new staff member with auto-generated user_id and temporary password.
+    Create a new staff member account.
 
     - **full_name**: Staff member's full name
-    - **nic**: National Identity Card number
-    - **telephone**: Contact telephone number
-    - **birthday**: Date of birth (optional)
     - **email**: Email address (must be unique)
+    - **phone_number**: Contact number (optional)
     - **role**: FRONTLINE_STAFF or CLINICAL_SPECIALIST
     - **specialization**: Medical specialization (required for CLINICAL_SPECIALIST)
 
     Returns:
-    - **user_id**: Auto-generated ID (FLS-XXXX or DOC-XXXX)
-    - **temporary_password**: Initial password (user must change on first login)
+    - **id**: User primary key
+    - **is_first_login**: Always true for new staff accounts
     """
     return StaffService.create_staff(db, staff_data)
 
@@ -50,8 +48,8 @@ def create_staff(
 def get_staff(
     full_name: str = Query(
         None, description="Filter by full name (partial match)"),
-    user_id: str = Query(None, description="Filter by user ID"),
-    nic: str = Query(None, description="Filter by NIC"),
+    id: str = Query(None, description="Filter by user primary key"),
+    email: str = Query(None, description="Filter by email"),
     role: UserRole = Query(None, description="Filter by role"),
     db: Session = Depends(get_db)
 ):
@@ -60,14 +58,14 @@ def get_staff(
 
     Query Parameters:
     - **full_name**: Partial match on staff member's name
-    - **user_id**: Exact match on user ID (FLS-XXXX, DOC-XXXX)
-    - **nic**: Exact match on NIC
+    - **id**: Exact match on user primary key
+    - **email**: Exact match on email
     - **role**: Filter by role (FRONTLINE_STAFF, CLINICAL_SPECIALIST)
     """
-    staff = StaffService.get_staff(db, full_name, user_id, nic, role)
+    staff = StaffService.get_staff(db, full_name, id, email, role)
     
     # If any filter is provided and no results found, return 404
-    if not staff and any([full_name, user_id, nic, role]):
+    if not staff and any([full_name, id, email, role]):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No staff members found matching the provided filters"
@@ -103,26 +101,26 @@ def get_staff_by_name(
 
 
 @router.get(
-    "/by-id/{user_id}",
+    "/by-id/{id}",
     response_model=list[StaffResponse],
-    summary="Get Staff by User ID",
-    description="Get staff member details by user ID"
+    summary="Get Staff by ID",
+    description="Get staff member details by user primary key"
 )
-def get_staff_by_user_id(
-    user_id: str,
+def get_staff_by_id(
+    id: str,
     db: Session = Depends(get_db)
 ):
     """
-    Get staff member details by user ID.
+    Get staff member details by ID.
     
-    - **user_id**: Staff member's user ID (e.g., DOC-0001, FLS-0001)
+    - **id**: Staff member user primary key
     
     Returns the matching staff member if found.
     """
-    staff = StaffService.get_staff(db, user_id=user_id)
+    staff = StaffService.get_staff(db, user_pk=id)
     if not staff:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Staff member with user ID '{user_id}' not found"
+            detail=f"Staff member with id '{id}' not found"
         )
     return staff

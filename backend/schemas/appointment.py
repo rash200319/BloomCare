@@ -6,7 +6,7 @@ from uuid import UUID
 
 class AppointmentCreate(BaseModel):
     """Schema for creating/booking an appointment"""
-    patient_id: str = Field(..., description="Patient user ID (PAT-XXXX)")
+    patient_id: str = Field(..., description="Patient primary key")
     specialist_name: str = Field(..., description="Specialist's full name")
     appointment_date: datetime = Field(..., description="Appointment date and time")
     duration_minutes: int = Field(default=30, description="Appointment duration in minutes (default: 30)")
@@ -34,10 +34,9 @@ class AppointmentResponse(BaseModel):
 class SpecialistResponse(BaseModel):
     """Response schema for specialist/doctor details"""
     id: str
-    user_id: str = Field(..., description="Doctor's user ID (DOC-XXXX)")
     full_name: str
     specialization: str
-    telephone: str
+    phone_number: Optional[str] = None
     email: str
 
     model_config = {"from_attributes": True}

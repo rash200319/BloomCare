@@ -2,7 +2,10 @@ from typing import Any, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import String, cast
 from sqlalchemy.orm import Session
+import secrets
+import string
 from backend.core.deps import get_db, get_current_active_user
+from backend.core.security import get_password_hash
 from backend.schemas.patient import (
     Patient,
     PatientCreate,
@@ -28,6 +31,11 @@ def _as_str(value: Any) -> str:
 
 def _as_str_or_none(value: Any) -> str | None:
     return str(value) if value is not None else None
+
+
+def _generate_internal_password(length: int = 16) -> str:
+    characters = string.ascii_letters + string.digits + "!@#$%^&*"
+    return "".join(secrets.choice(characters) for _ in range(length))
 
 @router.get("/", response_model=List[Patient])
 def read_patients(
@@ -59,13 +67,17 @@ def create_patient(
 ) -> Any:
     patient = db.query(DBPatient).filter(
         DBPatient.national_id == patient_in.national_id).first()
+    default_hashed_password = get_password_hash(_generate_internal_password())
+
     if patient and patient_in.national_id:
         patient.full_name = patient_in.full_name
         patient.age = patient_in.age
-        patient.date_of_birth = patient_in.date_of_birth
         patient.contact_number = patient_in.contact_number
         patient.emergency_contact = patient_in.emergency_contact
         patient.blood_group = patient_in.blood_group
+        if not patient.hashed_password:
+            patient.hashed_password = default_hashed_password
+            patient.first_time_login = True
         if not patient.assigned_worker_id:
             patient.assigned_worker_id = current_user.id
         db.commit()
@@ -77,10 +89,12 @@ def create_patient(
         national_id=patient_in.national_id,
         full_name=patient_in.full_name,
         age=patient_in.age,
-        date_of_birth=patient_in.date_of_birth,
+        due_date=patient_in.due_date,
         contact_number=patient_in.contact_number,
+        hashed_password=default_hashed_password,
         emergency_contact=patient_in.emergency_contact,
         blood_group=patient_in.blood_group,
+        first_time_login=True,
         assigned_worker_id=current_user.id
     )
     db.add(db_patient)

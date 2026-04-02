@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { apiFetch, login, BACKEND_URL } from "../../lib/api";
+import { apiFetch, loginStaff, BACKEND_URL } from "../../lib/api";
 
 export default function DemoPage() {
     const [status, setStatus] = useState<any>(null);
@@ -16,7 +16,7 @@ export default function DemoPage() {
     const doLogin = async () => {
         setError(null);
         try {
-            const res = await login("frontline.staff@bloomcare.health", "rash2003");
+            const res = await loginStaff("frontline.staff@bloomcare.health", "rash2003");
             setToken(res.access_token || JSON.stringify(res));
         } catch (e: any) {
             setError(e?.message || String(e));

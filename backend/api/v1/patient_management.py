@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from backend.core.deps import get_db
 from backend.schemas.patient import CreatePatientRequest, PatientManagementResponse
-from backend.schemas.staff import TemporaryPasswordResponse
 from backend.services.staff_patient_service import PatientService
 
 router = APIRouter()
@@ -14,42 +13,28 @@ router = APIRouter()
 
 @router.post(
     "/create-patient",
-    response_model=TemporaryPasswordResponse,
+    response_model=PatientManagementResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create Patient",
-    description="Create a new patient with auto-generated user_id and temporary password"
+    description="Create a new patient account with first-login required"
 )
 def create_patient(
     patient_data: CreatePatientRequest,
     db: Session = Depends(get_db)
 ):
     """
-    Create a new patient with auto-generated PAT-XXXX user_id and temporary password.
+    Create a new patient.
 
     - **full_name**: Patient's full name
-    - **national_id**: National ID (optional)
-    - **date_of_birth**: Date of birth (optional)
+    - **national_id**: National ID (required)
     - **age**: Age in years (optional)
     - **contact_number**: Contact phone number (optional)
     - **emergency_contact**: Emergency contact phone (optional)
     - **blood_group**: Blood group type (optional)
 
-    Returns:
-    - **user_id**: Auto-generated patient ID (PAT-XXXX)
-    - **temporary_password**: Initial password (patient must change on first login)
-    - **full_name**: Patient's name
-    - **email**: Auto-generated placeholder email
-    - **role**: Always "PATIENT"
+    Returns patient management record with patient `id`.
     """
-    patient, temp_password = PatientService.create_patient(db, patient_data)
-
-    return TemporaryPasswordResponse(
-        user_id=patient.user_id,
-        temporary_password=temp_password,
-        full_name=patient.full_name,
-        email=f"patient_{patient.user_id}@bloomcare.local",
-        role="PATIENT"
-    )
+    return PatientService.create_patient(db, patient_data)
 
 
 @router.get(
@@ -61,8 +46,8 @@ def create_patient(
 def get_patients(
     full_name: str = Query(
         None, description="Filter by full name (partial match)"),
-    user_id: str = Query(
-        None, description="Filter by patient user ID (PAT-XXXX)"),
+    id: str = Query(
+        None, description="Filter by patient primary key"),
     db: Session = Depends(get_db)
 ):
     """
@@ -70,12 +55,12 @@ def get_patients(
 
     Query Parameters:
     - **full_name**: Partial match on patient's name
-    - **user_id**: Exact match on patient user ID (PAT-XXXX)
+    - **id**: Exact match on patient primary key
     """
-    patients = PatientService.get_patients(db, full_name, user_id)
+    patients = PatientService.get_patients(db, full_name, id)
     
     # If any filter is provided and no results found, return 404
-    if not patients and any([full_name, user_id]):
+    if not patients and any([full_name, id]):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No patients found matching the provided filters"
@@ -111,26 +96,26 @@ def get_patient_by_name(
 
 
 @router.get(
-    "/by-id/{user_id}",
+    "/by-id/{id}",
     response_model=list[PatientManagementResponse],
-    summary="Get Patient by User ID",
-    description="Get patient details by user ID"
+    summary="Get Patient by ID",
+    description="Get patient details by patient primary key"
 )
-def get_patient_by_user_id(
-    user_id: str,
+def get_patient_by_id(
+    id: str,
     db: Session = Depends(get_db)
 ):
     """
-    Get patient details by user ID.
+    Get patient details by patient ID.
     
-    - **user_id**: Patient's user ID (e.g., PAT-0001)
+    - **id**: Patient primary key
     
     Returns the matching patient if found.
     """
-    patients = PatientService.get_patients(db, user_id=user_id)
+    patients = PatientService.get_patients(db, patient_id=id)
     if not patients:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Patient with user ID '{user_id}' not found"
+            detail=f"Patient with id '{id}' not found"
         )
     return patients

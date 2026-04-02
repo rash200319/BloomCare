@@ -50,7 +50,7 @@ def submit_screening(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    current_user_id = _safe_uuid_or_none(getattr(current_user, "id", None))
+    current_actor_id = _safe_uuid_or_none(getattr(current_user, "id", None))
 
     try:
         if not payload.patient_unique_id:
@@ -71,7 +71,7 @@ def submit_screening(
         stage1_screening = Stage1Screening(
             id=str(uuid.uuid4()),
             patient_id=patient.id,
-            worker_id=current_user_id,
+            worker_id=current_actor_id,
             encounter_id=f"web-{uuid.uuid4().hex[:12]}",
             gestational_age_weeks=payload.gestational_age_weeks,
             age=payload.age,
@@ -154,7 +154,7 @@ def submit_screening(
                 },
                 "screened_at": now_ts.isoformat(),
             },
-            generated_by=current_user_id,
+            generated_by=current_actor_id,
         )
         db.add(patient_report)
 
@@ -165,7 +165,7 @@ def submit_screening(
             probability_score=payload.probability_score,
             triggers=payload.triggers,
             screened_at=now_ts,
-            recorded_by=current_user_id,
+            recorded_by=current_actor_id,
         )
         db.add(report)
         db.commit()

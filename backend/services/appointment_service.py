@@ -71,10 +71,9 @@ class AppointmentService:
         return [
             SpecialistResponse(
                 id=str(spec.id),
-                user_id=spec.user_id,
                 full_name=spec.full_name,
                 specialization=spec.specialization,
-                telephone=spec.telephone,
+                phone_number=spec.phone_number,
                 email=spec.email
             )
             for spec in specialists
@@ -101,7 +100,7 @@ class AppointmentService:
         Returns: Appointment with assigned queue number
         """
         # Verify patient exists
-        patient = db.query(Patient).filter(Patient.user_id == patient_id).first()
+        patient = db.query(Patient).filter(Patient.id == patient_id).first()
         if not patient:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -405,14 +404,14 @@ class AppointmentService:
         Ordered by appointment date (most recent first).
         
         Parameters:
-        - patient_id: Patient's user_id (e.g., PAT-0001)
+        - patient_id: Patient primary key
         - status: Optional status filter (SCHEDULED, COMPLETED, CANCELLED, etc.)
         
         Returns:
         - List of appointments with patient and specialist details
         """
         # Verify patient exists
-        patient = db.query(Patient).filter(Patient.user_id == patient_id).first()
+        patient = db.query(Patient).filter(Patient.id == patient_id).first()
         if not patient:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

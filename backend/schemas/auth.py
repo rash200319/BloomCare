@@ -13,11 +13,30 @@ class TokenPayload(BaseModel):
 
 # ============== NEW SCHEMAS FOR STAFF & PATIENT MANAGEMENT ==============
 
-class LoginRequest(BaseModel):
-    """Login schema using user_id and password"""
-    user_id: str = Field(...,
-                         description="User ID (FLS-XXXX, DOC-XXXX, or PAT-XXXX)")
+class PatientLoginRequest(BaseModel):
+    """Patient login schema"""
+    national_id: str = Field(..., description="Patient national ID")
     password: str = Field(..., description="Password")
+
+
+class StaffLoginRequest(BaseModel):
+    """Frontline staff and doctor login schema"""
+    email: str = Field(..., description="Staff/doctor email")
+    password: str = Field(..., description="Password")
+
+
+class FirstLoginPatientSetupRequest(BaseModel):
+    """Patient first-login password setup"""
+    national_id: str = Field(..., description="Patient national ID")
+    password: str = Field(..., description="New password")
+    confirm_password: str = Field(..., description="Confirm new password")
+
+
+class FirstLoginStaffSetupRequest(BaseModel):
+    """Staff/doctor first-login password setup"""
+    email: str = Field(..., description="Staff/doctor email")
+    password: str = Field(..., description="New password")
+    confirm_password: str = Field(..., description="Confirm new password")
 
 
 class ChangePasswordRequest(BaseModel):
@@ -30,7 +49,7 @@ class LoginResponse(BaseModel):
     """Response after successful login with access token"""
     access_token: str = Field(..., description="JWT access token - Use this in Authorization header as 'Bearer <token>'")
     token_type: str = Field(default="bearer", description="Token type (always 'bearer')")
-    user_id: str = Field(..., description="User ID (FLS-XXXX, DOC-XXXX, or PAT-XXXX)")
+    id: str = Field(..., description="User primary key")
     full_name: str = Field(..., description="User's full name")
     role: str = Field(..., description="User role (FRONTLINE_STAFF, CLINICAL_SPECIALIST, PATIENT)")
     is_first_login: bool = Field(..., description="Flag indicating if user must change password on first login")

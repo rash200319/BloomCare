@@ -33,6 +33,7 @@ interface RegistryPatient {
   name: string
   age: number
   dateOfBirth: string | null
+  dueDate: string | null
   contactNumber: string | null
   emergencyContact: string | null
   bloodGroup: string | null
@@ -65,6 +66,7 @@ interface BackendPatient {
   full_name: string
   age?: number | null
   date_of_birth?: string | null
+  due_date?: string | null
   contact_number?: string | null
   emergency_contact?: string | null
   blood_group?: string | null
@@ -317,6 +319,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
     nationalId: "",
     fullName: "",
     dateOfBirth: "",
+    dueDate: "",
     age: "",
     contactNumber: "",
     emergencyContact: "",
@@ -494,6 +497,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
           national_id: nationalId,
           full_name: fullName,
           date_of_birth: newPatientForm.dateOfBirth,
+          due_date: newPatientForm.dueDate || null,
           contact_number: contactNumber || null,
           emergency_contact: emergencyContact || null,
           blood_group: newPatientForm.bloodGroup.trim() || null,
@@ -525,6 +529,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
           name: created.full_name,
           age: created.date_of_birth ? parseDateToAge(created.date_of_birth) : Number(created.age || 0),
           dateOfBirth: created.date_of_birth || newPatientForm.dateOfBirth,
+          dueDate: created.due_date || newPatientForm.dueDate || null,
           contactNumber: created.contact_number || contactNumber,
           emergencyContact: created.emergency_contact || emergencyContact || null,
           bloodGroup: created.blood_group || newPatientForm.bloodGroup || null,
@@ -548,6 +553,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
         nationalId: "",
         fullName: "",
         dateOfBirth: "",
+        dueDate: "",
         age: "",
         contactNumber: "",
         emergencyContact: "",
@@ -910,6 +916,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
         name: row.full_name,
         age: derivedAge,
         dateOfBirth: row.date_of_birth || null,
+        dueDate: row.due_date || null,
         contactNumber: row.contact_number || null,
         emergencyContact: row.emergency_contact || null,
         bloodGroup: row.blood_group || null,
@@ -1718,6 +1725,15 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                               setNewPatientForm((prev) => ({ ...prev, age: String(Math.min(120, Math.max(0, parsed)))}))
                             }}
                             placeholder="0-120"
+                            className="h-11 bg-white border-slate-200 rounded-xl text-xs font-bold"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500">{getText("Due Date", "ප්‍රසව දිනය", "பிரசவ தேதி")}</Label>
+                          <Input
+                            type="date"
+                            value={newPatientForm.dueDate}
+                            onChange={(e) => setNewPatientForm((prev) => ({ ...prev, dueDate: e.target.value }))}
                             className="h-11 bg-white border-slate-200 rounded-xl text-xs font-bold"
                           />
                         </div>
