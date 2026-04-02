@@ -217,7 +217,7 @@ INSERT INTO stage2_diagnostics (
     primary_disease_checked, model_used,
     sflt1_plgf_ratio, plgf_absolute, papp_a, cervical_length_mm,
     metabolomics, doppler, disease_specific_inputs,
-    cluster_profile, condition_probabilities,
+    cluster_profile, condition_probabilities, explainability_data, input_snapshot,
     overall_severity_score, dominant_condition, evaluated_at
 )
 VALUES
@@ -235,6 +235,8 @@ VALUES
         '{"symptoms":["headache","edema"]}'::jsonb,
         '{"cluster":"A2"}'::jsonb,
         '{"preeclampsia":0.81,"gdm":0.19}'::jsonb,
+        '{"feature_importance":{"sflt1_plgf_ratio":0.42,"cervical_length_mm":0.21,"papp_a":0.18},"notes":"Seeded explainability snapshot"}'::jsonb,
+        '{"gestational_age_weeks":31,"primary_disease_checked":"preeclampsia","input_quality":"complete"}'::jsonb,
         0.810,
         'preeclampsia',
         NOW() - INTERVAL '18 hours'
@@ -256,6 +258,8 @@ DO UPDATE SET
     disease_specific_inputs = EXCLUDED.disease_specific_inputs,
     cluster_profile = EXCLUDED.cluster_profile,
     condition_probabilities = EXCLUDED.condition_probabilities,
+    explainability_data = EXCLUDED.explainability_data,
+    input_snapshot = EXCLUDED.input_snapshot,
     overall_severity_score = EXCLUDED.overall_severity_score,
     dominant_condition = EXCLUDED.dominant_condition,
     evaluated_at = EXCLUDED.evaluated_at;
@@ -340,7 +344,61 @@ DO UPDATE SET
     created_at = EXCLUDED.created_at;
 
 -- -----------------------------------------------------------------------------
--- 9) SYNC QUEUE LOGS
+-- 9) PRESCRIPTIONS
+-- -----------------------------------------------------------------------------
+INSERT INTO prescriptions (
+    id, patient_id, specialist_id, stage2_diagnostic_id,
+    medication_name, dosage, frequency, route, instructions,
+    start_date, end_date, is_active, created_at
+)
+VALUES
+    (
+        'c9c9c9c9-c9c9-c9c9-c9c9-c9c9c9c9c9c9',
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        '33333333-3333-3333-3333-333333333333',
+        NULL,
+        'Aspirin',
+        '75mg',
+        'Once daily',
+        'Oral',
+        'Take after meals in the morning',
+        CURRENT_DATE - INTERVAL '3 days',
+        CURRENT_DATE + INTERVAL '27 days',
+        TRUE,
+        NOW() - INTERVAL '3 days'
+    ),
+    (
+        'd9d9d9d9-d9d9-d9d9-d9d9-d9d9d9d9d9d9',
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        '33333333-3333-3333-3333-333333333333',
+        '34343434-3434-3434-3434-343434343434',
+        'Insulin',
+        '10 units',
+        'Twice daily',
+        'Injection',
+        'Use as prescribed before meals',
+        CURRENT_DATE - INTERVAL '1 day',
+        CURRENT_DATE + INTERVAL '29 days',
+        TRUE,
+        NOW() - INTERVAL '1 day'
+    )
+ON CONFLICT (id)
+DO UPDATE SET
+    patient_id = EXCLUDED.patient_id,
+    specialist_id = EXCLUDED.specialist_id,
+    stage2_diagnostic_id = EXCLUDED.stage2_diagnostic_id,
+    medication_name = EXCLUDED.medication_name,
+    dosage = EXCLUDED.dosage,
+    frequency = EXCLUDED.frequency,
+    route = EXCLUDED.route,
+    instructions = EXCLUDED.instructions,
+    start_date = EXCLUDED.start_date,
+    end_date = EXCLUDED.end_date,
+    is_active = EXCLUDED.is_active,
+    created_at = EXCLUDED.created_at;
+
+-- -----------------------------------------------------------------------------
+-- 10) SYNC QUEUE LOGS
 -- -----------------------------------------------------------------------------
 INSERT INTO sync_queue_logs (
     id, device_id, payload_hash, sync_status, error_message, received_at

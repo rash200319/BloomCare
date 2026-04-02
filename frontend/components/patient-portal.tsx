@@ -161,10 +161,25 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
     },
   ]
 
-  const medications = [
-    { name: "Folic Acid", dosage: "5mg", frequency: "Once daily", time: "Morning" },
-    { name: "Iron Supplement", dosage: "200mg", frequency: "Once daily", time: "Evening" },
-    { name: "Calcium Carbonate", dosage: "500mg", frequency: "Twice daily", time: "Morning/Night" },
+  const prescriptions = [
+    {
+      medicationName: "Aspirin",
+      dosage: "75mg",
+      frequency: "Once daily",
+      route: "Oral",
+      instructions: "Take after meals in the morning",
+      startDate: "Apr 1, 2026",
+      endDate: "Apr 30, 2026",
+    },
+    {
+      medicationName: "Insulin",
+      dosage: "10 units",
+      frequency: "Twice daily",
+      route: "Injection",
+      instructions: "Use as prescribed before meals",
+      startDate: "Apr 2, 2026",
+      endDate: "May 1, 2026",
+    },
   ]
 
   const languages = [
@@ -428,13 +443,21 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                    </CardHeader>
                    <CardContent className="p-0">
                       <div className="divide-y divide-slate-50">
-                        {medications.map((med) => (
-                           <div key={med.name} className="p-8 hover:bg-slate-50/50 transition-colors">
-                              <div className="flex items-center justify-between mb-2">
-                                 <h4 className="text-sm font-black text-slate-900">{med.name}</h4>
-                                 <Badge className="bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-lg text-[8px] font-black uppercase">{med.dosage}</Badge>
-                              </div>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{med.frequency} • {med.time}</p>
+                      {prescriptions.map((prescription) => (
+                        <div key={`${prescription.medicationName}-${prescription.startDate}`} className="p-8 hover:bg-slate-50/50 transition-colors">
+                          <div className="flex items-center justify-between mb-2 gap-3">
+                            <div>
+                              <h4 className="text-sm font-black text-slate-900">{prescription.medicationName}</h4>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                               {prescription.frequency} • {prescription.route}
+                              </p>
+                            </div>
+                            <Badge className="bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-lg text-[8px] font-black uppercase">{prescription.dosage}</Badge>
+                          </div>
+                          <p className="text-xs text-slate-500 font-medium mb-2">{prescription.instructions}</p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            {prescription.startDate} - {prescription.endDate}
+                          </p>
                            </div>
                         ))}
                       </div>
