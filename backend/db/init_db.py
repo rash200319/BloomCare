@@ -53,24 +53,36 @@ def init_db():
                 "email": "frontline.staff@bloomcare.health",
                 "full_name": "Frontline Staff Demo",
                 "role": "FRONTLINE_STAFF",
+                "user_id": "FLS-0001",
+                "nic": "FLS0001",
+                "telephone": "0000000001",
                 "password": "rash2003",
             },
             {
                 "email": "patient.demo@bloomcare.health",
                 "full_name": "Patient Demo",
                 "role": "PATIENT",
+                "user_id": "PAT-0001",
+                "nic": "PAT0001",
+                "telephone": "0000000002",
                 "password": "rash2003",
             },
             {
                 "email": "hospitaladmin@bloomcare.health",
                 "full_name": "Hospital Admin Demo",
                 "role": "ADMIN",
+                "user_id": "ADM-0001",
+                "nic": "ADM0001",
+                "telephone": "0000000003",
                 "password": "rash2003",
             },
             {
                 "email": "obsertitian@bloomcare.health",
                 "full_name": "Obsertitian Demo",
                 "role": "CLINICAL_SPECIALIST",
+                "user_id": "DOC-0001",
+                "nic": "DOC0001",
+                "telephone": "0000000004",
                 "password": "rash2003",
             },
         ]
@@ -79,15 +91,15 @@ def init_db():
             pwd_hash = get_password_hash(item["password"])
             cursor.execute(
                 """
-                INSERT INTO users (email, hashed_password, full_name, role)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO users (user_id, email, nic, telephone, hashed_password, full_name, role)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (email)
                 DO UPDATE SET
                     hashed_password = EXCLUDED.hashed_password,
                     full_name = EXCLUDED.full_name,
                     role = EXCLUDED.role
                 """,
-                (item["email"], pwd_hash, item["full_name"], item["role"])
+                (item["user_id"], item["email"], item["nic"], item["telephone"], pwd_hash, item["full_name"], item["role"])
             )
             logger.info("Upserted seed user %s (%s)",
                         item["email"], item["role"])

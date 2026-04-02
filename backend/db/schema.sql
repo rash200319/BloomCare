@@ -18,6 +18,7 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 -- SEQUENCES FOR USER ID GENERATION
+CREATE SEQUENCE IF NOT EXISTS admin_id_sequence START 1;
 CREATE SEQUENCE IF NOT EXISTS fls_id_sequence START 1;
 CREATE SEQUENCE IF NOT EXISTS doc_id_sequence START 1;
 CREATE SEQUENCE IF NOT EXISTS pat_id_sequence START 1;
@@ -61,6 +62,9 @@ CREATE TABLE IF NOT EXISTS patients (
 ALTER TABLE patients
 ADD COLUMN IF NOT EXISTS age INT;
 
+ALTER TABLE patients
+ADD COLUMN IF NOT EXISTS due_date DATE;
+
 -- INDEXES FOR USER_ID AND NIC
 CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id);
 CREATE INDEX IF NOT EXISTS idx_users_nic ON users(nic);
@@ -76,7 +80,10 @@ DECLARE
     v_prefix VARCHAR;
     v_user_id VARCHAR;
 BEGIN
-    IF p_role = 'FRONTLINE_STAFF' THEN
+    IF p_role = 'ADMIN' THEN
+        v_sequence_val := nextval('admin_id_sequence');
+        v_prefix := 'ADM';
+    ELSIF p_role = 'FRONTLINE_STAFF' THEN
         v_sequence_val := nextval('fls_id_sequence');
         v_prefix := 'FLS';
     ELSIF p_role = 'CLINICAL_SPECIALIST' THEN

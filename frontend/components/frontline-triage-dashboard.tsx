@@ -480,7 +480,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
     setRegistrationMessage(null)
 
     try {
-      const response = await apiRequest("/patients/", {
+      const response = await apiRequest("/patient-management/create-patient", {
         method: "POST",
         body: JSON.stringify({
           national_id: nationalId,
@@ -505,35 +505,30 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
         throw new Error(validationMessage || "Unable to register patient")
       }
 
-      await loadDashboardData()
-
-      const latestPatientsRes = await apiRequest("/patients/?limit=200")
-      const latestPatients = (await latestPatientsRes.json()) as BackendPatient[]
-      const created = latestPatients.find((p) => (p.national_id || "") === nationalId)
-      if (created) {
-        const selected: RegistryPatient = {
-          id: created.id,
-          nationalId: created.national_id || nationalId,
-          name: created.full_name,
-          age: created.date_of_birth ? parseDateToAge(created.date_of_birth) : Number(created.age || 0),
-          dateOfBirth: created.date_of_birth || newPatientForm.dateOfBirth,
-          contactNumber: created.contact_number || contactNumber,
-          emergencyContact: created.emergency_contact || emergencyContact || null,
-          bloodGroup: created.blood_group || newPatientForm.bloodGroup || null,
-          status: "pending",
-          risk: "Low",
-          time: "just now",
-          phone: created.contact_number || contactNumber,
-          location: "--",
-        }
-        setSelectedPatient(selected)
-        setScreeningNationalId(selected.nationalId)
-        setFormData((prev) => ({
-          ...prev,
-          patientName: selected.name,
-          age: selected.age > 0 ? String(selected.age) : prev.age,
-        }))
+      const createdPatient = await response.json()
+      
+      const selected: RegistryPatient = {
+        id: createdPatient.user_id,
+        nationalId: nationalId,
+        name: createdPatient.full_name,
+        age: submittedAge || 0,
+        dateOfBirth: newPatientForm.dateOfBirth,
+        contactNumber: contactNumber,
+        emergencyContact: emergencyContact || null,
+        bloodGroup: newPatientForm.bloodGroup || null,
+        status: "pending",
+        risk: "Low",
+        time: "just now",
+        phone: contactNumber,
+        location: "--",
       }
+      setSelectedPatient(selected)
+      setScreeningNationalId(selected.nationalId)
+      setFormData((prev) => ({
+        ...prev,
+        patientName: selected.name,
+        age: selected.age > 0 ? String(selected.age) : prev.age,
+      }))
 
       setRegistrationMessage("Patient registration saved. You can proceed with screening.")
       setNewPatientForm({
