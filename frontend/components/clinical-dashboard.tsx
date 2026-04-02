@@ -695,12 +695,12 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
     setEscalatedPatients((current) =>
       current.map((patient) =>
         patient.id === activePatient.id
-          ? { ...patient, status: "pending" }
+          ? { ...patient, status: "completed" }
           : patient,
       ),
     )
-    setSelectedPatient((current) => (current ? { ...current, status: "pending" } : current))
-    setOverviewActionMessage("Case moved to Pending")
+    setSelectedPatient((current) => (current ? { ...current, status: "completed" } : current))
+    setOverviewActionMessage("Case marked as Reviewed")
   }
 
   const handleEvaluateDifferential = async () => {

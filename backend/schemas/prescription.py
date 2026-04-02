@@ -20,6 +20,8 @@ class PrescriptionResponse(BaseModel):
     id: str
     patient_id: str
     specialist_id: Optional[str] = None
+    doctor_full_name: Optional[str] = None
+    doctor_specialization: Optional[str] = None
     stage2_diagnostic_id: Optional[str] = None
     medication_name: str
     dosage: Optional[str] = None

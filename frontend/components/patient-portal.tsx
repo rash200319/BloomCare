@@ -67,6 +67,21 @@ interface StoredProfile {
   role?: string
 }
 
+interface PrescriptionItem {
+  id: string
+  patient_id: string
+  doctor_full_name?: string | null
+  doctor_specialization?: string | null
+  medication_name: string
+  dosage?: string | null
+  frequency?: string | null
+  route?: string | null
+  instructions?: string | null
+  start_date?: string | null
+  end_date?: string | null
+  is_active: boolean
+}
+
 const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "")
 
 function getApiBaseCandidates(): string[] {
@@ -116,6 +131,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
   const [patientData, setPatientData] = useState<PatientDisplayData>(DEFAULT_PATIENT_DATA)
+  const [prescriptions, setPrescriptions] = useState<PrescriptionItem[]>([])
   const gestationalWeek = useMemo(() => {
     const calculated = calculateGestationalWeekFromDueDate(patientData.dueDate)
     return calculated ?? patientData.gestationalWeek
@@ -142,6 +158,32 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
       }
     }
   }, [])
+
+  const activePrescriptions = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    return prescriptions.filter((item) => {
+      if (!item.is_active) return false
+
+      const start = item.start_date ? new Date(item.start_date) : null
+      const end = item.end_date ? new Date(item.end_date) : null
+
+      if (start && Number.isNaN(start.getTime())) return false
+      if (end && Number.isNaN(end.getTime())) return false
+
+      const normalizedStart = start ? new Date(start) : null
+      const normalizedEnd = end ? new Date(end) : null
+      if (normalizedStart) normalizedStart.setHours(0, 0, 0, 0)
+      if (normalizedEnd) normalizedEnd.setHours(0, 0, 0, 0)
+
+      if (normalizedStart && today < normalizedStart) return false
+      if (normalizedEnd && today > normalizedEnd) return false
+      return true
+    })
+  }, [prescriptions])
+
+  const prescribingDoctor = activePrescriptions[0] ?? prescriptions[0] ?? null
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -198,10 +240,78 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
     void hydratePatientProfile()
   }, [])
 
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const hydratePrescriptions = async () => {
+      const token = window.localStorage.getItem("bloomcare_access_token")
+      if (!token) {
+        setPrescriptions([])
+        return
+      }
+
+      const profileRaw = window.localStorage.getItem("bloomcare_user_profile")
+      let patientId: string | null = null
+      if (profileRaw) {
+        try {
+          const profile = JSON.parse(profileRaw) as StoredProfile
+          patientId = profile.id || null
+        } catch {
+          patientId = null
+        }
+      }
+
+      if (!patientId) {
+        setPrescriptions([])
+        return
+      }
+
+      for (const baseUrl of getApiBaseCandidates()) {
+        try {
+          const response = await fetch(`${baseUrl}/prescriptions/patient/${patientId}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          })
+
+          if (!response.ok) {
+            if (response.status === 404) continue
+            break
+          }
+
+          const payload = (await response.json()) as PrescriptionItem[]
+          setPrescriptions(Array.isArray(payload) ? payload : [])
+          break
+        } catch {
+          // Try next candidate URL
+        }
+      }
+    }
+
+    void hydratePrescriptions()
+  }, [])
+
   const getText = (en: string, si: string, ta: string) => {
     if (selectedLanguage === "SI") return si
     if (selectedLanguage === "TA") return ta
     return en
+  }
+
+  const formatPrescriptionDate = (rawDate?: string | null): string => {
+    if (!rawDate) return "--"
+    const parsed = new Date(rawDate)
+    if (Number.isNaN(parsed.getTime())) return "--"
+    return parsed.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+  }
+
+  const getPrescriptionPeriodLabel = (startDate?: string | null, endDate?: string | null): string => {
+    const start = formatPrescriptionDate(startDate)
+    const end = formatPrescriptionDate(endDate)
+    if (start === "--" && end === "--") return getText("Date not specified", "දිනය සඳහන් කර නොමැත", "தேதி குறிப்பிடப்படவில்லை")
+    if (end === "--") return `${start} ${getText("onward", "සිට ඉදිරියට", "முதல் தொடர்ச்சி")}`
+    if (start === "--") return `${getText("Until", "දක්වා", "வரை")} ${end}`
+    return `${start} - ${end}`
   }
 
   const vitalsHistory = [
@@ -278,27 +388,6 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
       descriptionSi: "ෆෝලික් අම්ලය සහ යකඩ ඔබේ දරුවාගේ වර්ධනයට අත්‍යවශ්‍ය වේ.",
       descriptionTa: "ஃபோலிக் அமிலம் மற்றும் இரும்புச்சத்து உங்கள் குழந்தையின் வளர்ச்சிக்கு அவசியம்.",
       icon: Pill,
-    },
-  ]
-
-  const prescriptions = [
-    {
-      medicationName: "Aspirin",
-      dosage: "75mg",
-      frequency: "Once daily",
-      route: "Oral",
-      instructions: "Take after meals in the morning",
-      startDate: "Apr 1, 2026",
-      endDate: "Apr 30, 2026",
-    },
-    {
-      medicationName: "Insulin",
-      dosage: "10 units",
-      frequency: "Twice daily",
-      route: "Injection",
-      instructions: "Use as prescribed before meals",
-      startDate: "Apr 2, 2026",
-      endDate: "May 1, 2026",
     },
   ]
 
@@ -560,30 +649,65 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <Card className="border-0 glass shadow-xl shadow-slate-200/50 overflow-hidden rounded-[24px]">
                    <CardHeader className="border-b border-slate-50/50 pb-6 px-8">
-                      <CardTitle className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-3">
-                         <Pill className="w-5 h-5 text-emerald-500" />
-                         Active Prescriptions
-                      </CardTitle>
+                      <div className="flex items-center justify-between gap-3">
+                        <CardTitle className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-3">
+                           <Pill className="w-5 h-5 text-emerald-500" />
+                           {getText("Active Prescriptions", "ක්‍රියාකාරී ප්‍රිස්ක්‍රිප්ෂන්", "செயலில் உள்ள மருந்துச் சீட்டுகள்")}
+                        </CardTitle>
+                        <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg text-[9px] font-black uppercase tracking-wider px-2.5 py-1">
+                          {activePrescriptions.length}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">
+                        {getText("Only currently valid prescriptions are shown", "දැනට වලංගු ප්‍රිස්ක්‍රිප්ෂන් පමණක් පෙන්වයි", "தற்போது செல்லுபடியாகும் மருந்துச் சீட்டுகள் மட்டும் காட்டப்படும்")}
+                      </p>
                    </CardHeader>
                    <CardContent className="p-0">
                       <div className="divide-y divide-slate-50">
-                      {prescriptions.map((prescription) => (
-                        <div key={`${prescription.medicationName}-${prescription.startDate}`} className="p-8 hover:bg-slate-50/50 transition-colors">
-                          <div className="flex items-center justify-between mb-2 gap-3">
-                            <div>
-                              <h4 className="text-sm font-black text-slate-900">{prescription.medicationName}</h4>
+                      {activePrescriptions.map((prescription) => (
+                        <div key={prescription.id} className="p-6 sm:p-8 hover:bg-slate-50/50 transition-colors">
+                          <div className="flex items-start justify-between mb-3 gap-3">
+                            <div className="min-w-0">
+                              <h4 className="text-base font-black text-emerald-700 truncate">{prescription.medication_name}</h4>
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                               {prescription.frequency} • {prescription.route}
+                               {prescription.frequency || getText("Not specified", "සඳහන් කර නොමැත", "குறிப்பிடப்படவில்லை")} • {prescription.route || getText("Route not specified", "මාර්ගය සඳහන් කර නොමැත", "வழி குறிப்பிடப்படவில்லை")}
                               </p>
+                              <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mt-2">
+                                {getText("Prescribed By", "නියම කළ වෛද්‍ය", "மருந்தளித்த நிபுணர்")}: {prescription.doctor_full_name || getText("Doctor", "වෛද්‍යවරයා", "மருத்துவர்")}
+                              </p>
+                              {prescription.doctor_specialization && (
+                                <p className="text-[10px] font-semibold text-emerald-700/80 mt-1">
+                                  {prescription.doctor_specialization}
+                                </p>
+                              )}
                             </div>
-                            <Badge className="bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-lg text-[8px] font-black uppercase">{prescription.dosage}</Badge>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg text-[8px] font-black uppercase">{prescription.dosage || "--"}</Badge>
+                              <Badge className="bg-blue-50 text-blue-700 border border-blue-100 rounded-lg text-[8px] font-black uppercase tracking-wider">
+                                {getText("Active", "ක්‍රියාකාරී", "செயலில்")}
+                              </Badge>
+                            </div>
                           </div>
-                          <p className="text-xs text-slate-500 font-medium mb-2">{prescription.instructions}</p>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                            {prescription.startDate} - {prescription.endDate}
+
+                          <div className="rounded-xl border border-slate-100 bg-white p-3 mb-3">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                              <Info className="w-3.5 h-3.5" />
+                              {getText("Instructions", "උපදෙස්", "வழிமுறைகள்")}
+                            </p>
+                            <p className="text-xs text-slate-600 font-medium leading-relaxed">{prescription.instructions || getText("No additional instructions", "අමතර උපදෙස් නොමැත", "கூடுதல் வழிமுறைகள் இல்லை")}</p>
+                          </div>
+
+                          <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-emerald-500" />
+                            {getPrescriptionPeriodLabel(prescription.start_date, prescription.end_date)}
                           </p>
                            </div>
                         ))}
+                      {activePrescriptions.length === 0 && (
+                        <div className="p-8 text-xs font-bold uppercase tracking-wider text-slate-400">
+                          {getText("No active prescriptions", "ක්‍රියාකාරී ප්‍රිස්ක්‍රිප්ෂන් නොමැත", "செயலில் உள்ள மருந்துச் சீட்டுகள் இல்லை")}
+                        </div>
+                      )}
                       </div>
                    </CardContent>
                 </Card>
@@ -611,9 +735,15 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                             <User className="w-5 h-5 text-primary" />
                          </div>
                          <div>
-                            <p className="text-[9px] font-black text-rose-600 uppercase tracking-widest mb-1">Consultant</p>
-                            <p className="text-sm font-black text-slate-900">Dr. Saman Kumara</p>
-                            <p className="text-xs text-slate-500">Obstetrician & Gynecologist</p>
+                            <p className="text-[9px] font-black text-rose-600 uppercase tracking-widest mb-1">
+                              {getText("Prescribing Doctor", "නියම කළ වෛද්‍ය", "மருந்தளித்த மருத்துவர்")}
+                            </p>
+                            <p className="text-sm font-black text-slate-900">
+                              {prescribingDoctor?.doctor_full_name || getText("Not assigned yet", "තවම පවරා නැත", "இதுவரை ஒதுக்கப்படவில்லை")}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {prescribingDoctor?.doctor_specialization || getText("Specialty not available", "විශේෂතාවය නොමැත", "சிறப்பு விவரம் இல்லை")}
+                            </p>
                          </div>
                       </div>
                    </CardContent>

@@ -16,11 +16,17 @@ def _role_name(user: User) -> str:
     return user.role.value if hasattr(user.role, "value") else str(user.role)
 
 
-def _serialize_prescription(row: Prescription) -> PrescriptionResponse:
+def _serialize_prescription(
+    row: Prescription,
+    doctor_full_name: str | None = None,
+    doctor_specialization: str | None = None,
+) -> PrescriptionResponse:
     return PrescriptionResponse(
         id=str(row.id),
         patient_id=str(row.patient_id),
         specialist_id=str(row.specialist_id) if row.specialist_id is not None else None,
+        doctor_full_name=doctor_full_name,
+        doctor_specialization=doctor_specialization,
         stage2_diagnostic_id=str(row.stage2_diagnostic_id) if row.stage2_diagnostic_id is not None else None,
         medication_name=row.medication_name,
         dosage=row.dosage,
@@ -58,7 +64,27 @@ def list_patient_prescriptions(
         .order_by(Prescription.created_at.desc())
         .all()
     )
-    return [_serialize_prescription(row) for row in rows]
+    specialist_ids = {
+        str(row.specialist_id)
+        for row in rows
+        if row.specialist_id is not None
+    }
+    specialist_profiles_by_id = {
+        str(user.id): {
+            "full_name": user.full_name,
+            "specialization": user.specialization,
+        }
+        for user in db.query(User).filter(cast(User.id, String).in_(specialist_ids)).all()
+    } if specialist_ids else {}
+
+    return [
+        _serialize_prescription(
+            row,
+            specialist_profiles_by_id.get(str(row.specialist_id), {}).get("full_name"),
+            specialist_profiles_by_id.get(str(row.specialist_id), {}).get("specialization"),
+        )
+        for row in rows
+    ]
 
 
 @router.post("/", response_model=PrescriptionResponse, status_code=201)
@@ -95,4 +121,4 @@ def create_prescription(
     db.add(row)
     db.commit()
     db.refresh(row)
-    return _serialize_prescription(row)
+    return _serialize_prescription(row, current_user.full_name, current_user.specialization)
