@@ -26,6 +26,7 @@ interface AppointmentSchedulingProps {
   patientId: string
   patientName: string
   onLogout: () => void
+  onBack?: () => void
 }
 
 interface Specialization {
@@ -51,6 +52,7 @@ interface Appointment {
   patient_id: string
   specialist_id: string
   specialist_name: string
+  appointment_type?: string
   appointment_date: string
   duration_minutes: number
   queue_number: number
@@ -85,7 +87,9 @@ export default function AppointmentScheduling({
   patientId,
   patientName,
   onLogout,
+  onBack,
 }: AppointmentSchedulingProps) {
+  const [viewerRole, setViewerRole] = useState<"frontline" | "doctor" | "admin" | "patient" | null>(null)
   const [selectedLanguage, setSelectedLanguage] = useState<Language>("EN")
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
@@ -107,6 +111,25 @@ export default function AppointmentScheduling({
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [searchSpecialist, setSearchSpecialist] = useState("")
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    try {
+      const storedProfile = window.localStorage.getItem("bloomcare_user_profile")
+      if (!storedProfile) return
+
+      const profile = JSON.parse(storedProfile)
+      const role = String(profile?.role || "").toUpperCase()
+
+      if (role === "FRONTLINE_STAFF") setViewerRole("frontline")
+      else if (role === "DOCTOR" || role === "CLINICAL_SPECIALIST") setViewerRole("doctor")
+      else if (role === "ADMIN") setViewerRole("admin")
+      else if (role === "PATIENT") setViewerRole("patient")
+    } catch {
+      setViewerRole(null)
+    }
+  }, [])
 
   const getText = (en: string, si: string, ta: string) => {
     if (selectedLanguage === "SI") return si
@@ -239,6 +262,11 @@ export default function AppointmentScheduling({
   }, [patientId])
 
   const handleBookAppointment = async () => {
+    if (viewerRole === "patient") {
+      setError("Patients can only view appointments. Please contact frontline staff to request one.")
+      return
+    }
+
     if (!selectedSpecialist || !selectedDate || !selectedTimeSlot) {
       setError("Please complete all selection steps")
       return
@@ -294,6 +322,17 @@ export default function AppointmentScheduling({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
+              {onBack && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onBack}
+                  className="flex items-center gap-2"
+                >
+                  <ChevronRight className="w-4 h-4 rotate-180" />
+                  Back
+                </Button>
+              )}
               <Calendar className="w-6 h-6 text-blue-600" />
               <h1 className="text-2xl font-bold text-gray-900">
                 {getText("Appointment Booking", "නිয়োජනය වෙන්කරගැනීම", "நியமனம் பதிவு")}
@@ -596,7 +635,11 @@ export default function AppointmentScheduling({
                     disabled={isLoading}
                     className="w-full bg-green-600 hover:bg-green-700 text-white py-6 text-lg"
                   >
-                    {isLoading ? "Booking..." : getText("Confirm Booking", "වෙන්කරගැනීම තහවුරු කරන්න", "நியமனத்தை உறுதிப்படுத්தவும்")}
+                    {viewerRole === "patient"
+                      ? getText("Patients can only view appointments", "රෝගීන්ට නියුතු බැලිය හැකියි පමණි", "நோயாளிகள் நியமனங்களை மட்டும் காண முடியும்")
+                      : isLoading
+                        ? "Booking..."
+                        : getText("Confirm Booking", "වෙන්කරගැනීම තහවුරු කරන්න", "நியமனத்தை உறுதிப்படுத்தவும்")}
                   </Button>
                 </CardContent>
               </Card>
@@ -630,7 +673,7 @@ export default function AppointmentScheduling({
                           <Clock className="w-3 h-3" />
                           {new Date(apt.appointment_date).toLocaleTimeString()}
                         </p>
-                        <Badge className="mt-2 text-xs" variant={apt.status === "SCHEDULED" ? "default" : "secondary"}>
+                        <Badge className="mt-2 text-xs" variant={apt.status === "PENDING" || apt.status === "CONFIRMED" ? "default" : "secondary"}>
                           {apt.status}
                         </Badge>
                       </div>

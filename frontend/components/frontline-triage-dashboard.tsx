@@ -16,6 +16,7 @@ import {Select,SelectContent,SelectItem,SelectTrigger,SelectValue,} from "@/comp
 import {
   Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription,DialogFooter,} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
+import AppointmentScheduling from "./appointment-scheduling"
 
 const languages: { code: "EN" | "SI" | "TA"; label: string }[] = [
   { code: "EN", label: "English" },
@@ -246,6 +247,7 @@ function getApiBaseCandidates(): string[] {
 }
 
 export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDashboardProps) {
+  const [showAppointmentBooking, setShowAppointmentBooking] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [patients, setPatients] = useState<RegistryPatient[]>([])
   const [recentHistory, setRecentHistory] = useState<HistoryEntry[]>([])
@@ -617,14 +619,14 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
       ? [
           "Urgent: Repeat BP within 15 minutes",
           "Recheck heart rate and evaluate tachycardia symptoms",
-          "Immediate escalation for Stage 2 Specialist review",
+          "Immediate clinical review by the doctor on duty",
           "Capture advanced biomarkers for differential diagnosis",
         ]
       : risk_level === "moderate"
       ? [
           "Monitor BP every 4 hours",
           "Prepare for Stage 2 Diagnostic entry",
-          "Schedule specialist consult within 48 hours",
+          "Schedule doctor review within 48 hours",
         ]
       : [
           "Continue routine maternal monitoring",
@@ -689,7 +691,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
         value: `${vitals.systolic}/${vitals.diastolic} mmHg`,
         threshold: ">= 140/90 mmHg",
         severity: "moderate",
-        reason: "Hypertensive range suggests possible preeclampsia risk and requires specialist review.",
+        reason: "Hypertensive range suggests possible preeclampsia risk and requires clinical review.",
       })
     }
 
@@ -1060,8 +1062,6 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
         observation: (offlineResult.observation || "Offline model estimate").trim() || "Offline model estimate",
       }
       
-      console.log("Submitting payload:", payload);
-
       const syncResponse = await apiRequest("/submit-screening", {
         method: "POST",
         body: JSON.stringify(payload),
@@ -1105,6 +1105,17 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (showAppointmentBooking) {
+    return (
+      <AppointmentScheduling
+        patientId={selectedPatient?.id || ""}
+        patientName={selectedPatient?.name || formData.patientName || "Unknown Patient"}
+        onLogout={onLogout}
+        onBack={() => setShowAppointmentBooking(false)}
+      />
+    )
   }
 
   return (
@@ -2229,7 +2240,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                         <p className="text-sm font-bold text-slate-500 leading-relaxed mb-6 max-w-2xl">
                           {riskData?.risk_level === "high"
                             ? getText(
-                                "Indicators exceed safety thresholds. High risk of gestational complications. Immediate clinical intervention and specialist review are required.",
+                                "Indicators exceed safety thresholds. High risk of gestational complications. Immediate clinical intervention and doctor review are required.",
                                 "දර්ශක ආරක්ෂිත සීමාවන් ඉක්මවා යයි. ගර්භණී සංකූලතා ඇතිවීමේ වැඩි අවදානමක් ඇත. ක්ෂණික සායනික මැදිහත්වීමක් සහ විශේෂඥ සමාලෝචනයක් අවශ්‍ය වේ.",
                                 "குறியீடுகள் பாதுகாப்பு வரம்புகளை மீறுகின்றன. கர்ப்பகால சிக்கல்களின் அதிக ஆபத்து உள்ளது. உடனடி மருத்துவ தலையீடு மற்றும் நிபுணர் மதிப்பாய்வு தேவை."
                               )
@@ -2295,16 +2306,22 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
 
                         <div className="flex flex-col sm:flex-row gap-4 mb-10">
                           <Button 
-                            onClick={() => setStatusMessage(getText("Stage 2 screening must be done by hospital doctors only.", "අදියර 2 පරීක්ෂාව රෝහලේ වෛද්‍යවරුන් විසින් පමණක් කළ යුතුය.", "நிலை 2 பரிசோதனை மருத்துவமனை மருத்துவர்களால் மட்டுமே செய்யப்பட வேண்டும்."))}
+                            onClick={() => {
+                              if (!selectedPatient) {
+                                setStatusMessage(getText("Select a patient first to book an appointment.", "නියමනය වෙන්කර ගැනීමට පළමුව රෝගියෙකු තෝරන්න.", "நியமனம் பதிவு செய்ய முதலில் நோயாளியைத் தேர்ந்தெடுக்கவும்."))
+                                return
+                              }
+                              setShowAppointmentBooking(true)
+                            }}
                             variant="outline"
                             className="border-slate-300 text-slate-600 flex-1 h-14 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50"
                           >
                             <Microscope className="w-4 h-4 mr-2" />
-                            {getText("Stage 2: Doctor Only", "අදියර 2: වෛද්‍යවරයාට පමණි", "நிலை 2: மருத்துவர் மட்டுமே")}
+                            {getText("Appointment Details", "නියමන විස්තර", "நியமன விவரங்கள்")}
                           </Button>
                           <Button variant="outline" className="flex-1 border-primary/20 font-black h-14 rounded-2xl text-primary text-xs uppercase tracking-widest hover:bg-primary/5">
                             <Phone className="w-4 h-4 mr-2" />
-                            {getText("Refer Emergency", "හදිසි යොමු කිරීම", "அவசர பரிந்துரை")}
+                            {getText("Urgent Appointment", "හදිසි නියමනය", "அவசர நியமனம்")}
                           </Button>
                         </div>
 
@@ -2406,10 +2423,10 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                         <div className="flex flex-col sm:flex-row gap-4">
                           <Button className="flex-1 bg-bloom-gradient hover:opacity-90 text-white font-black h-16 rounded-2xl shadow-xl shadow-primary/30 text-xs uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-[0.98] border-0">
                             <Phone className="w-4 h-4 mr-3" />
-                            {getText("Escalate to Specialist", "විශේෂඥ වෛද්‍යවරයකු වෙත යොමු කරන්න", "நிபுணரிடம் பரிந்துரைக்கவும்")}
+                            {getText("Save Appointment Details", "නියමන විස්තර සුරකින්න", "நியமன விவரங்களைச் சேமிக்கவும்")}
                           </Button>
                           <Button variant="outline" onClick={handlePrintReferralCard} className="flex-1 border-primary/20 font-black h-16 rounded-2xl text-primary text-xs uppercase tracking-[0.2em] hover:bg-primary/5">
-                            {getText("Print Referral Card", "යොමු කිරීමේ කාඩ්පත මුද්‍රණය කරන්න", "பரிந்துரை அட்டையை அச்சிடுக")}
+                            {getText("Print Appointment Card", "නියමන කාඩ්පත මුද්‍රණය කරන්න", "நியமன அட்டையை அச்சிடுக")}
                           </Button>
                         </div>
                       </div>

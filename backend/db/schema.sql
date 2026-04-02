@@ -8,7 +8,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ENUMS
 DO $$ BEGIN
-    CREATE TYPE user_role AS ENUM ('ADMIN', 'FRONTLINE_STAFF', 'CLINICAL_SPECIALIST', 'PATIENT');
+    CREATE TYPE user_role AS ENUM ('ADMIN', 'FRONTLINE_STAFF', 'DOCTOR', 'CLINICAL_SPECIALIST', 'PATIENT');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -25,7 +25,10 @@ CREATE TABLE IF NOT EXISTS users (
     full_name VARCHAR(255),
     role user_role DEFAULT 'FRONTLINE_STAFF',
     is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    first_time_login BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    specialization VARCHAR(100), -- For specialists, e.g., "Obstetrics", "Cardiology"
+    phone_number VARCHAR(20)
 );
 
 -- PATIENTS
@@ -34,11 +37,13 @@ CREATE TABLE IF NOT EXISTS patients (
     national_id VARCHAR(100) UNIQUE,
     full_name VARCHAR(255) NOT NULL,
     age INT,
-    date_of_birth DATE,
     due_date DATE,
     contact_number VARCHAR(50),
+    is_active BOOLEAN DEFAULT TRUE,
+    hashed_password VARCHAR(255) NOT NULL,
     emergency_contact VARCHAR(50),
     blood_group VARCHAR(10),
+    first_time_login BOOLEAN DEFAULT TRUE,
     registered_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     assigned_worker_id UUID REFERENCES users(id) ON DELETE SET NULL
@@ -185,10 +190,27 @@ CREATE TABLE IF NOT EXISTS appointments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
     specialist_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_by_role VARCHAR(50) NOT NULL DEFAULT 'FRONTLINE_STAFF',
+    appointment_type VARCHAR(100) NOT NULL DEFAULT 'PRENATAL_CHECKUP',
     appointment_date TIMESTAMPTZ NOT NULL,
-    status VARCHAR(50) DEFAULT 'SCHEDULED',
+    duration_minutes INT NOT NULL DEFAULT 30,
+    queue_number INT,
+    status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
     notes TEXT,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_appointment_status CHECK (status IN ('PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED')),
+    CONSTRAINT chk_appointment_type CHECK (appointment_type IN (
+        'PRENATAL_CHECKUP',
+        'ULTRASOUND_SCAN',
+        'ROUTINE_FOLLOW_UP',
+        'LAB_TEST',
+        'GLUCOSE_SCREENING',
+        'BLOOD_TEST',
+        'HIGH_RISK_FOLLOW_UP',
+        'MEDICAL_INTERVENTION'
+    ))
 );
 
 -- NEW CHANGES: PRESCRIPTIONS
@@ -231,6 +253,8 @@ CREATE INDEX IF NOT EXISTS idx_screening_reports_risk_flag ON screening_reports(
 CREATE INDEX IF NOT EXISTS idx_stage1_patient_date ON stage1_screenings(patient_id, collected_at DESC);
 CREATE INDEX IF NOT EXISTS idx_stage2_patient_date ON stage2_diagnostics(patient_id, evaluated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(appointment_date);
+CREATE INDEX IF NOT EXISTS idx_appointments_patient ON appointments(patient_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_creator ON appointments(created_by_id);
 
 -- VIEW: High Risk Patients
 CREATE OR REPLACE VIEW high_risk_patients_view AS

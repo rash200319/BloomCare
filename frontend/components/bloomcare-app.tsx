@@ -14,6 +14,7 @@ type AppView = "home" | "login" | "dashboard"
 // Map backend roles to frontend roles
 const ROLE_MAP: Record<string, UserRole> = {
   'FRONTLINE_STAFF': 'frontline',
+  'DOCTOR': 'doctor',
   'CLINICAL_SPECIALIST': 'doctor',
   'ADMIN': 'admin',
   'PATIENT': 'patient'

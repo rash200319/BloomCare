@@ -144,6 +144,7 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
   const fromApiRole = (role: string): UserRole => {
     const upper = String(role || "").toUpperCase()
     if (upper === "FRONTLINE_STAFF") return "frontline"
+    if (upper === "DOCTOR") return "doctor"
     if (upper === "CLINICAL_SPECIALIST") return "doctor"
     if (upper === "ADMIN") return "admin"
     return "patient"

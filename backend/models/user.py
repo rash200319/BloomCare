@@ -7,6 +7,7 @@ from backend.db.base import Base
 class UserRole(str, enum.Enum):
     ADMIN = "ADMIN"
     FRONTLINE_STAFF = "FRONTLINE_STAFF"
+    DOCTOR = "DOCTOR"
     CLINICAL_SPECIALIST = "CLINICAL_SPECIALIST"
     PATIENT = "PATIENT"
 

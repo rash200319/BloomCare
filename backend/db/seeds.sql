@@ -15,7 +15,7 @@ INSERT INTO users (id, email, hashed_password, full_name, role, is_active)
 VALUES
     ('11111111-1111-1111-1111-111111111111', 'hospitaladmin@bloomcare.health',      crypt('rash2003', gen_salt('bf')), 'Hospital Admin Demo',      'ADMIN',               TRUE),
     ('22222222-2222-2222-2222-222222222222', 'frontline.staff@bloomcare.health',    crypt('rash2003', gen_salt('bf')), 'Frontline Staff Demo',     'FRONTLINE_STAFF',     TRUE),
-    ('33333333-3333-3333-3333-333333333333', 'obsertitian@bloomcare.health',         crypt('rash2003', gen_salt('bf')), 'Obsertitian Demo',         'CLINICAL_SPECIALIST', TRUE),
+    ('33333333-3333-3333-3333-333333333333', 'obsertitian@bloomcare.health',         crypt('rash2003', gen_salt('bf')), 'Obsertitian Demo',         'DOCTOR',              TRUE),
     ('44444444-4444-4444-4444-444444444444', 'patient.demo@bloomcare.health',        crypt('rash2003', gen_salt('bf')), 'Patient Demo',             'PATIENT',             TRUE)
 ON CONFLICT (email)
 DO UPDATE SET
@@ -322,15 +322,21 @@ DO UPDATE SET
 -- 8) APPOINTMENTS
 -- -----------------------------------------------------------------------------
 INSERT INTO appointments (
-    id, patient_id, specialist_id, appointment_date, status, notes, created_at
+    id, patient_id, specialist_id, created_by_id, created_by_role, appointment_type,
+    appointment_date, duration_minutes, queue_number, status, notes, created_at
 )
 VALUES
     (
         '90909090-9090-9090-9090-909090909090',
         'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
         '33333333-3333-3333-3333-333333333333',
+        '33333333-3333-3333-3333-333333333333',
+        'DOCTOR',
+        'HIGH_RISK_FOLLOW_UP',
         NOW() + INTERVAL '1 day',
-        'SCHEDULED',
+        30,
+        1,
+        'PENDING',
         'Seeded follow-up appointment for elevated risk case.',
         NOW()
     )
@@ -338,7 +344,12 @@ ON CONFLICT (id)
 DO UPDATE SET
     patient_id = EXCLUDED.patient_id,
     specialist_id = EXCLUDED.specialist_id,
+    created_by_id = EXCLUDED.created_by_id,
+    created_by_role = EXCLUDED.created_by_role,
+    appointment_type = EXCLUDED.appointment_type,
     appointment_date = EXCLUDED.appointment_date,
+    duration_minutes = EXCLUDED.duration_minutes,
+    queue_number = EXCLUDED.queue_number,
     status = EXCLUDED.status,
     notes = EXCLUDED.notes,
     created_at = EXCLUDED.created_at;

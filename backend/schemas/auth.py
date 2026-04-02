@@ -51,5 +51,5 @@ class LoginResponse(BaseModel):
     token_type: str = Field(default="bearer", description="Token type (always 'bearer')")
     id: str = Field(..., description="User primary key")
     full_name: str = Field(..., description="User's full name")
-    role: str = Field(..., description="User role (FRONTLINE_STAFF, CLINICAL_SPECIALIST, PATIENT)")
+    role: str = Field(..., description="User role (FRONTLINE_STAFF, DOCTOR, CLINICAL_SPECIALIST, PATIENT)")
     is_first_login: bool = Field(..., description="Flag indicating if user must change password on first login")

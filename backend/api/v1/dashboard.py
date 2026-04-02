@@ -70,10 +70,10 @@ def get_doctor_dashboard(
     Returns:
     - Doctor dashboard information and patient appointments
     """
-    if current_user.role != UserRole.CLINICAL_SPECIALIST:
+    if current_user.role not in [UserRole.DOCTOR, UserRole.CLINICAL_SPECIALIST]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only clinical specialists can access the doctor dashboard"
+            detail="Only doctors can access the doctor dashboard"
         )
     
     return {
