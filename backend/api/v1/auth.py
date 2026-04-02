@@ -1,4 +1,5 @@
 from datetime import timedelta
+import re
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -13,11 +14,58 @@ from backend.schemas.auth import (
     FirstLoginStaffSetupRequest,
     LoginResponse,
     ChangePasswordRequest,
+    ProfileUpdateRequest,
+    ProfileResponse,
 )
 from backend.models.user import User as DBUser
+from backend.models.patient import Patient as DBPatient
 from backend.services.staff_patient_service import AuthService
 
 router = APIRouter()
+PHONE_PATTERN = re.compile(r"^(?:\+94\d{9}|0\d{9})$")
+
+
+def _normalize_phone(value: str | None, field_label: str) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().replace(" ", "")
+    if not normalized:
+        return None
+    if not PHONE_PATTERN.match(normalized):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{field_label} must be in +94XXXXXXXXX or 0XXXXXXXXX format",
+        )
+    return normalized
+
+
+def _profile_response_for_principal(db: Session, principal: Any) -> ProfileResponse:
+    role_name = principal.role.value if hasattr(principal.role, "value") else str(principal.role)
+
+    if role_name == "PATIENT":
+        patient = db.query(DBPatient).filter(DBPatient.id == principal.id).first()
+        if not patient:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+        return ProfileResponse(
+            id=str(patient.id),
+            role="PATIENT",
+            full_name=patient.full_name,
+            national_id=patient.national_id,
+            contact_number=patient.contact_number,
+            emergency_contact=patient.emergency_contact,
+        )
+
+    user = db.query(DBUser).filter(DBUser.id == principal.id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    return ProfileResponse(
+        id=str(user.id),
+        role=user.role.value,
+        full_name=user.full_name,
+        email=user.email,
+        phone_number=user.phone_number,
+    )
 
 
 # ============== AUTH ENDPOINTS FOR STAFF & PATIENT MANAGEMENT ==============
@@ -147,3 +195,84 @@ def change_password(
     Sets is_first_login to False after successful change.
     """
     return AuthService.change_password(db, current_user.id, change_pwd.old_password, change_pwd.new_password)
+
+
+@router.get(
+    "/profile",
+    response_model=ProfileResponse,
+    summary="Get Authenticated Profile",
+    description="Return profile fields for the authenticated user or patient",
+)
+def get_profile(
+    current_user: DBUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    return _profile_response_for_principal(db, current_user)
+
+
+@router.patch(
+    "/profile",
+    response_model=ProfileResponse,
+    summary="Update Authenticated Profile",
+    description="Role-aware profile update endpoint for patients and staff/doctor/admin users",
+)
+def update_profile(
+    payload: ProfileUpdateRequest,
+    current_user: DBUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    role_name = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    updates = payload.model_dump(exclude_unset=True)
+
+    if not updates:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No profile fields provided")
+
+    if role_name == "PATIENT":
+        disallowed = {"phone_number"}.intersection(updates.keys())
+        if disallowed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Patients can only update full_name, contact_number, and emergency_contact",
+            )
+
+        patient = db.query(DBPatient).filter(DBPatient.id == current_user.id).first()
+        if not patient:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+
+        if "full_name" in updates:
+            full_name = (updates.get("full_name") or "").strip()
+            if not full_name:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="full_name cannot be empty")
+            patient.full_name = full_name
+
+        if "contact_number" in updates:
+            patient.contact_number = _normalize_phone(updates.get("contact_number"), "contact_number")
+
+        if "emergency_contact" in updates:
+            patient.emergency_contact = _normalize_phone(updates.get("emergency_contact"), "emergency_contact")
+
+        db.commit()
+        return _profile_response_for_principal(db, current_user)
+
+    disallowed = {"contact_number", "emergency_contact"}.intersection(updates.keys())
+    if disallowed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Staff users can only update full_name and phone_number",
+        )
+
+    user = db.query(DBUser).filter(DBUser.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if "full_name" in updates:
+        full_name = (updates.get("full_name") or "").strip()
+        if not full_name:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="full_name cannot be empty")
+        user.full_name = full_name
+
+    if "phone_number" in updates:
+        user.phone_number = _normalize_phone(updates.get("phone_number"), "phone_number")
+
+    db.commit()
+    return _profile_response_for_principal(db, current_user)

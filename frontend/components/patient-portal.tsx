@@ -33,6 +33,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
+import { getWeeklyInsight } from "@/lib/weekly-insights"
+import ProfileSettingsDialog from "./profile-settings-dialog"
 import {
   LineChart,
   Line,
@@ -129,6 +131,8 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
   const [selectedLanguage, setSelectedLanguage] = useState<Language>("EN")
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [showProfileSettings, setShowProfileSettings] = useState(false)
+  const [storedProfile, setStoredProfile] = useState<StoredProfile | null>(null)
   const [isOffline, setIsOffline] = useState(false)
   const [patientData, setPatientData] = useState<PatientDisplayData>(DEFAULT_PATIENT_DATA)
   const [prescriptions, setPrescriptions] = useState<PrescriptionItem[]>([])
@@ -144,6 +148,11 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
     const msPerDay = 24 * 60 * 60 * 1000
     return Math.max(0, Math.ceil((dueDate.getTime() - now.getTime()) / msPerDay))
   }, [patientData.dueDate])
+
+  const weeklyInsight = useMemo(() => getWeeklyInsight(gestationalWeek), [gestationalWeek])
+  const currentWeek = weeklyInsight.week
+  const trimesterLabel = currentWeek <= 13 ? "1st" : currentWeek <= 27 ? "2nd" : "3rd"
+  const remainingWeeks = Math.max(0, 40 - currentWeek)
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -195,6 +204,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
       if (profileRaw) {
         try {
           baseProfile = JSON.parse(profileRaw) as StoredProfile
+          setStoredProfile(baseProfile)
           setPatientData((prev) => ({
             ...prev,
             name: baseProfile?.full_name || prev.name,
@@ -358,38 +368,17 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
     },
   ]
 
-  const healthTips = [
-    {
-      id: 1,
-      title: "Stay Hydrated",
-      titleSi: "ජලය හොඳින් පානය කරන්න",
-      titleTa: "நீரேற்றமாக இருங்கள்",
-      description: "Drink at least 8-10 glasses of water daily to support your baby.",
-      descriptionSi: "ඔබේ දරුවාගේ වර්ධනයට දිනකට වතුර වීදුරු 8-10 ක් පානය කරන්න.",
-      descriptionTa: "உங்கள் குழந்தையின் வளர்ச்சிக்கு தினமும் 8-10 கிளாஸ் தண்ணீர் குடிக்கவும்.",
-      icon: Droplets,
-    },
-    {
-      id: 2,
-      title: "Monitor Blood Pressure",
-      titleSi: "රුධිර පීඩනය පරීක්ෂා කරන්න",
-      titleTa: "இரத்த அழுத்தத்தைக் கண்காணிக்கவும்",
-      description: "Regular BP checks help detect early signs of preeclampsia.",
-      descriptionSi: "නිතිපතා රුධිර පීඩනය පරීක්ෂා කිරීමෙන් සංකූලතා කලින් හඳුනාගත හැක.",
-      descriptionTa: "இரத்த அழுத்தத்தை சீராக பரிசோதிப்பது சிக்கல்களை முன்கூட்டியே கண்டறிய உதவும்.",
-      icon: Heart,
-    },
-    {
-      id: 3,
-      title: "Prenatal Vitamins",
-      titleSi: "ප්‍රසව විටමින් ගන්න",
-      titleTa: "மகப்பேறு வைட்டமின்கள்",
-      description: "Folic acid and iron are essential for your baby's development.",
-      descriptionSi: "ෆෝලික් අම්ලය සහ යකඩ ඔබේ දරුවාගේ වර්ධනයට අත්‍යවශ්‍ය වේ.",
-      descriptionTa: "ஃபோலிக் அமிலம் மற்றும் இரும்புச்சத்து உங்கள் குழந்தையின் வளர்ச்சிக்கு அவசியம்.",
-      icon: Pill,
-    },
-  ]
+  const insightFactIcons = [Droplets, Heart, Pill]
+  const healthTips = weeklyInsight.facts.map((fact, index) => ({
+    id: index + 1,
+    title: fact.title,
+    titleSi: fact.title,
+    titleTa: fact.title,
+    description: fact.description,
+    descriptionSi: fact.description,
+    descriptionTa: fact.description,
+    icon: insightFactIcons[index] || Info,
+  }))
 
   const languages = [
     { code: "EN", label: "English" },
@@ -487,9 +476,15 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
               <div className="absolute top-full right-0 mt-3 bg-white border border-slate-100 rounded-2xl shadow-2xl z-50 min-w-[220px] py-2 overflow-hidden animate-in fade-in slide-in-from-top-2">
                 <div className="px-5 py-4 border-b border-slate-50">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Signed in as</p>
-                  <p className="text-xs font-bold text-slate-900">{patientData.email}</p>
+                  <p className="text-xs font-bold text-slate-900">{patientData.name || patientData.email || "N/A"}</p>
                 </div>
-                <button className="w-full px-5 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setShowUserMenu(false)
+                    setShowProfileSettings(true)
+                  }}
+                  className="w-full px-5 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 flex items-center gap-3"
+                >
                   <Settings className="w-4 h-4 text-slate-400" />
                   My Profile
                 </button>
@@ -829,23 +824,17 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                          <div className="absolute inset-0 bg-slate-900/40" />
                       </div>
                       <Baby className="w-24 h-24 text-primary relative z-10 mb-6 animate-pulse" />
-                      <h3 className="text-3xl font-black relative z-10 tracking-tight">Week {gestationalWeek}</h3>
+                      <h3 className="text-3xl font-black relative z-10 tracking-tight">Week {currentWeek}</h3>
                       <p className="text-slate-400 font-black uppercase tracking-[0.2em] text-[10px] relative z-10 mt-2">Corn Ear Size</p>
                    </div>
                    <div className="flex-1 p-12 bg-white/40">
                       <h3 className="text-2xl font-black text-slate-900 mb-6 tracking-tight">Development This Week</h3>
-                      <p className="text-slate-500 leading-relaxed mb-8 font-bold">
-                         {getText(
-                           "Your baby's face is fully formed with eyebrows and eyelashes. Their brain is developing rapidly, starting a regular waking and sleeping cycle. Movement levels may increase significantly.",
-                           "ඔබේ දරුවාගේ මුහුණ දැන් සම්පූර්ණයෙන්ම සෑදී ඇති අතර මොළයේ වර්ධනය වේගවත් වේ. දරුවා අවදි වන සහ නිදාගන්නා නිතිපතා චක්‍රයක් ආරම්භ වේ.",
-                           "உங்கள் குழந்தையின் முகம் இப்போது முழுமையாக உருவாகியுள்ளது. மூளை வேகமாக வளர்ந்து வருகிறது, ஒரு வழக்கமான தூக்க சுழற்சி தொடங்குகிறது."
-                         )}
-                      </p>
+                      <p className="text-slate-500 leading-relaxed mb-8 font-bold">{weeklyInsight.description}</p>
                       <div className="grid grid-cols-3 gap-6">
                          {[
-                           { val: "30cm", label: "Length" },
-                           { val: "600g", label: "Weight" },
-                           { val: "77%", label: "Development" },
+                           { val: `W${currentWeek}`, label: "Current Week" },
+                           { val: trimesterLabel, label: "Trimester" },
+                           { val: `${remainingWeeks}`, label: "Weeks Left" },
                          ].map(stat => (
                            <div key={stat.label} className="p-6 bg-white/50 rounded-2xl border border-slate-100 text-center shadow-sm">
                               <p className="text-xl font-black text-slate-900 tracking-tight">{stat.val}</p>
@@ -863,15 +852,6 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
       {/* Emergency Footer */}
       <footer className="bg-white/80 backdrop-blur-md border-t border-slate-100 p-8">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8">
-           <div className="flex items-center gap-6">
-              <div className="w-14 h-14 bg-rose-500 rounded-2xl flex items-center justify-center animate-pulse shadow-xl shadow-rose-500/20">
-                 <Phone className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                 <p className="text-[10px] font-black text-rose-500 uppercase tracking-[0.2em] mb-1">{getText("24/7 Medical Support", "හදිසි වෛද්‍ය සහාය", "அவசர உதவி")}</p>
-                 <p className="text-2xl font-black text-slate-900 tracking-tight">0117 888 888</p>
-              </div>
-           </div>
            <div className="flex items-center gap-10 text-[10px] font-black text-slate-400 uppercase tracking-widest">
               <a href="#" className="hover:text-primary transition-colors">Digital Records</a>
               <a href="#" className="hover:text-primary transition-colors">Privacy Policy</a>
@@ -879,6 +859,22 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
            </div>
         </div>
       </footer>
+
+      <ProfileSettingsDialog
+        open={showProfileSettings}
+        onOpenChange={setShowProfileSettings}
+        userProfile={{
+          ...(storedProfile || {}),
+          full_name: patientData.name,
+        }}
+        onProfileSaved={(profile) => {
+          setStoredProfile(profile)
+          setPatientData((prev) => ({
+            ...prev,
+            name: profile.full_name || prev.name,
+          }))
+        }}
+      />
     </div>
   )
 }

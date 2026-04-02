@@ -16,6 +16,7 @@ from backend.services.admin_service import (
     TrendDataPoint,
     RiskDriverAggregate,
     SpecialistWorkload,
+    Stage2DiagnosticDetail,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,47 @@ class MetricsResponse(Dict[str, Any]):
     """Dashboard metrics response wrapper"""
 
     pass
+
+
+@router.get("/stage2-diagnostics")
+def get_stage2_diagnostics(
+    limit: int = 10,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """
+    Stage 2 diagnostic detail table for admin dashboards.
+
+    Authorized: ADMIN, CLINICAL_SPECIALIST
+    """
+    if current_user.role.value not in ["ADMIN", "CLINICAL_SPECIALIST"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins and specialists can access stage 2 diagnostics",
+        )
+
+    safe_limit = max(1, min(limit, 100))
+    details = AdminService.get_stage2_diagnostic_details(db, limit=safe_limit)
+    return {
+        "limit": safe_limit,
+        "rows": [
+            {
+                "diagnostic_id": row.diagnostic_id,
+                "evaluated_at": row.evaluated_at,
+                "patient_name": row.patient_name,
+                "patient_national_id": row.patient_national_id,
+                "specialist_name": row.specialist_name,
+                "stage1_screening_id": row.stage1_screening_id,
+                "primary_disease_checked": row.primary_disease_checked,
+                "dominant_condition": row.dominant_condition,
+                "overall_severity_score": row.overall_severity_score,
+                "sflt1_plgf_ratio": row.sflt1_plgf_ratio,
+                "cervical_length_mm": row.cervical_length_mm,
+                "model_used": row.model_used,
+            }
+            for row in details
+        ],
+    }
 
 
 @router.get("/dashboard-metrics")

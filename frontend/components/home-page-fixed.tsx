@@ -561,15 +561,6 @@ export default function HomePage({ onNavigateToLogin }: HomePageProps) {
               <div className="space-y-4">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Phone className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500">{getText("Emergency Hotline", "හදිසි ඇමතුම් අංකය", "அவசர உதவி எண்")}</p>
-                    <p className="font-semibold text-slate-900">0117 888 888</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                     <Mail className="w-5 h-5 text-primary" />
                   </div>
                   <div>

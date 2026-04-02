@@ -45,6 +45,26 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(..., description="New password (must be strong)")
 
 
+class ProfileUpdateRequest(BaseModel):
+    """Schema for updating the authenticated user's profile"""
+    full_name: Optional[str] = Field(default=None, description="Updated full name")
+    phone_number: Optional[str] = Field(default=None, description="Staff/doctor/admin phone number")
+    contact_number: Optional[str] = Field(default=None, description="Patient contact number")
+    emergency_contact: Optional[str] = Field(default=None, description="Patient emergency contact number")
+
+
+class ProfileResponse(BaseModel):
+    """Authenticated profile details"""
+    id: str
+    role: str
+    full_name: str
+    email: Optional[str] = None
+    national_id: Optional[str] = None
+    phone_number: Optional[str] = None
+    contact_number: Optional[str] = None
+    emergency_contact: Optional[str] = None
+
+
 class LoginResponse(BaseModel):
     """Response after successful login with access token"""
     access_token: str = Field(..., description="JWT access token - Use this in Authorization header as 'Bearer <token>'")

@@ -348,11 +348,6 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
           </div>
           
           <div className="flex items-center gap-6">
-            <div className="hidden md:flex items-center gap-3 px-4 py-2 bg-rose-50 rounded-full border border-rose-100">
-              <Phone className="w-4 h-4 text-primary animate-pulse" />
-              <span className="text-[10px] font-black text-primary uppercase tracking-widest">0117 888 888</span>
-            </div>
-            
             <Select value={language} onValueChange={(val) => setLanguage(val as Language)}>
               <SelectTrigger className="w-[110px] bg-white rounded-xl border-slate-200 text-xs font-bold shadow-sm">
                 <Globe className="w-4 h-4 mr-2 text-primary" />
