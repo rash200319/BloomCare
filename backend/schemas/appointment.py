@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime, time
+from uuid import UUID
 
 
 class AppointmentCreate(BaseModel):
@@ -14,10 +15,10 @@ class AppointmentCreate(BaseModel):
 
 class AppointmentResponse(BaseModel):
     """Response schema with full appointment details"""
-    id: str
-    patient_id: str
+    id: UUID
+    patient_id: UUID
     patient_name: str = Field(..., description="Patient's full name")
-    specialist_id: Optional[str] = None
+    specialist_id: Optional[UUID] = None
     specialist_name: Optional[str] = Field(None, description="Specialist's full name")
     appointment_date: datetime
     duration_minutes: int

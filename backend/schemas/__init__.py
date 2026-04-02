@@ -16,3 +16,8 @@ from .longitudinal import (
     TrendSummary,
     PatientHistoryResponse,
 )
+from .insights import (
+    WeeklyDevelopmentMetrics, VitalsSummary, ScreeningRiskSummary,
+    StressAndWellnessMetrics, WeeklyDevelopmentInsight, InsightListResponse,
+    PatientWeeklyStats
+)

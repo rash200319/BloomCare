@@ -179,12 +179,61 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
 
       const tokenData = await loginResponse.json()
       
+      // ✅ Extract actual role from backend response
+      const actualBackendRole = fromApiRole(tokenData.role)
+      
+      // ✅ VALIDATION: Verify backend role matches user's form selection
+      if (actualBackendRole !== selectedRole) {
+        throw new Error(
+          getText(
+            `Access Denied: You are registered as ${tokenData.role}, but tried to access as ${selectedRole}. Your account can only access the ${actualBackendRole} role.`,
+            `ප්‍රවේශ අවලංගු: ඔබ ${tokenData.role} ලෙස ලියාපදිංචි වී ඉන්නෙමු, නමුත් ${selectedRole} ලෙස ප්‍රවේශ හැකි විය නොහැක. ඔබගේ ගිණුම හැකිවෙයි ඇත්තේ ${actualBackendRole} භූමිකාවට පමණි.`,
+            `அணுக வேண்டிய நിবంధனைகள் மீறப்பட்டுள்ளது: நீங்கள் ${tokenData.role} ஆகப் பதிவு செய்யப்பட்டுள்ளீர்கள், ஆனால் ${selectedRole} ஆக அணுக முயற்சி செய்தீர்கள். உங்கள் கணக்கு அணுக முடிய வேண்டும் ${actualBackendRole} பாத்திரத்திற்கு மட்டுமே.`
+          )
+        )
+      }
+      
+      // ✅ AUTHORIZATION: Call backend dashboard endpoint to verify access rights
+      const dashboardEndpointMap: Record<UserRole, string> = {
+        'frontline': '/dashboard/frontline/dashboard',
+        'doctor': '/dashboard/doctor/dashboard',
+        'admin': '/dashboard/admin/dashboard',
+        'patient': '/dashboard/patient/dashboard'
+      }
+
+      const accessToken = tokenData.access_token
+      const dashboardEndpoint = dashboardEndpointMap[actualBackendRole]
+      
+      const dashboardResponse = await authFetch(dashboardEndpoint, {
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        }
+      })
+
+      if (dashboardResponse.status === 403) {
+        throw new Error(
+          getText(
+            "You do not have permission to access this dashboard.",
+            "ඔබට මෙම ඩ්‍යාෂ්බෝර්ඩ ප්‍රවේශ කිරීමට අනුමතి නොමැත.",
+            "இந்த டாஷ்போர்டை அணுக உங்களுக்கு அনுமதி இல்லை."
+          )
+        )
+      }
+
+      if (!dashboardResponse.ok) {
+        const err = await dashboardResponse.json().catch(() => ({}))
+        throw new Error(err?.detail || "Failed to verify dashboard access")
+      }
+      
+      // ✅ Store both token and full profile data
       if (typeof window !== "undefined") {
         window.localStorage.setItem("bloomcare_access_token", tokenData.access_token)
         window.localStorage.setItem("bloomcare_user_profile", JSON.stringify(tokenData))
       }
 
-      onLogin(selectedRole)
+      // ✅ Trigger login with actual backend role (not selected role)
+      onLogin(actualBackendRole)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Authentication failed"
       setErrorMessage(message)

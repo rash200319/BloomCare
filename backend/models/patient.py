@@ -19,6 +19,7 @@ class Patient(Base):
     contact_number = Column(String(50), nullable=True)
     emergency_contact = Column(String(50), nullable=True)
     blood_group = Column(String(10), nullable=True)
+    due_date = Column(Date, nullable=True)
     hashed_password = Column(String(255), nullable=False)
     assigned_worker_id = Column(String(36), ForeignKey(
         "users.id", ondelete="SET NULL"), nullable=True)

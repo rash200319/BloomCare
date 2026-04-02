@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS patients (
     full_name VARCHAR(255) NOT NULL,
     age INT,
     date_of_birth DATE,
+    due_date DATE,
     contact_number VARCHAR(50),
     emergency_contact VARCHAR(50),
     blood_group VARCHAR(10),

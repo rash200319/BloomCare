@@ -14,6 +14,7 @@ class PatientBase(BaseModel):
     national_id: Optional[str] = None
     full_name: str
     date_of_birth: Optional[date] = None
+    due_date: Optional[date] = None
     emergency_contact: Optional[str] = None
     blood_group: Optional[str] = None
     contact_number: Optional[str] = None
@@ -95,7 +96,7 @@ class PatientUpdate(PatientCreate):
 
 class PatientInDBBase(PatientBase):
     id: UUID
-    created_at: datetime
+    registered_at: datetime
     updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
@@ -146,6 +147,7 @@ class CreatePatientRequest(BaseModel):
     full_name: str
     national_id: Optional[str] = None
     date_of_birth: Optional[date] = None
+    due_date: Optional[date] = None
     age: Optional[int] = None
     contact_number: Optional[str] = None
     emergency_contact: Optional[str] = None
@@ -159,6 +161,7 @@ class PatientManagementResponse(BaseModel):
     full_name: str
     national_id: Optional[str]
     date_of_birth: Optional[date]
+    due_date: Optional[date]
     age: Optional[int]
     contact_number: Optional[str]
     emergency_contact: Optional[str]

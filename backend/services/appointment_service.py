@@ -317,34 +317,47 @@ class AppointmentService:
                 continue
             
             slots = []
-            current_time = current_date.replace(
+            # Convert date to datetime with working start hour
+            current_time = datetime.combine(
+                current_date,
+                datetime.min.time()
+            ).replace(
                 hour=AppointmentService.WORKING_START_HOUR,
                 minute=0,
                 second=0
             )
-            end_time = current_date.replace(
+            end_time = current_time.replace(
                 hour=AppointmentService.WORKING_END_HOUR,
                 minute=0,
                 second=0
             )
             
             # Generate time slots
+            # First, fetch all non-cancelled appointments for this specialist on this date
+            appointments_on_date = db.query(Appointment).filter(
+                and_(
+                    Appointment.specialist_id == specialist.id,
+                    Appointment.appointment_date >= datetime.combine(current_date, datetime.min.time()),
+                    Appointment.appointment_date < datetime.combine(current_date, datetime.max.time()),
+                    Appointment.status != "CANCELLED"
+                )
+            ).all()
+            
             while current_time < end_time:
                 slot_end = current_time + timedelta(
                     minutes=AppointmentService.SLOT_DURATION_MINUTES
                 )
                 
-                # Check if slot is booked
-                booked = db.query(Appointment).filter(
-                    and_(
-                        Appointment.specialist_id == specialist.id,
-                        Appointment.appointment_date <= current_time,
-                        Appointment.appointment_date + timedelta(
-                            minutes=Appointment.duration_minutes
-                        ) > current_time,
-                        Appointment.status != "CANCELLED"
+                # Check if any appointment overlaps with this slot
+                booked = None
+                for appointment in appointments_on_date:
+                    appt_end = appointment.appointment_date + timedelta(
+                        minutes=appointment.duration_minutes
                     )
-                ).first()
+                    # Check for overlap
+                    if appointment.appointment_date <= current_time and appt_end > current_time:
+                        booked = appointment
+                        break
                 
                 # Get patient name if booked
                 patient_name = None
@@ -380,3 +393,68 @@ class AppointmentService:
             )
         
         return availability_list
+    
+    @staticmethod
+    def get_appointments_by_patient(
+        db: Session,
+        patient_id: str,
+        status: str = None  # Optional filter: SCHEDULED, COMPLETED, CANCELLED, etc.
+    ) -> list[AppointmentResponse]:
+        """
+        Get all appointments for a patient, optionally filtered by status.
+        Ordered by appointment date (most recent first).
+        
+        Parameters:
+        - patient_id: Patient's user_id (e.g., PAT-0001)
+        - status: Optional status filter (SCHEDULED, COMPLETED, CANCELLED, etc.)
+        
+        Returns:
+        - List of appointments with patient and specialist details
+        """
+        # Verify patient exists
+        patient = db.query(Patient).filter(Patient.user_id == patient_id).first()
+        if not patient:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Patient with ID '{patient_id}' not found"
+            )
+        
+        # Build query
+        query = db.query(Appointment).filter(
+            Appointment.patient_id == patient.id
+        )
+        
+        # Filter by status if provided
+        if status:
+            query = query.filter(Appointment.status == status.upper())
+        
+        # Order by appointment date (most recent first)
+        appointments = query.order_by(
+            Appointment.appointment_date.desc()
+        ).all()
+        
+        if not appointments:
+            return []
+        
+        # Build response
+        appointment_responses = []
+        for apt in appointments:
+            specialist = db.query(User).filter(User.id == apt.specialist_id).first()
+            appointment_responses.append(
+                AppointmentResponse(
+                    id=apt.id,
+                    patient_id=apt.patient_id,
+                    patient_name=patient.full_name,
+                    specialist_id=str(apt.specialist_id) if apt.specialist_id else None,
+                    specialist_name=specialist.full_name if specialist else None,
+                    appointment_date=apt.appointment_date,
+                    duration_minutes=apt.duration_minutes,
+                    queue_number=apt.queue_number,
+                    status=apt.status,
+                    notes=apt.notes,
+                    created_at=apt.created_at,
+                    updated_at=apt.updated_at
+                )
+            )
+        
+        return appointment_responses

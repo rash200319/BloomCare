@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from backend.api.v1 import (
     auth, patients, triage, diagnose, appointments, assistant, reports, longitudinal,
-    staff_management, patient_management
+    staff_management, patient_management, dashboard, insights
 )
 
 api_router = APIRouter()
@@ -24,3 +24,11 @@ api_router.include_router(staff_management.router,
                           prefix="/staff-management", tags=["Staff Management"])
 api_router.include_router(patient_management.router,
                           prefix="/patient-management", tags=["Patient Management"])
+
+# NEW: Dashboard Endpoints (Role-Protected)
+api_router.include_router(dashboard.router,
+                          prefix="/dashboard", tags=["Dashboard"])
+
+# NEW: Insights Endpoints (Weekly Development Tracking)
+api_router.include_router(insights.router,
+                          prefix="/insights", tags=["Insights"])

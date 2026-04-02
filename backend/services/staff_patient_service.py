@@ -148,6 +148,16 @@ class PatientService:
     def create_patient(db: Session, patient_data: CreatePatientRequest) -> tuple:
         """Create a patient (generates user_id and temporary password)"""
 
+        # Check if national_id already exists (if provided)
+        if patient_data.national_id:
+            existing_patient = db.query(Patient).filter(
+                Patient.national_id == patient_data.national_id).first()
+            if existing_patient:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Patient with this national ID already exists"
+                )
+
         # Generate temporary password
         temp_password = generate_temporary_password()
 
@@ -166,6 +176,7 @@ class PatientService:
 
         db.add(new_user)
         db.flush()  # Get the auto-generated user_id
+        db.refresh(new_user)  # Refresh to load the auto-generated user_id
 
         # Create patient entry
         new_patient = Patient(
@@ -174,6 +185,7 @@ class PatientService:
             full_name=patient_data.full_name,
             age=patient_data.age,
             date_of_birth=patient_data.date_of_birth,
+            due_date=patient_data.due_date,
             contact_number=patient_data.contact_number,
             emergency_contact=patient_data.emergency_contact,
             blood_group=patient_data.blood_group,
