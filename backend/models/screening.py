@@ -98,7 +98,9 @@ class Stage2Diagnostic(Base):
     # ML
     cluster_profile = Column(JSONB)
     condition_probabilities = Column(JSONB)
-    overall_severity_score = Column(DECIMAL(4, 3))
+    explainability_data = Column(JSONB)
+    input_snapshot = Column(JSONB)
+    overall_severity_score = Column(DECIMAL(4,3))
     dominant_condition = Column(String)
 
     evaluated_at = Column(DateTime(timezone=True), default=datetime.utcnow)

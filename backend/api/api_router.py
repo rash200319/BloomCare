@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from backend.api.v1 import (
     auth, patients, triage, diagnose, appointments, assistant, reports, longitudinal,
-    staff_management, patient_management, dashboard, insights
+    staff_management, patient_management, dashboard, insights, differential
 )
 
 api_router = APIRouter()
@@ -32,3 +32,6 @@ api_router.include_router(dashboard.router,
 # NEW: Insights Endpoints (Weekly Development Tracking)
 api_router.include_router(insights.router,
                           prefix="/insights", tags=["Insights"])
+
+# NEW: Differential Diagnosis
+api_router.include_router(differential.router, tags=["Differential Diagnosis"])
