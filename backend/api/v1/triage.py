@@ -188,6 +188,7 @@ def stage1_history(
                 "patient_id": screening.patient_id,
                 "patient_name": patient.full_name if patient else None,
                 "collected_at": screening.collected_at.isoformat() if screening.collected_at else None,
+                "gestational_age_weeks": screening.gestational_age_weeks,
                 "systolic": screening.systolic,
                 "diastolic": screening.diastolic,
                 "heart_rate": screening.heart_rate,

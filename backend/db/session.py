@@ -7,6 +7,24 @@ from backend.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _ensure_stage2_audit_columns(engine) -> None:
+	dialect = engine.dialect.name
+	try:
+		with engine.begin() as conn:
+			if dialect == "postgresql":
+				conn.execute(text("ALTER TABLE IF EXISTS stage2_diagnostics ADD COLUMN IF NOT EXISTS explainability_data JSONB"))
+				conn.execute(text("ALTER TABLE IF EXISTS stage2_diagnostics ADD COLUMN IF NOT EXISTS input_snapshot JSONB"))
+			elif dialect == "sqlite":
+				columns = conn.exec_driver_sql("PRAGMA table_info(stage2_diagnostics)").fetchall()
+				existing = {row[1] for row in columns}
+				if "explainability_data" not in existing:
+					conn.exec_driver_sql("ALTER TABLE stage2_diagnostics ADD COLUMN explainability_data TEXT")
+				if "input_snapshot" not in existing:
+					conn.exec_driver_sql("ALTER TABLE stage2_diagnostics ADD COLUMN input_snapshot TEXT")
+	except SQLAlchemyError as exc:
+		logger.warning("Unable to ensure stage2_diagnostics audit columns: %s", exc)
+
+
 def _create_engine_with_fallback():
     primary_uri = settings.SQLALCHEMY_DATABASE_URI
 
@@ -52,4 +70,5 @@ def _create_engine_with_fallback():
 
 
 engine = _create_engine_with_fallback()
+_ensure_stage2_audit_columns(engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

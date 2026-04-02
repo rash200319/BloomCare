@@ -128,9 +128,14 @@ class Stage2WithStage1Context(BaseModel):
     evaluated_at: datetime
     primary_disease_checked: Optional[str] = None
     model_used: Optional[str] = None
+    specialist_id: Optional[str] = None
+    stage1_screening_id: Optional[str] = None
     overall_severity_score: Optional[float] = None
     dominant_condition: Optional[str] = None
     biomarkers: Dict[str, Any] = {}
+    condition_probabilities: Dict[str, Any] = {}
+    explainability_data: Dict[str, Any] = {}
+    input_snapshot: Dict[str, Any] = {}
     stage1: Stage1VitalsSnapshot
 
 
