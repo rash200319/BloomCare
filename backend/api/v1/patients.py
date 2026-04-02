@@ -22,6 +22,13 @@ def _role_name(user: User) -> str:
     return user.role.value if hasattr(user.role, "value") else str(user.role)
 
 
+def _as_str(value: Any) -> str:
+    return str(value) if value is not None else ""
+
+
+def _as_str_or_none(value: Any) -> str | None:
+    return str(value) if value is not None else None
+
 @router.get("/", response_model=List[Patient])
 def read_patients(
     db: Session = Depends(get_db),
@@ -117,7 +124,7 @@ def get_patient_history(
     diagnostics: List[Stage2WithStage1Context] = []
     for stage2, stage1 in rows:
         stage1_snapshot = Stage1VitalsSnapshot(
-            screening_id=getattr(stage1, "id", None),
+            screening_id=_as_str_or_none(getattr(stage1, "id", None)),
             encounter_id=getattr(stage1, "encounter_id", None),
             collected_at=getattr(stage1, "collected_at", None),
             gestational_age_weeks=getattr(
@@ -145,10 +152,12 @@ def get_patient_history(
 
         diagnostics.append(
             Stage2WithStage1Context(
-                stage2_diagnostic_id=stage2.id,
+                stage2_diagnostic_id=_as_str(stage2.id),
                 evaluated_at=stage2.evaluated_at,
                 primary_disease_checked=stage2.primary_disease_checked,
                 model_used=stage2.model_used,
+                specialist_id=_as_str_or_none(stage2.specialist_id),
+                stage1_screening_id=_as_str_or_none(stage2.stage1_screening_id),
                 overall_severity_score=(
                     float(stage2.overall_severity_score)
                     if stage2.overall_severity_score is not None
@@ -163,6 +172,9 @@ def get_patient_history(
                     "metabolomics": stage2.metabolomics,
                     "doppler": stage2.doppler,
                 },
+                condition_probabilities=stage2.condition_probabilities or {},
+                explainability_data=stage2.explainability_data or {},
+                input_snapshot=stage2.input_snapshot or {},
                 stage1=stage1_snapshot,
             )
         )

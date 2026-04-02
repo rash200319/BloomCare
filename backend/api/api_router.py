@@ -1,9 +1,6 @@
 from fastapi import APIRouter
 
-from backend.api.v1 import (
-    auth, patients, triage, diagnose, appointments, assistant, reports, longitudinal,
-    staff_management, patient_management
-)
+from api.v1 import auth, patients, triage, diagnose, appointments, assistant, reports, longitudinal, differential
 
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
@@ -18,9 +15,4 @@ api_router.include_router(
     assistant.router, prefix="/assistant", tags=["Assistant"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 api_router.include_router(longitudinal.router, tags=["Longitudinal Tracking"])
-
-# NEW: Staff & Patient Management Endpoints
-api_router.include_router(staff_management.router,
-                          prefix="/staff-management", tags=["Staff Management"])
-api_router.include_router(patient_management.router,
-                          prefix="/patient-management", tags=["Patient Management"])
+api_router.include_router(differential.router, tags=["Differential Diagnosis"])
