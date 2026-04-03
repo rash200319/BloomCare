@@ -142,7 +142,7 @@ BLOOMCARE_MOCK_LLM=true
 
 # ── API Security ──────────────────────────────────────────────────
 # (Production) Add your actual domain
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+ALLOWED_ORIGINS=http://localhost:3000
 
 # ── Database (Production) ─────────────────────────────────────────
 # DATABASE_URL=postgresql://user:password@localhost/bloomcare
@@ -160,25 +160,25 @@ ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
 # From the aithon\ directory (NOT inside backend\)
 cd d:\hemasaithon\aithon
 
-python -m uvicorn backend.main:app --host 0.0.0.0 --port 8001 --reload --log-level info
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 8005 --reload --log-level info
 ```
 
 | Flag | Purpose |
 |------|---------|
-| `--host 0.0.0.0` | Listen on all interfaces (accessible from frontend at localhost:8001) |
-| `--port 8001` | Port 8001 (frontend expects this) |
+| `--host 0.0.0.0` | Listen on all interfaces (accessible from frontend at localhost:8005) |
+| `--port 8005` | Port 8005 (frontend expects this) |
 | `--reload` | Auto-restart on file changes (development only) |
 | `--log-level info` | Show INFO-level logs including pipeline steps |
 
 ### Production server (no reload)
 
 ```powershell
-python -m uvicorn backend.main:app --host 0.0.0.0 --port 8001 --workers 4 --log-level warning
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 8005 --workers 4 --log-level warning
 ```
 
 ### Verify the server is running
 
-Open in browser → **http://localhost:8001**
+Open in browser → **http://localhost:8005**
 
 Expected response:
 ```json
@@ -192,11 +192,11 @@ Expected response:
 
 ### Interactive API Docs (Swagger UI)
 
-➡️ **http://localhost:8001/docs**
+➡️ **http://localhost:8005/docs**
 
 ### ReDoc (alternative docs)
 
-➡️ **http://localhost:8001/redoc**
+➡️ **http://localhost:8005/redoc**
 
 ---
 
@@ -482,7 +482,7 @@ pip list | findstr uvicorn
 # You must run uvicorn from d:\hemasaithon\aithon (the parent of backend\)
 # Do NOT cd into backend\ first
 cd d:\hemasaithon\aithon
-python -m uvicorn backend.main:app --port 8001
+python -m uvicorn backend.main:app --port 8005
 ```
 
 ### `/api/v1/diagnose` is slow (30–60 seconds)
@@ -501,7 +501,6 @@ Add your frontend origin to `ALLOWED_ORIGINS` in `backend/main.py`:
 ```python
 ALLOWED_ORIGINS = [
     "http://localhost:3000",   # Next.js default
-    "http://localhost:3001",
     ...
 ]
 ```

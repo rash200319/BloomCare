@@ -35,20 +35,20 @@ python api.py
 
 Verify backend is running:
 
-- Open `http://localhost:8000/health`
+- Open `http://localhost:8005/health`
 - Expected: JSON response with status
 
 ## 2) Configure Mobile API URL
 
 Edit `mobile/src/services/syncService.ts` and set `API_URL`.
 
-- Android emulator: `http://10.0.2.2:8000/predict-risk`
-- Physical Android/iOS phone: `http://<YOUR_LAPTOP_LAN_IP>:8000/predict-risk`
+- Android emulator: `http://10.0.2.2:8005/predict-risk`
+- Physical Android/iOS phone: `http://<YOUR_LAPTOP_LAN_IP>:8005/predict-risk`
 
 Example:
 
 ```ts
-const API_URL = 'http://192.168.1.50:8000/predict-risk';
+const API_URL = 'http://192.168.1.50:8005/predict-risk';
 ```
 
 Notes:
@@ -82,7 +82,7 @@ Then:
 ### Assess button keeps loading
 
 - Check `API_URL` is valid in `mobile/src/services/syncService.ts`
-- Confirm backend is reachable from phone browser using `http://<LAN_IP>:8000/health`
+- Confirm backend is reachable from phone browser using `http://<LAN_IP>:8005/health`
 - Confirm phone and laptop are on same network
 
 ### `python api.py` exits immediately

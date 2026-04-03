@@ -111,6 +111,16 @@ BloomCare is an AI-powered maternal healthcare platform for screening, triage, a
 
 ## Getting Started
 
+## Demo Deployment (AWS)
+
+For demo purposes, BloomCare is deployed at:
+
+- https://54.206.93.158
+
+Important:
+- This deployment is for demonstrations only.
+- It is not secure and must not be used for production or real patient data.
+
 ### Frontend
 
 1. Go to the frontend directory:
@@ -134,11 +144,6 @@ Install Python dependencies:
 pip install -r requirements.txt
 ```
 
-## Model Performance Highlights
-
-- GDM Stage 2: 0.9983 ROC-AUC
-- Preterm Stage 2: 0.9911 ROC-AUC
-- Preeclampsia Stage 2: 0.9749 ROC-AUC
 
 For detailed data mapping, see [DATA_DICTIONARY.md](./DATA_DICTIONARY.md).
 
