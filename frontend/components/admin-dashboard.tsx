@@ -562,7 +562,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             </TabsTrigger>
             <TabsTrigger value="registration" className="h-10 px-6 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-[10px] font-black uppercase tracking-widest transition-all">
               <Users className="w-4 h-4 mr-2" />
-              {getText("Staff Registration", "à·ƒà·šà·€à· à¶…à¶¯à·”à¶±à·Š", "à®¸à¯‡à®µà®•à®°à¯ à®ªà®¤à®¿à®µà¯")}
+              {getText("Staff Registration", "සේවා ලියාපදිංචිය", "பணியாளர் பதிவு")}
             </TabsTrigger>
           </TabsList>
 
@@ -715,7 +715,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             <Card className="border-0 glass shadow-2xl shadow-slate-200/50 overflow-hidden">
               <CardHeader className="border-b border-slate-50/50 pb-6">
                 <CardTitle className="text-sm font-black text-slate-800 uppercase tracking-widest">
-                  {getText("Register Staff", "à·ƒà·šà·€à· à¶…à¶¯à·”à¶±à·Š", "à®¸à¯‡à®µà®•à®°à¯ à®ªà®¤à®¿à®µà¯")}
+                  {getText("Register Staff", "සේවා ලියාපදිංචිය", "பணியாளர் பதிவு")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-8 space-y-6">
