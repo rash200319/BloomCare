@@ -9,6 +9,7 @@ from backend.core.security import get_password_hash
 from backend.schemas.patient import (
     Patient,
     PatientCreate,
+    PatientUpdate,
     PatientHistoryResponse,
     Stage2WithStage1Context,
     Stage1VitalsSnapshot,
@@ -296,3 +297,166 @@ def get_patient_history(
         patient_name=patient.full_name,
         diagnostics=diagnostics,
     )
+
+
+@router.get(
+    "/me/profile",
+    response_model=Patient,
+    summary="Get Current Patient Profile",
+    description="Get the current authenticated patient's profile information",
+)
+def get_my_profile(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Get current patient's profile"""
+    role = _role_name(current_user)
+    if role != "PATIENT":
+        raise HTTPException(status_code=403, detail="Only patients can access this endpoint")
+
+    patient = db.query(DBPatient).filter(cast(DBPatient.id, String) == str(current_user.id)).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient profile not found")
+
+    return patient
+
+
+@router.patch(
+    "/me/update",
+    response_model=Patient,
+    summary="Update Patient Profile",
+    description="Update patient contact number and other details",
+)
+def update_my_profile(
+    patient_update: PatientUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Update patient profile details.
+    
+    - **contact_number**: Optional - Phone number in +94XXXXXXXXX or 0XXXXXXXXX format
+    - **emergency_contact**: Optional - Emergency contact number
+    - **full_name**: Optional - Patient's full name
+    - **age**: Optional - Patient's age (0-120)
+    - **due_date**: Optional - Expected due date
+    - **blood_group**: Optional - One of A+, A-, B+, B-, AB+, AB-, O+, O-
+    """
+    role = _role_name(current_user)
+    if role != "PATIENT":
+        raise HTTPException(status_code=403, detail="Only patients can update their profile")
+
+    patient = db.query(DBPatient).filter(cast(DBPatient.id, String) == str(current_user.id)).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    print(f"[UPDATE-PATIENT] Updating patient {patient.id}")
+
+    # Update only the provided fields
+    update_data = patient_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if value is not None:
+            print(f"[UPDATE-PATIENT] Setting {field}: {value}")
+            setattr(patient, field, value)
+
+    try:
+        db.commit()
+        db.refresh(patient)
+        print(f"[UPDATE-PATIENT] Successfully updated patient {patient.id}")
+        return patient
+    except Exception as e:
+        db.rollback()
+        print(f"[UPDATE-PATIENT-ERROR] Failed to update patient: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update patient profile: {str(e)}"
+        )
+
+
+@router.get(
+    "/{patient_id}/details",
+    response_model=Patient,
+    summary="Get Patient Details",
+    description="Get patient details by ID. Staff can view assigned patients, admin can view any patient.",
+)
+def get_patient_details(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Get patient details by ID"""
+    print(f"[GET-PATIENT] Fetching patient {patient_id}")
+
+    patient = db.query(DBPatient).filter(cast(DBPatient.id, String) == patient_id).first()
+    if not patient:
+        print(f"[GET-PATIENT] Patient {patient_id} not found")
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    # Access control
+    current_role = _role_name(current_user)
+    if current_role not in ["ADMIN", "CLINICAL_SPECIALIST"]:
+        is_patient_self = current_role == "PATIENT" and str(current_user.id) == str(patient_id)
+        is_assigned_staff = str(getattr(patient, "assigned_worker_id", "")) == str(current_user.id)
+
+        if not (is_patient_self or is_assigned_staff):
+            raise HTTPException(status_code=403, detail="Not authorized to view this patient")
+
+    print(f"[GET-PATIENT] Found patient {patient_id}")
+    return patient
+
+
+@router.patch(
+    "/{patient_id}/update",
+    response_model=Patient,
+    summary="Update Patient Details (Admin/Staff)",
+    description="Update patient details by ID. Only admin and assigned staff can update.",
+)
+def update_patient_details(
+    patient_id: str,
+    patient_update: PatientUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Update patient details by ID (admin or assigned staff only).
+    
+    - **contact_number**: Optional - Phone number in +94XXXXXXXXX or 0XXXXXXXXX format
+    - **emergency_contact**: Optional - Emergency contact number
+    - **full_name**: Optional - Patient's full name
+    - **age**: Optional - Patient's age (0-120)
+    - **due_date**: Optional - Expected due date
+    - **blood_group**: Optional - One of A+, A-, B+, B-, AB+, AB-, O+, O-
+    """
+    print(f"[UPDATE-PATIENT] Admin/Staff updating patient {patient_id}")
+
+    patient = db.query(DBPatient).filter(cast(DBPatient.id, String) == patient_id).first()
+    if not patient:
+        print(f"[UPDATE-PATIENT] Patient {patient_id} not found")
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    # Access control
+    current_role = _role_name(current_user)
+    if current_role not in ["ADMIN", "CLINICAL_SPECIALIST"]:
+        is_assigned_staff = str(getattr(patient, "assigned_worker_id", "")) == str(current_user.id)
+        if not is_assigned_staff:
+            raise HTTPException(status_code=403, detail="Not authorized to update this patient")
+
+    # Update only the provided fields
+    update_data = patient_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if value is not None:
+            print(f"[UPDATE-PATIENT] Setting {field}: {value}")
+            setattr(patient, field, value)
+
+    try:
+        db.commit()
+        db.refresh(patient)
+        print(f"[UPDATE-PATIENT] Successfully updated patient {patient_id}")
+        return patient
+    except Exception as e:
+        db.rollback()
+        print(f"[UPDATE-PATIENT-ERROR] Failed to update patient: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update patient details: {str(e)}"
+        )

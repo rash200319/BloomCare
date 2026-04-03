@@ -183,9 +183,64 @@ def update_appointment_status(
         status_update.status)
     AppointmentService._ensure_allowed_status_transition(
         appointment.status, requested_status)
+    
+    old_status = appointment.status
     appointment.status = requested_status
     db.commit()
     db.refresh(appointment)
+
+    # Create notifications for status changes
+    from backend.services.notification_service import NotificationService
+    from backend.models.patient import Patient
+    import sys
+    
+    try:
+        patient = db.query(Patient).filter(Patient.id == appointment.patient_id).first()
+        print(f"[NOTIFICATION] Status change: {old_status} → {requested_status}", file=sys.stderr)
+        print(f"[NOTIFICATION] Appointment created_by_id: {appointment.created_by_id}", file=sys.stderr)
+        print(f"[NOTIFICATION] Patient found: {patient is not None}", file=sys.stderr)
+        
+        if old_status != "CONFIRMED" and requested_status == "CONFIRMED":
+            # Appointment confirmed by doctor
+            print(f"[NOTIFICATION] Creating CONFIRMED notification", file=sys.stderr)
+            if appointment.created_by_id and patient:
+                NotificationService.create_appointment_confirmation_notification(
+                    db,
+                    recipient_id=appointment.created_by_id,
+                    appointment_id=appointment_id,
+                    patient_name=patient.full_name,
+                    specialist_name=current_user.full_name or "Unknown",
+                    appointment_date=appointment.appointment_date,
+                )
+                print(f"[NOTIFICATION] CONFIRMED notification created", file=sys.stderr)
+        
+        elif old_status != "CANCELLED" and requested_status == "CANCELLED":
+            # Appointment cancelled by doctor or admin
+            print(f"[NOTIFICATION] Creating CANCELLED notification", file=sys.stderr)
+            if appointment.created_by_id and patient:
+                cancellation_reason = None
+                if hasattr(status_update, 'notes') and status_update.notes:
+                    cancellation_reason = status_update.notes
+                
+                print(f"[NOTIFICATION] Calling create_appointment_cancellation_notification with reason: {cancellation_reason}", file=sys.stderr)
+                NotificationService.create_appointment_cancellation_notification(
+                    db,
+                    recipient_id=appointment.created_by_id,
+                    appointment_id=appointment_id,
+                    patient_name=patient.full_name,
+                    specialist_name=current_user.full_name or "Unknown",
+                    appointment_date=appointment.appointment_date,
+                    reason=cancellation_reason,
+                )
+                print(f"[NOTIFICATION] CANCELLED notification created", file=sys.stderr)
+            else:
+                print(f"[NOTIFICATION] Skipping - created_by_id or patient is missing", file=sys.stderr)
+    except Exception as e:
+        import traceback
+        print(f"[NOTIFICATION ERROR] Error creating notification: {e}", file=sys.stderr)
+        print(f"[NOTIFICATION TRACEBACK] {traceback.format_exc()}", file=sys.stderr)
+        # Don't fail the appointment update if notification creation fails
+        pass
 
     return AppointmentService._serialize_appointment(db, appointment)
 
@@ -277,7 +332,7 @@ def list_appointments(
     current_user: User = Depends(get_current_user),
     specialist_id: Optional[str] = Query(
         None, description="Filter by specialist ID"),
-    status: Optional[str] = Query(
+    appointment_status: Optional[str] = Query(
         None, description="Filter by status (PENDING, CONFIRMED, SCHEDULED, COMPLETED, CANCELLED)"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
@@ -330,8 +385,8 @@ def list_appointments(
         )
 
     # Filter by status if provided
-    if status:
-        query = query.filter(Appointment.status == status.upper())
+    if appointment_status:
+        query = query.filter(Appointment.status == appointment_status.upper())
 
     # Sort by appointment date
     appointments = query.order_by(

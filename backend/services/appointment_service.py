@@ -730,6 +730,41 @@ class AppointmentService:
         db.commit()
         db.refresh(appointment)
 
+        # Create cancellation notification for FLS
+        from backend.services.notification_service import NotificationService
+        from backend.models.patient import Patient
+        import sys
+        
+        try:
+            patient = db.query(Patient).filter(Patient.id == appointment.patient_id).first()
+            specialist_name = getattr(current_user, "full_name", "Unknown")
+            
+            print(f"[DELETE-CANCEL] Creating cancellation notification", file=sys.stderr)
+            print(f"[DELETE-CANCEL] Appointment created_by_id: {appointment.created_by_id}", file=sys.stderr)
+            print(f"[DELETE-CANCEL] Patient found: {patient is not None}", file=sys.stderr)
+            
+            # If cancelled by FLS, notify the creator; if cancelled by doctor, notify FLS
+            if appointment.created_by_id and patient:
+                print(f"[DELETE-CANCEL] Calling create_appointment_cancellation_notification", file=sys.stderr)
+                NotificationService.create_appointment_cancellation_notification(
+                    db,
+                    recipient_id=appointment.created_by_id,
+                    appointment_id=appointment_id,
+                    patient_name=patient.full_name,
+                    specialist_name=specialist_name,
+                    appointment_date=appointment.appointment_date,
+                    reason="Cancelled by staff",
+                )
+                print(f"[DELETE-CANCEL] Cancellation notification created successfully", file=sys.stderr)
+            else:
+                print(f"[DELETE-CANCEL] Skipping - missing created_by_id or patient", file=sys.stderr)
+        except Exception as e:
+            import traceback
+            print(f"[DELETE-CANCEL ERROR] Error creating cancellation notification: {e}", file=sys.stderr)
+            print(f"[DELETE-CANCEL TRACEBACK] {traceback.format_exc()}", file=sys.stderr)
+            # Don't fail the cancellation if notification creation fails
+            pass
+
         return AppointmentActionResponse(
             appointment=AppointmentService._serialize_appointment(
                 db, appointment),

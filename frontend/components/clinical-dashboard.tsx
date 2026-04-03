@@ -1197,7 +1197,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                 )}
               >
                 <Calendar className="w-3 h-3 inline mr-1" />
-                {getText("Today", "අද", "இන්නද")}
+                {getText("Today", "අද", "இன்னද")}
               </button>
             </div>
 
@@ -1212,7 +1212,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                   onChange={(e) => setSelectedDoctorFilter(e.target.value || null)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm font-medium text-slate-700 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 >
-                  <option value="">{getText("All Doctors", "සියලු වෛද්‍යවරුන්", "அனைத்து மருத்துவர்கள්")}</option>
+                  <option value="">{getText("All Doctors", "සියලු වෛද්‍යවරුන්", "அனைத்து மருத்துவர்கள்")}</option>
                   {uniqueDoctorsInToday.map((doctor) => (
                     <option key={doctor.id} value={doctor.name}>
                       {doctor.name}
@@ -1221,6 +1221,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                 </select>
               </div>
             )}
+          </div>
 
           <div className="flex-1 overflow-y-auto p-2">
             {sidebarViewMode === "escalated" && isLoadingCases && (

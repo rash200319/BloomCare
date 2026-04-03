@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from backend.api.v1 import (
     auth, patients, triage, diagnose, appointments, assistant, reports, longitudinal,
     staff_management, patient_management, dashboard, insights, differential,
-    prescriptions,
+    prescriptions, notifications,
     admin_analytics, specialist
 )
 
@@ -12,6 +12,7 @@ api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 api_router.include_router(patients.router, prefix="/patients", tags=["Patients"])
 api_router.include_router(appointments.router, prefix="/appointments", tags=["Appointments"])
 api_router.include_router(prescriptions.router, prefix="/prescriptions", tags=["Prescriptions"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(triage.router, prefix="/triage", tags=["Triage"])
 api_router.include_router(diagnose.router, prefix="/diagnose", tags=["Diagnose"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["Assistant"])
