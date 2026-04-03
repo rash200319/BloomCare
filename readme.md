@@ -35,10 +35,7 @@ BloomCare is an AI-powered maternal healthcare platform for screening, triage, a
 - Review Stage 1 and Stage 2 screening results.
 - Inspect risk scores, trend charts, and explainability details.
 - Change appointment status to confirmed, completed, or cancelled.
-- Record cancellation reasons and completion audit data.
 - View today’s appointments and queue numbers.
-- Filter appointments by status.
-- Book appointments with specialist selection and availability lookup.
 - Add notes during scheduling.
 - View and manage patient prescriptions.
 - Add prescriptions with dosage, frequency, route, and instructions.
@@ -68,9 +65,7 @@ BloomCare is an AI-powered maternal healthcare platform for screening, triage, a
 - Monitor referral efficiency and workload distribution.
 - Review monthly screening trends and charts.
 - Export monthly screening reports.
-- View and manage staff accounts.
 - Create new frontline staff and clinician accounts.
-- Search, filter, and delete staff records.
 - Edit admin profile settings.
 - Switch between English, Sinhala, and Tamil.
 
