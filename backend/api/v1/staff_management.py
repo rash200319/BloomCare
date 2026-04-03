@@ -1,12 +1,14 @@
 """
 Staff Management API Endpoints
 Admin-only endpoints for creating and managing staff members
++ Staff profile management for authentication purposes
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from backend.core.deps import get_db
-from backend.models.user import UserRole
+from backend.core.deps import get_db, get_current_user
+from backend.models.user import User, UserRole
 from backend.schemas.staff import CreateStaffRequest, TemporaryPasswordResponse, StaffResponse
+from backend.schemas.user import UserUpdate, UserDetailResponse
 from backend.services.staff_patient_service import StaffService
 
 router = APIRouter()
@@ -124,3 +126,88 @@ def get_staff_by_id(
             detail=f"Staff member with id '{id}' not found"
         )
     return staff
+
+
+# ==================== AUTHENTICATED USER ENDPOINTS ====================
+# These endpoints allow staff to manage their own profile information
+
+
+@router.get(
+    "/profile/me",
+    response_model=UserDetailResponse,
+    summary="Get Current User Details",
+    description="Get the current authenticated user's details",
+)
+def get_current_user_details(
+    current_user: User = Depends(get_current_user),
+):
+    """Get current user details"""
+    return current_user
+
+
+@router.patch(
+    "/profile/me/update",
+    response_model=UserDetailResponse,
+    summary="Update Current User Details",
+    description="Update current staff user contact number and full name. Other fields cannot be updated through this endpoint.",
+)
+def update_user_details(
+    user_update: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update user details (phone_number and full_name)
+    
+    - **phone_number**: Optional - Must be in +94XXXXXXXXX or 0XXXXXXXXX format
+    - **full_name**: Optional - User's full name
+    """
+    print(f"[UPDATE-USER] Updating user {current_user.id}")
+    
+    # Update only the provided fields
+    if user_update.full_name is not None:
+        print(f"[UPDATE-USER] Setting full_name: {user_update.full_name}")
+        current_user.full_name = user_update.full_name
+    
+    if user_update.phone_number is not None:
+        print(f"[UPDATE-USER] Setting phone_number: {user_update.phone_number}")
+        current_user.phone_number = user_update.phone_number
+    
+    try:
+        db.commit()
+        db.refresh(current_user)
+        print(f"[UPDATE-USER] Successfully updated user {current_user.id}")
+        return current_user
+    except Exception as e:
+        db.rollback()
+        print(f"[UPDATE-USER-ERROR] Failed to update user: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update user details: {str(e)}"
+        )
+
+
+@router.get(
+    "/profile/{user_id}",
+    response_model=UserDetailResponse,
+    summary="Get User Details by ID",
+    description="Get user details by user ID. Admin and clinic staff users can view other users.",
+)
+def get_user_by_id(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get user details by ID"""
+    print(f"[GET-USER] Fetching user {user_id}")
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        print(f"[GET-USER] User {user_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    print(f"[GET-USER] Found user {user_id}")
+    return user

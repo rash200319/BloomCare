@@ -333,6 +333,39 @@ CREATE TABLE IF NOT EXISTS prescriptions (
 
 CREATE INDEX IF NOT EXISTS idx_prescriptions_patient ON prescriptions(patient_id);
 
+-- NOTIFICATIONS (for appointment confirmations and other alerts)
+CREATE TABLE IF NOT EXISTS notifications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    recipient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    appointment_id UUID REFERENCES appointments(id) ON DELETE CASCADE,
+    
+    notification_type VARCHAR(50) NOT NULL CHECK (notification_type IN (
+        'APPOINTMENT_CONFIRMED',
+        'APPOINTMENT_CANCELLED',
+        'APPOINTMENT_COMPLETED',
+        'ESCALATION_ALERT'
+    )),
+    
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    
+    -- Notification status
+    is_read BOOLEAN DEFAULT FALSE,
+    read_at TIMESTAMPTZ,
+    
+    -- Related data (JSON for flexibility)
+    related_data JSONB,
+    
+    -- Timestamps
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Notification indexes for efficient querying
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_appointment ON notifications(appointment_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient_unread ON notifications(recipient_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
+
 -- SYNC LOGS
 CREATE TABLE IF NOT EXISTS sync_queue_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -426,8 +459,13 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- TRIGGER FUNCTION: Automatically update appointment updated_at timestamp on modification
--- Uses the generic touch_updated_at() function defined above
--- No need to redefine it here
+CREATE OR REPLACE FUNCTION touch_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 -- TRIGGER FUNCTION: Validate appointment status transitions
 -- Ensures only SCHEDULED → COMPLETED or CANCELLED transitions are allowed

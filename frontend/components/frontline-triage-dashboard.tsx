@@ -5,7 +5,7 @@ import {
   Search, Plus, User as UserIcon, Globe, ChevronDown, Heart, Thermometer, Activity, Scale, AlertTriangle, CheckCircle,
   ArrowRight, Phone, Baby, Settings, LogOut, ChevronLeft, Calendar, Clock, LayoutDashboard, ClipboardList, History,
   ShieldCheck, Stethoscope, Loader2, Microscope, Droplets, Dna, Users, Filter, ArrowUpDown, ExternalLink, Eye, ChevronRight,
-  MoreVertical, MapPin, Printer,
+  MoreVertical, MapPin, Printer, Bell,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils"
 import AppointmentScheduling from "./appointment-scheduling"
 import ProfileSettingsDialog from "./profile-settings-dialog"
+import NotificationPanel from "./notification-panel"
 
 const languages: { code: "EN" | "SI" | "TA"; label: string }[] = [
   { code: "EN", label: "English" },
@@ -268,7 +269,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
   const [registrationError, setRegistrationError] = useState<string | null>(null)
   const [registrationMessage, setRegistrationMessage] = useState<string | null>(null)
   const [isRegisteringPatient, setIsRegisteringPatient] = useState(false)
-  const [activeTab, setActiveTab] = useState<"triage" | "registry" | "history" | "appointments">("triage")
+  const [activeTab, setActiveTab] = useState<"triage" | "registry" | "history" | "appointments" | "notifications">("triage")
   const [historyFilter, setHistoryFilter] = useState("all")
   const [selectedReport, setSelectedReport] = useState<HistoryEntry | null>(null)
 
@@ -1191,6 +1192,18 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
               <History className="w-3.5 h-3.5 mr-2" />
               {getText("History", "ඉතිහාසය", "வரலாறு")}
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-8 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all",
+                activeTab === "notifications" ? "bg-white shadow-sm text-primary" : "text-slate-400 hover:text-slate-600"
+              )}
+              onClick={() => setActiveTab("notifications")}
+            >
+              <Bell className="w-3.5 h-3.5 mr-2" />
+              {getText("Notifications", "දැනුම්දීම්", "அறிவிப்புகள்")}
+            </Button>
 
           </div>
         </div>
@@ -1645,6 +1658,10 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                   ))}
                 </div>
               </div>
+            )}
+
+            {activeTab === "notifications" && (
+              <NotificationPanel />
             )}
 
             {activeTab === "triage" && (

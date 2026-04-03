@@ -13,6 +13,8 @@ import {
   Globe,
   LogOut,
   Trash2,
+  Bell,
+  X,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -114,6 +116,11 @@ export default function AppointmentScheduling({
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [searchSpecialist, setSearchSpecialist] = useState("")
+  
+  // Notifications
+  const [notifications, setNotifications] = useState<any[]>([])
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
+  const [showNotifications, setShowNotifications] = useState(false)
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -233,13 +240,15 @@ export default function AppointmentScheduling({
         if (Array.isArray(data)) {
           const slots: TimeSlot[] = data.flatMap((daySlot: any) =>
             (daySlot.available_slots || []).map((slot: any) => {
-              // Extract time from slot - handle ISO datetime format
+              // Extract time from slot - handle both ISO datetime and plain time formats
               let timeStr = typeof slot === 'string' ? slot : (slot.start_time || slot.time || '')
 
               // If it's a full ISO datetime (contains T), extract just the time part
               if (timeStr && timeStr.includes('T')) {
                 const parts = timeStr.split('T')
-                timeStr = parts[1].split('.')[0] || parts[1] // Get HH:MM:SS, remove milliseconds
+                const timePortion = parts[1] || ''
+                // Remove Z and split by period to remove milliseconds
+                timeStr = timePortion.split('.')[0].replace('Z', '').trim()
               }
 
               const isAvailable = typeof slot === 'string' ? true : (slot.is_available !== false)
@@ -276,6 +285,52 @@ export default function AppointmentScheduling({
     loadAppointments()
   }, [patientId])
 
+  // Load and poll for notifications (for FLS)
+  useEffect(() => {
+    const loadNotifications = async () => {
+      try {
+        const response = await apiRequest(`/notifications/?limit=10&unread_only=true`)
+        const data = await response.json()
+        setNotifications(data.notifications || [])
+        setUnreadNotificationCount(data.unread_count || 0)
+      } catch (err) {
+        console.warn("Failed to load notifications:", err)
+      }
+    }
+
+    // Load notifications immediately
+    loadNotifications()
+
+    // Poll for new notifications every 30 seconds
+    const notificationInterval = setInterval(loadNotifications, 30000)
+    return () => clearInterval(notificationInterval)
+  }, [])
+
+  const handleNotificationClick = async (notificationId: string) => {
+    try {
+      await apiRequest(`/notifications/${notificationId}/read`, {
+        method: "PATCH",
+      })
+      // Remove from unread notifications
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId))
+      setUnreadNotificationCount((prev) => Math.max(0, prev - 1))
+    } catch (err) {
+      console.warn("Failed to mark notification as read:", err)
+    }
+  }
+
+  const handleMarkAllNotificationsRead = async () => {
+    try {
+      await apiRequest(`/notifications/read-all`, {
+        method: "POST",
+      })
+      setNotifications([])
+      setUnreadNotificationCount(0)
+    } catch (err) {
+      console.warn("Failed to mark all notifications as read:", err)
+    }
+  }
+
   const handleBookAppointment = async () => {
     if (viewerRole === "patient") {
       setError("Patients can only view appointments. Please contact frontline staff to request one.")
@@ -291,8 +346,16 @@ export default function AppointmentScheduling({
       setIsLoading(true)
       setError(null)
 
-      // Time slot is now in HH:MM:SS format from the API
-      const timeStr = String(selectedTimeSlot).trim()
+      // Time slot format: either HH:MM:SS or ISO datetime string
+      let timeStr = String(selectedTimeSlot).trim()
+      
+      // If timeStr is an ISO datetime, extract just the time part
+      if (timeStr.includes('T')) {
+        const timePart = timeStr.split('T')[1] || timeStr
+        // Remove Z and any milliseconds: "14:30:00Z" -> "14:30:00"
+        timeStr = timePart.split('.')[0].replace('Z', '').trim()
+      }
+      
       if (!timeStr || !timeStr.includes(':')) {
         throw new Error("Invalid time slot selected")
       }
@@ -337,7 +400,7 @@ export default function AppointmentScheduling({
         setSelectedTimeSlot(null)
         setNotes("")
         setSuccessMessage(null)
-      }, 2000)
+      }, 5000)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to book appointment")
     } finally {
@@ -362,14 +425,18 @@ export default function AppointmentScheduling({
     try {
       setIsDeletingAppointment(true)
       setError(null)
+      console.log(`[CANCEL] Starting cancel for appointment: ${appointmentId}`)
       const response = await apiRequest(`/appointments/${appointmentId}`, {
         method: "DELETE",
       })
+      console.log(`[CANCEL] Response status: ${response.status}`, response)
 
       if (!response.ok) {
         throw new Error(`Failed to cancel appointment: ${response.statusText}`)
       }
 
+      const data = await response.json()
+      console.log(`[CANCEL] Success response:`, data)
       setAppointments(appointments.filter((apt) => apt.id !== appointmentId))
       setAppointmentToDelete(null)
       setSuccessMessage(getText(
@@ -377,8 +444,9 @@ export default function AppointmentScheduling({
         "නියුතුව සාර්ථකව අවලංගු කරන ලදී!",
         "நியமனம் வெற்றிகரமாக ரத்து செய்யப்பட்டது!"
       ))
-      setTimeout(() => setSuccessMessage(null), 3000)
+      setTimeout(() => setSuccessMessage(null), 5000)
     } catch (err) {
+      console.error(`[CANCEL] Error:`, err)
       setError(err instanceof Error ? err.message : "Failed to cancel appointment")
     } finally {
       setIsDeletingAppointment(false)
@@ -440,6 +508,87 @@ export default function AppointmentScheduling({
                   </div>
                 )}
               </div>
+
+              {/* Notifications Bell */}
+              {viewerRole === "frontline" && (
+                <div className="relative">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowNotifications(!showNotifications)}
+                    className="relative flex items-center gap-2"
+                  >
+                    <Bell className="w-4 h-4" />
+                    {unreadNotificationCount > 0 && (
+                      <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                        {unreadNotificationCount}
+                      </span>
+                    )}
+                  </Button>
+
+                  {showNotifications && (
+                    <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-96 overflow-y-auto">
+                      <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                        <h3 className="font-semibold text-gray-900">Notifications</h3>
+                        {unreadNotificationCount > 0 && (
+                          <button
+                            onClick={handleMarkAllNotificationsRead}
+                            className="text-xs text-blue-600 hover:text-blue-700"
+                          >
+                            Mark all as read
+                          </button>
+                        )}
+                      </div>
+                      {notifications.length === 0 ? (
+                        <div className="px-4 py-6 text-center text-sm text-gray-500">
+                          No new notifications
+                        </div>
+                      ) : (
+                        notifications.map((notification) => (
+                          <div
+                            key={notification.id}
+                            className={`px-4 py-3 border-b border-gray-100 hover:bg-opacity-75 cursor-pointer flex items-start gap-3 transition-colors ${
+                              notification.notification_type === "APPOINTMENT_CONFIRMED"
+                                ? "bg-green-50 hover:bg-green-100"
+                                : notification.notification_type === "APPOINTMENT_CANCELLED"
+                                  ? "bg-red-50 hover:bg-red-100"
+                                  : "hover:bg-gray-50"
+                            }`}
+                            onClick={() => handleNotificationClick(notification.id)}
+                          >
+                            <div className="flex-shrink-0 mt-0.5">
+                              {notification.notification_type === "APPOINTMENT_CONFIRMED" ? (
+                                <CheckCircle className="w-4 h-4 text-green-600" />
+                              ) : notification.notification_type === "APPOINTMENT_CANCELLED" ? (
+                                <AlertCircle className="w-4 h-4 text-red-600" />
+                              ) : (
+                                <Bell className="w-4 h-4 text-blue-600" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900">{notification.title}</p>
+                              <p className="text-xs text-gray-600 line-clamp-2">{notification.message}</p>
+                              <p className="text-xs text-gray-400 mt-1">
+                                {new Date(notification.created_at).toLocaleString()}
+                              </p>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleNotificationClick(notification.id)
+                              }}
+                              className="text-gray-400 hover:text-gray-600"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="relative">
                 <Button
                   variant="outline"
@@ -475,15 +624,6 @@ export default function AppointmentScheduling({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Booking Steps */}
           <div className="lg:col-span-2">
-            {successMessage && (
-              <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3">
-                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-medium text-green-900">{successMessage}</h3>
-                </div>
-              </div>
-            )}
-
             {error && (
               <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
@@ -740,7 +880,7 @@ export default function AppointmentScheduling({
                       <div key={apt.id} className="p-3 border border-gray-200 rounded-lg hover:border-red-200 hover:bg-red-50/30 transition-all">
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <p className="font-medium text-gray-900 text-sm flex-1">{apt.specialist_name}</p>
-                          {viewerRole !== "patient" && (apt.status === "PENDING" || apt.status === "CONFIRMED") && (
+                          {viewerRole !== "patient" && (apt.status === "PENDING" || apt.status === "CONFIRMED" || apt.status === "SCHEDULED") && (
                             <button
                               onClick={() => handleCancelAppointment(apt.id)}
                               disabled={isDeletingAppointment && appointmentToDelete === apt.id}
@@ -771,6 +911,16 @@ export default function AppointmentScheduling({
           </div>
         </div>
       </main>
+
+      {/* Success Notification - Fixed at Bottom */}
+      {successMessage && (
+        <div className="fixed bottom-6 left-6 right-6 max-w-md mx-auto p-4 bg-green-50 border border-green-200 rounded-lg shadow-lg flex items-start gap-3 animate-in slide-in-from-bottom">
+          <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-medium text-green-900">{successMessage}</h3>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

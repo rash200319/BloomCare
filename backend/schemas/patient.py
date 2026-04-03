@@ -73,8 +73,49 @@ class PatientCreate(PatientBase):
         return self
 
 
-class PatientUpdate(PatientCreate):
-    pass
+class PatientUpdate(BaseModel):
+    """Schema for partial updates to patient details"""
+    full_name: Optional[str] = None
+    contact_number: Optional[str] = None
+    emergency_contact: Optional[str] = None
+    age: Optional[int] = None
+    due_date: Optional[date] = None
+    blood_group: Optional[str] = None
+
+    @field_validator("contact_number", "emergency_contact")
+    @classmethod
+    def validate_phone(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip().replace(" ", "")
+        if not normalized:
+            return None
+        if not PHONE_PATTERN.match(normalized):
+            raise ValueError(
+                "phone number must be in +94XXXXXXXXX or 0XXXXXXXXX format")
+        return normalized
+
+    @field_validator("blood_group")
+    @classmethod
+    def validate_blood_group(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if not normalized:
+            return None
+        if normalized not in ALLOWED_BLOOD_GROUPS:
+            raise ValueError(
+                "blood_group must be one of A+, A-, B+, B-, AB+, AB-, O+, O-")
+        return normalized
+
+    @field_validator("age")
+    @classmethod
+    def validate_age(cls, value: Optional[int]) -> Optional[int]:
+        if value is None:
+            return None
+        if value < 0 or value > 120:
+            raise ValueError("age must be between 0 and 120")
+        return value
 
 
 class PatientInDBBase(PatientBase):

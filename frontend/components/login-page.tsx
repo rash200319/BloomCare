@@ -85,17 +85,6 @@ interface LoginPageProps {
 
 const roleOptions = [
   {
-    id: "frontline" as UserRole,
-    title: "Frontline Staff",
-    titleSi: "මුල් පෙළ කාර්ය මණ්ඩලය",
-    titleTa: "முன்னணி ஊழியர்கள்",
-    description: "Nurses & Community Workers",
-    descriptionSi: "හෙදියන් සහ ප්‍රජා කාර්යකරුවන්",
-    descriptionTa: "செவிலியர்கள் & சமூக ஊழியர்கள்",
-    icon: Stethoscope,
-    color: "bg-primary"
-  },
-  {
     id: "doctor" as UserRole,
     title: "Obstetrician",
     titleSi: "ප්‍රසව වෛද්‍ය",
@@ -107,6 +96,28 @@ const roleOptions = [
     color: "bg-accent"
   },
   {
+    id: "frontline" as UserRole,
+    title: "Frontline Staff",
+    titleSi: "මුල් පෙළ කාර්ය මණ්ඩලය",
+    titleTa: "முன்னணி ஊழியர்கள்",
+    description: "Nurses & Community Workers",
+    descriptionSi: "හෙදියන් සහ ප්‍රජා කාර්යකරුවන්",
+    descriptionTa: "செவிலியர்கள் & சமூக ஊழியர்கள්",
+    icon: Stethoscope,
+    color: "bg-primary"
+  },
+  {
+    id: "patient" as UserRole,
+    title: "Patient Portal",
+    titleSi: "රෝගී ද්වාරය",
+    titleTa: "நோயாளி போர்டல்",
+    description: "Expectant Mothers",
+    descriptionSi: "ගර්භනී මව්වරුන්",
+    descriptionTa: "தாய்மார்கள්",
+    icon: Baby,
+    color: "bg-amber-500"
+  },
+  {
     id: "admin" as UserRole,
     title: "Hospital Admin",
     titleSi: "රෝහල් පරිපාලක",
@@ -116,17 +127,6 @@ const roleOptions = [
     descriptionTa: "பகுப்பாய்வு மற்றும் மேற்பார்வை",
     icon: BarChart3,
     color: "bg-slate-700"
-  },
-  {
-    id: "patient" as UserRole,
-    title: "Patient Portal",
-    titleSi: "රෝගී ද්වාරය",
-    titleTa: "நோயாளி போர்டல்",
-    description: "Expectant Mothers",
-    descriptionSi: "ගර්භනී මව්වරුන්",
-    descriptionTa: "தாய்மார்கள்",
-    icon: Baby,
-    color: "bg-amber-500"
   }
 ]
 
