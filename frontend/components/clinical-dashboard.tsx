@@ -1182,7 +1182,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                 )}
               >
                 <AlertTriangle className="w-3 h-3 inline mr-1" />
-                {getText("High Risk", "ඉහළ අවදානම", "சிக்கல்")}0
+                {getText("High Risk", "ඉහළ අවදානම", "சிக்கல்")}
               </button>
               <button
                 onClick={() => {
@@ -1221,60 +1221,6 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                 </select>
               </div>
             )}
-
-          <div className="p-3 border-b border-slate-100">
-            {/* View Mode Toggle */}
-            <div className="flex gap-2 mb-3">
-              <button
-                onClick={() => setSidebarViewMode("escalated")}
-                className={cn(
-                  "flex-1 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all",
-                  sidebarViewMode === "escalated"
-                    ? "bg-primary text-white shadow-lg shadow-primary/30"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-150"
-                )}
-              >
-                <AlertTriangle className="w-3 h-3 inline mr-1" />
-                {getText("High Risk", "ඉහළ අවදානම", "சிக்கல்")}
-              </button>
-              <button
-                onClick={() => {
-                  setSidebarViewMode("today")
-                  loadTodayAppointments()
-                }}
-                className={cn(
-                  "flex-1 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all",
-                  sidebarViewMode === "today"
-                    ? "bg-primary text-white shadow-lg shadow-primary/30"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-150"
-                )}
-              >
-                <Calendar className="w-3 h-3 inline mr-1" />
-                {getText("Today", "අද", "இன்னද")}
-              </button>
-            </div>
-
-            {/* Doctor Filter for Today's Appointments */}
-            {sidebarViewMode === "today" && uniqueDoctorsInToday.length > 0 && (
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-2">
-                  {getText("Doctor", "වෛද්‍ය", "மருத்துவர்")}
-                </label>
-                <select
-                  value={selectedDoctorFilter || ""}
-                  onChange={(e) => setSelectedDoctorFilter(e.target.value || null)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm font-medium text-slate-700 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">{getText("All Doctors", "සියලු වෛද්‍යවරුන්", "அனைத்து மருத்துவர்கள்")}</option>
-                  {uniqueDoctorsInToday.map((doctor) => (
-                    <option key={doctor.id} value={doctor.name}>
-                      {doctor.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
 
           <div className="flex-1 overflow-y-auto p-2">
             {sidebarViewMode === "escalated" && isLoadingCases && (

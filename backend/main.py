@@ -52,9 +52,13 @@ app.add_middleware(
         "https://127.0.0.1:3000",
         "http://localhost:8005",
         "http://127.0.0.1:8005",
+        "http://54.206.93.158",
+        "http://54.206.93.158:3000",
+        "https://54.206.93.158",
+        "https://54.206.93.158:3000",
     ],
-    # Keep explicit allow_origins while also covering local dev ports consistently.
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    # Keep explicit allow_origins while also covering local dev ports consistently and EC2 IP.
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|54\.206\.93\.158)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
