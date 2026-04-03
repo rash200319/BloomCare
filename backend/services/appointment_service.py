@@ -41,7 +41,7 @@ class AppointmentService:
         "ROUTINE_FOLLOW_UP",
     }
 
-    DOCTOR_APPOINTMENT_TYPES = {
+    SPECIALIST_APPOINTMENT_TYPES = {
         "LAB_TEST",
         "GLUCOSE_SCREENING",
         "BLOOD_TEST",
@@ -49,7 +49,7 @@ class AppointmentService:
         "MEDICAL_INTERVENTION",
     }
 
-    ALL_APPOINTMENT_TYPES = STANDARD_APPOINTMENT_TYPES | DOCTOR_APPOINTMENT_TYPES
+    ALL_APPOINTMENT_TYPES = STANDARD_APPOINTMENT_TYPES | SPECIALIST_APPOINTMENT_TYPES
 
     STATUS_FLOW = {
         "PENDING": {"CONFIRMED", "CANCELLED"},
@@ -64,14 +64,15 @@ class AppointmentService:
 
     @staticmethod
     def _normalize_role(role: object) -> str:
-        role_value = AppointmentService._role_value(role).upper()
-        if role_value == UserRole.CLINICAL_SPECIALIST.value:
-            return UserRole.DOCTOR.value
-        return role_value
+        return AppointmentService._role_value(role).upper()
 
     @staticmethod
-    def _is_doctor_role(role: object) -> bool:
-        return AppointmentService._normalize_role(role) == UserRole.DOCTOR.value
+    def _is_specialist_role(role: object) -> bool:
+        return AppointmentService._normalize_role(role) == UserRole.CLINICAL_SPECIALIST.value
+
+    @staticmethod
+    def _is_obstetrics_specialization_column(column) -> bool:
+        return column.ilike("%obstetr%")
 
     @staticmethod
     def _is_staff_role(role: object) -> bool:
@@ -115,7 +116,7 @@ class AppointmentService:
 
     @staticmethod
     def _default_appointment_type(role: object) -> str:
-        if AppointmentService._is_doctor_role(role):
+        if AppointmentService._is_specialist_role(role):
             return "HIGH_RISK_FOLLOW_UP"
         if AppointmentService._is_staff_role(role):
             return "PRENATAL_CHECKUP"
@@ -133,20 +134,20 @@ class AppointmentService:
                 detail="Frontline staff can only create standard prenatal appointments",
             )
 
-        if AppointmentService._is_doctor_role(normalized_role) and appointment_type not in AppointmentService.DOCTOR_APPOINTMENT_TYPES:
+        if AppointmentService._is_specialist_role(normalized_role) and appointment_type not in AppointmentService.SPECIALIST_APPOINTMENT_TYPES:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Doctors can only create specialized appointments",
+                detail="Clinical specialists can only create specialized appointments",
             )
 
         if normalized_role not in {
             UserRole.ADMIN.value,
             UserRole.FRONTLINE_STAFF.value,
-            UserRole.DOCTOR.value,
+            UserRole.CLINICAL_SPECIALIST.value,
         }:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only staff or doctors can create appointments",
+                detail="Only staff or clinical specialists can create appointments",
             )
 
     @staticmethod
@@ -189,7 +190,7 @@ class AppointmentService:
     def _resolve_specialist(db: Session, specialist_id: Optional[str], specialist_name: Optional[str]) -> User:
         query = db.query(User).filter(
             User.is_active == True,  # noqa: E712
-            User.role.in_([UserRole.DOCTOR, UserRole.CLINICAL_SPECIALIST]),
+            User.role == UserRole.CLINICAL_SPECIALIST.value,
         )
 
         specialist = None
@@ -308,18 +309,18 @@ class AppointmentService:
         if role == UserRole.FRONTLINE_STAFF.value:
             return str(getattr(patient, "assigned_worker_id", "")) == str(getattr(current_user, "id", ""))
 
-        if role == UserRole.DOCTOR.value:
-            doctor_id = str(getattr(current_user, "id", ""))
+        if role == UserRole.CLINICAL_SPECIALIST.value:
+            specialist_id = str(getattr(current_user, "id", ""))
             assigned_by_stage2 = db.query(Stage2Diagnostic.id).filter(
                 Stage2Diagnostic.patient_id == patient.id,
-                Stage2Diagnostic.specialist_id == doctor_id,
+                Stage2Diagnostic.specialist_id == specialist_id,
             ).first()
             if assigned_by_stage2:
                 return True
 
             assigned_as_specialist = db.query(Appointment.id).filter(
                 Appointment.patient_id == patient.id,
-                Appointment.specialist_id == doctor_id,
+                Appointment.specialist_id == specialist_id,
             ).first()
             return assigned_as_specialist is not None
 
@@ -335,14 +336,14 @@ class AppointmentService:
 
     @staticmethod
     def _can_update_appointment_status(current_user: object, appointment: Appointment) -> bool:
-        """Allow specialists assigned to appointment or admins to update status"""
+        """Allow admins, any specialist, or creator to update status"""
         role = AppointmentService._normalize_role(
             getattr(current_user, "role", ""))
         if role == UserRole.ADMIN.value:
             return True
-        # Allow the specialist assigned to this appointment to update status
-        if role in [UserRole.DOCTOR.value, UserRole.CLINICAL_SPECIALIST.value]:
-            return str(getattr(current_user, "id", "")) == str(getattr(appointment, "specialist_id", ""))
+        # Allow any specialist to update appointment status (obstetrician can change any appointment)
+        if role == UserRole.CLINICAL_SPECIALIST.value:
+            return True
         # Allow the creator to update status
         return str(getattr(current_user, "id", "")) == str(getattr(appointment, "created_by_id", ""))
 
@@ -353,8 +354,9 @@ class AppointmentService:
             func.count(User.id).label("specialist_count")
         ).filter(
             and_(
-                User.role.in_([UserRole.DOCTOR, UserRole.CLINICAL_SPECIALIST]),
+                User.role == UserRole.CLINICAL_SPECIALIST.value,
                 User.specialization.isnot(None),
+                AppointmentService._is_obstetrics_specialization_column(User.specialization),
                 User.is_active == True,  # noqa: E712
             )
         ).group_by(User.specialization).all()
@@ -373,7 +375,8 @@ class AppointmentService:
     ) -> list[SpecialistResponse]:
         specialists = db.query(User).filter(
             and_(
-                User.role.in_([UserRole.DOCTOR, UserRole.CLINICAL_SPECIALIST]),
+                User.role == UserRole.CLINICAL_SPECIALIST.value,
+                AppointmentService._is_obstetrics_specialization_column(User.specialization),
                 User.specialization.ilike(f"%{specialization}%"),
                 User.is_active == True,  # noqa: E712
             )
@@ -484,11 +487,15 @@ class AppointmentService:
         ).scalar() or 0
         queue_number = queue_count + 1
 
+        creator_id = str(getattr(current_user, "id", "")) if getattr(current_user, "id", None) else None
+        import sys
+        print(f"[CREATE-APT] current_user.id: {getattr(current_user, 'id', 'NO-ID')}, creator_id: {creator_id}", file=sys.stderr)
+        
         appointment = Appointment(
             id=str(__import__("uuid").uuid4()),
             patient_id=patient.id,
             specialist_id=specialist.id,
-            created_by_id=getattr(current_user, "id", None),
+            created_by_id=creator_id,
             created_by_role=role,
             appointment_type=appointment_type,
             appointment_date=appointment_date,
@@ -518,6 +525,7 @@ class AppointmentService:
         appointment_type: str = "PRENATAL_CHECKUP",
         notes: Optional[str] = None,
         duration_minutes: int = 30,
+        current_user: object = None,
     ) -> AppointmentActionResponse:
         """Create appointment using patient NIC instead of patient_id"""
 
@@ -540,7 +548,7 @@ class AppointmentService:
         # Resolve specialist by full_name
         specialist = db.query(User).filter(
             User.full_name == specialist_name,
-            User.role.in_([UserRole.DOCTOR, UserRole.CLINICAL_SPECIALIST]),
+            User.role.in_([UserRole.CLINICAL_SPECIALIST.value]),
         ).first()
         if not specialist:
             raise HTTPException(
@@ -611,13 +619,22 @@ class AppointmentService:
             },
         ).scalar() or 1
 
+        # Capture creator information from current_user
+        creator_id = None
+        creator_role = "SYSTEM"
+        if current_user:
+            creator_id = str(getattr(current_user, "id", "")) if getattr(current_user, "id", None) else None
+            creator_role = AppointmentService._normalize_role(getattr(current_user, "role", ""))
+            import sys
+            print(f"[CREATE-APT-NIC] current_user.id: {getattr(current_user, 'id', 'NO-ID')}, creator_id: {creator_id}, creator_role: {creator_role}", file=sys.stderr)
+
         # Create appointment
         appointment = Appointment(
             id=str(__import__("uuid").uuid4()),
             patient_id=patient.id,
             specialist_id=specialist.id,
-            created_by_id=None,  # System-created
-            created_by_role="SYSTEM",
+            created_by_id=creator_id,
+            created_by_role=creator_role,
             appointment_type=normalized_type,
             appointment_date=apt_date,
             duration_minutes=duration_minutes,
@@ -743,7 +760,7 @@ class AppointmentService:
             print(f"[DELETE-CANCEL] Appointment created_by_id: {appointment.created_by_id}", file=sys.stderr)
             print(f"[DELETE-CANCEL] Patient found: {patient is not None}", file=sys.stderr)
             
-            # If cancelled by FLS, notify the creator; if cancelled by doctor, notify FLS
+            # If cancelled by FLS, notify the creator; if cancelled by specialist, notify FLS
             if appointment.created_by_id and patient:
                 print(f"[DELETE-CANCEL] Calling create_appointment_cancellation_notification", file=sys.stderr)
                 NotificationService.create_appointment_cancellation_notification(
@@ -803,7 +820,7 @@ class AppointmentService:
         specialist = db.query(User).filter(
             and_(
                 User.full_name.ilike(f"%{specialist_name}%"),
-                User.role.in_([UserRole.DOCTOR, UserRole.CLINICAL_SPECIALIST]),
+                User.role.in_([UserRole.CLINICAL_SPECIALIST.value]),
                 User.is_active == True,  # noqa: E712
             )
         ).first()
@@ -859,7 +876,7 @@ class AppointmentService:
         specialist = db.query(User).filter(
             and_(
                 User.full_name.ilike(f"%{specialist_name}%"),
-                User.role.in_([UserRole.DOCTOR, UserRole.CLINICAL_SPECIALIST]),
+                User.role.in_([UserRole.CLINICAL_SPECIALIST.value]),
                 User.is_active == True,  # noqa: E712
             )
         ).first()
@@ -873,21 +890,22 @@ class AppointmentService:
         availability_list = []
         now = datetime.now(timezone.utc)
 
+        workday_start_hour = AppointmentService.WORKING_START_HOUR
+        workday_end_hour = AppointmentService.WORKING_END_HOUR
+        slot_duration = timedelta(minutes=AppointmentService.SLOT_DURATION_MINUTES)
+
         for day_offset in range(days_ahead):
             current_date = now.date() + timedelta(days=day_offset)
 
-            if current_date.weekday() >= 5:
-                continue
-
             slots = []
             current_time = datetime.combine(current_date, datetime.min.time()).replace(
-                hour=AppointmentService.WORKING_START_HOUR,
+                hour=workday_start_hour,
                 minute=0,
                 second=0,
                 tzinfo=timezone.utc,
             )
             end_time = current_time.replace(
-                hour=AppointmentService.WORKING_END_HOUR,
+                hour=workday_end_hour,
                 minute=0,
                 second=0,
             )
@@ -904,8 +922,7 @@ class AppointmentService:
             ).all()
 
             while current_time < end_time:
-                slot_end = current_time + \
-                    timedelta(minutes=AppointmentService.SLOT_DURATION_MINUTES)
+                slot_end = current_time + slot_duration
 
                 booked = None
                 for appointment in appointments_on_date:
@@ -980,6 +997,29 @@ class AppointmentService:
             AppointmentService._serialize_appointment(db, apt, patient=patient)
             for apt in appointments
         ]
+
+    @staticmethod
+    def get_appointments_created_by_user(
+        db: Session,
+        current_user: object,
+        status: Optional[str] = None,
+    ) -> list[AppointmentResponse]:
+        user_id = getattr(current_user, "id", None)
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User context is required",
+            )
+
+        query = db.query(Appointment).filter(Appointment.created_by_id == user_id)
+
+        if status:
+            query = query.filter(
+                Appointment.status == AppointmentService._normalize_status(status)
+            )
+
+        appointments = query.order_by(Appointment.created_at.desc()).all()
+        return [AppointmentService._serialize_appointment(db, apt) for apt in appointments]
 
     @staticmethod
     def get_appointment_by_id(

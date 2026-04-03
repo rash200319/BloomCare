@@ -19,16 +19,66 @@ import networkStatusService from './networkStatusService';
 class DataSyncService {
   private isSyncing: boolean = false;
 
+  private clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  private buildTriageItem(payload: any): any | null {
+    const vitals = payload?.vitals ?? payload;
+    const patientId = String(payload?.patient_id ?? vitals?.patient_id ?? '').trim();
+    if (!patientId) {
+      return null;
+    }
+
+    const systolic = this.clamp(Number(vitals?.systolic ?? 120), 60, 220);
+    const diastolic = this.clamp(
+      Math.min(Number(vitals?.diastolic ?? 80), systolic - 1),
+      40,
+      140
+    );
+    const riskScoreRaw = Number(payload?.risk_score ?? payload?.riskScore ?? 0.5);
+    const riskScore = Number.isFinite(riskScoreRaw) ? Math.max(0, Math.min(1, riskScoreRaw)) : 0.5;
+    const riskLevel = String(payload?.risk_level ?? payload?.riskLevel ?? '').toLowerCase();
+
+    return {
+      patient_id: patientId,
+      encounter_id: payload?.encounter_id ?? `mobile-${Date.now()}`,
+      gestational_age_weeks: this.clamp(Number(vitals?.gestational_age_weeks ?? 20), 4, 42),
+      collected_at: payload?.created_at ?? payload?.recorded_at ?? new Date().toISOString(),
+      age: this.clamp(Number(vitals?.age ?? 28), 10, 60),
+      blood_pressure: {
+        systolic,
+        diastolic,
+      },
+      bmi: this.clamp(Number(vitals?.bmi ?? 24.5), 10, 80),
+      heart_rate: this.clamp(Number(vitals?.heart_rate ?? 78), 30, 200),
+      temperature: this.clamp(Number(vitals?.temperature ?? 36.8), 35, 42),
+      blood_sugar: this.clamp(Number(vitals?.bs ?? vitals?.blood_sugar ?? 95), 20, 600),
+      hemoglobin: this.clamp(Number(vitals?.hemoglobin ?? 12), 2, 25),
+      pcos: Boolean(Number(vitals?.pcos ?? 0)),
+      previous_complications: Boolean(Number(vitals?.previous_complications ?? 0)),
+      preexisting_diabetes: Boolean(Number(vitals?.preexisting_diabetes ?? 0)),
+      mental_health: this.clamp(Number(vitals?.mental_health ?? 3), 0, 10),
+      sleep_pattern: this.clamp(Number(vitals?.sleep_pattern ?? 7), 0, 24),
+      exercise: this.clamp(Number(vitals?.exercise ?? 3), 0, 24),
+      education: this.clamp(Number(vitals?.education ?? 4), 0, 10),
+      edge_risk_classification:
+        riskLevel === 'high' || riskScore >= 0.7 ? 'escalate' : 'routine_care',
+      edge_risk_score: riskScore,
+      device_id: 'mobile-offline',
+    };
+  }
+
   /**
    * Sync patient appointments (requires online)
    */
   async syncPatientAppointments(patientId: string, token: string): Promise<void> {
     try {
-      const response = await fetch(`${API_BASE_URL}/appointments?patient_id=${patientId}`, {
+      const response = await fetch(`${API_BASE_URL}/appointments/patient/${patientId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (!response.ok) throw new Error('Failed to fetch appointments');
+      if (!response.ok) return;
 
       const appointments = await response.json();
       if (Array.isArray(appointments)) {
@@ -46,8 +96,8 @@ class DataSyncService {
 
         await offlineDatabase.cacheAppointments(cachedAppointments);
       }
-    } catch (error) {
-      console.error('Failed to sync appointments:', error);
+    } catch {
+      return;
     }
   }
 
@@ -56,28 +106,28 @@ class DataSyncService {
    */
   async syncPatientInsights(patientId: string, token: string): Promise<void> {
     try {
-      const response = await fetch(`${API_BASE_URL}/insights?patient_id=${patientId}`, {
+      const response = await fetch(`${API_BASE_URL}/insights/patient/${patientId}/this-week`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (!response.ok) throw new Error('Failed to fetch insights');
+      if (!response.ok) return;
 
-      const insights = await response.json();
-      if (Array.isArray(insights)) {
-        const cachedInsights: CachedInsight[] = insights.map((insight: any) => ({
-          insight_id: insight.insight_id || insight.id,
+      const insight = await response.json();
+      if (insight && typeof insight === 'object') {
+        const cachedInsight: CachedInsight = {
+          insight_id: String(insight.insight_id || insight.id || `${patientId}-weekly-insight`),
           patient_id: patientId,
-          title: insight.title,
-          content: insight.content,
-          insight_type: insight.insight_type,
-          created_at: insight.created_at,
-          updated_at: insight.updated_at,
-        }));
+          title: String(insight.development_description || 'Weekly Insight'),
+          content: JSON.stringify(insight),
+          insight_type: 'weekly_development',
+          created_at: String(insight.last_updated || new Date().toISOString()),
+          updated_at: String(insight.last_updated || new Date().toISOString()),
+        };
 
-        await offlineDatabase.cacheInsights(cachedInsights);
+        await offlineDatabase.cacheInsights([cachedInsight]);
       }
-    } catch (error) {
-      console.error('Failed to sync insights:', error);
+    } catch {
+      return;
     }
   }
 
@@ -87,13 +137,13 @@ class DataSyncService {
   async syncPatientScreeningHistory(patientId: string, token: string, limit: number = 50): Promise<void> {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/screening/history?patient_id=${patientId}&limit=${limit}`,
+        `${API_BASE_URL}/triage/history?patient_id=${patientId}&limit=${limit}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
 
-      if (!response.ok) throw new Error('Failed to fetch screening history');
+      if (!response.ok) return;
 
       const screenings = await response.json();
       if (Array.isArray(screenings)) {
@@ -110,8 +160,8 @@ class DataSyncService {
 
         await offlineDatabase.cacheScreenings(cachedScreenings);
       }
-    } catch (error) {
-      console.error('Failed to sync screening history:', error);
+    } catch {
+      return;
     }
   }
 
@@ -139,8 +189,7 @@ class DataSyncService {
       await offlineDatabase.logSync(patientId, 'patient_full_sync', itemsSynced, duration);
 
       return { success: true, itemsSynced };
-    } catch (error) {
-      console.error('Patient data sync failed:', error);
+    } catch {
       return { success: false, itemsSynced: 0 };
     }
   }
@@ -150,9 +199,8 @@ class DataSyncService {
    */
   async syncAssignedPatients(staffId: string, token: string): Promise<void> {
     try {
-      const today = new Date().toISOString().slice(0, 10);
       const response = await fetch(
-        `${API_BASE_URL}/patients/assigned?midwife_id=${staffId}&date=${today}`,
+        `${API_BASE_URL}/patients?skip=0&limit=500`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -196,15 +244,22 @@ class DataSyncService {
     for (const sync of pendingSyncs) {
       try {
         const payload = JSON.parse(sync.payload_json);
+        const triageItem = this.buildTriageItem(payload);
+
+        if (!triageItem) {
+          await offlineDatabase.markSyncFailed(sync.record_id);
+          failed++;
+          continue;
+        }
 
         if (sync.entity_type === 'screening') {
-          const response = await fetch(`${API_BASE_URL}/screening`, {
+          const response = await fetch(`${API_BASE_URL}/triage/sync`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({ items: [triageItem] }),
           });
 
           if (response.ok) {
@@ -215,13 +270,13 @@ class DataSyncService {
             failed++;
           }
         } else if (sync.entity_type === 'vitals') {
-          const response = await fetch(`${API_BASE_URL}/vitals`, {
+          const response = await fetch(`${API_BASE_URL}/triage/sync`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({ items: [triageItem] }),
           });
 
           if (response.ok) {

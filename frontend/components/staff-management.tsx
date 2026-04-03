@@ -75,20 +75,12 @@ const languages = [
   { code: "TA", label: "Tamil" },
 ]
 
-const specializations = [
-  "Obstetrics",
-  "Cardiology",
-  "Internal Medicine",
-  "Pediatrics",
-  "General Practice",
-  "Pathology",
-]
-
 export default function StaffManagement({ onLogout }: StaffManagementProps) {
   const [selectedLanguage, setSelectedLanguage] = useState<Language>("EN")
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [staffList, setStaffList] = useState<StaffMember[]>([])
+  const [availableSpecializations, setAvailableSpecializations] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -168,6 +160,30 @@ export default function StaffManagement({ onLogout }: StaffManagementProps) {
       }
     }
     loadStaff()
+  }, [])
+
+  useEffect(() => {
+    const loadSpecializations = async () => {
+      try {
+        const response = await apiRequest("/appointments/specializations")
+        const data = await response.json()
+        const obstetricsSpecializations = Array.isArray(data)
+          ? Array.from(
+              new Set(
+                data
+                  .map((item: any) => String(item?.specialization || "").trim())
+                  .filter((specialization) => /obstetr/i.test(specialization))
+              )
+            )
+          : []
+        setAvailableSpecializations(obstetricsSpecializations)
+      } catch (err) {
+        console.warn("Failed to load specializations:", err)
+        setAvailableSpecializations([])
+      }
+    }
+
+    loadSpecializations()
   }, [])
 
   const handleCreateStaff = async (e: React.FormEvent) => {
@@ -445,7 +461,7 @@ export default function StaffManagement({ onLogout }: StaffManagementProps) {
                         className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       >
                         <option value="">{getText("Select specialization", "විශේෂීකරණ තෝරන්න", "சிறப்புத்தை தேர்வு செய்யவும்")}</option>
-                        {specializations.map((spec) => (
+                        {availableSpecializations.map((spec) => (
                           <option key={spec} value={spec}>
                             {spec}
                           </option>

@@ -21,7 +21,8 @@
     "expo-sqlite": "~15.2.10",
     "expo-status-bar": "~2.0.1",
     "react": "19.0.0",
-    "react-native": "0.79.0"
+    "react-native": "0.79.0",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/react": "~19.0.10",

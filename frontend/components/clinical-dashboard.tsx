@@ -20,7 +20,6 @@ import {
   ChevronRight,
   Filter,
   Calendar,
-  Bell,
   Settings,
   LogOut,
   Info,
@@ -222,11 +221,9 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
   const [showProfileSettings, setShowProfileSettings] = useState(false)
   const [userProfile, setUserProfile] = useState<any>(null)
   const [activeTab, setActiveTab] = useState("overview")
-  const [showChat, setShowChat] = useState(false)
-  const [chatMessage, setChatMessage] = useState("")
   const [doctorAppointments, setDoctorAppointments] = useState<any[]>([])
   const [isLoadingDoctorSchedule, setIsLoadingDoctorSchedule] = useState(false)
-  const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<string>("SCHEDULED")
+  const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<string>("")
   const [todayAppointments, setTodayAppointments] = useState<any[]>([])
   const [isLoadingTodayAppointments, setIsLoadingTodayAppointments] = useState(false)
   const [sidebarViewMode, setSidebarViewMode] = useState<"escalated" | "today">("escalated")
@@ -241,10 +238,10 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
   }, [])
 
   useEffect(() => {
-    if (activeTab === "schedule" && userProfile?.id) {
+    if (activeTab === "schedule") {
       loadDoctorAppointments()
     }
-  }, [activeTab, userProfile?.id, appointmentStatusFilter])
+  }, [activeTab, appointmentStatusFilter])
 
   useEffect(() => {
     // Load today's appointments and all doctors on component mount
@@ -259,18 +256,20 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
   const loadDoctorAppointments = async () => {
     setIsLoadingDoctorSchedule(true)
     try {
-      const token = localStorage.getItem('bloomcare_access_token')
-      const statusParam = appointmentStatusFilter ? `?status=${appointmentStatusFilter}` : ""
+      const statusParam = appointmentStatusFilter
+        ? `?appointment_status=${encodeURIComponent(appointmentStatusFilter)}`
+        : ""
       // Don't pass specialist_id - let backend use current_user.role to determine filtering
-      const response = await fetch(`${configuredApiBase}/appointments${statusParam}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const response = await apiRequest(`/appointments${statusParam}`)
       if (response.ok) {
         const data = await response.json()
         setDoctorAppointments(Array.isArray(data) ? data.sort((a: any, b: any) => new Date(a.appointment_date).getTime() - new Date(b.appointment_date).getTime()) : [])
+      } else {
+        setDoctorAppointments([])
       }
     } catch (error) {
       console.error("Failed to load doctor appointments:", error)
+      setDoctorAppointments([])
     } finally {
       setIsLoadingDoctorSchedule(false)
     }
@@ -279,13 +278,11 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
   const loadTodayAppointments = async () => {
     setIsLoadingTodayAppointments(true)
     try {
-      const token = localStorage.getItem('bloomcare_access_token')
-      const response = await fetch(`${configuredApiBase}/appointments?status=SCHEDULED`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      // Query without status filter to get all appointments, then filter locally
+      const response = await apiRequest(`/appointments`)
       if (response.ok) {
         const data = await response.json()
-        // Filter to only today's appointments
+        // Filter to only today's appointments that are PENDING or CONFIRMED
         const today = new Date()
         today.setHours(0, 0, 0, 0)
         const tomorrow = new Date(today)
@@ -294,7 +291,8 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
         const todayApts = Array.isArray(data) ? data.filter((apt: any) => {
           const aptDate = new Date(apt.appointment_date)
           aptDate.setHours(0, 0, 0, 0)
-          return aptDate.getTime() === today.getTime()
+          const isPendingOrConfirmed = apt.status === "PENDING" || apt.status === "SCHEDULED" || apt.status === "CONFIRMED"
+          return aptDate.getTime() === today.getTime() && isPendingOrConfirmed
         }).sort((a: any, b: any) => new Date(a.appointment_date).getTime() - new Date(b.appointment_date).getTime()) : []
 
         setTodayAppointments(todayApts)
@@ -308,10 +306,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
 
   const loadAllDoctors = async () => {
     try {
-      const token = localStorage.getItem('bloomcare_access_token')
-      const response = await fetch(`${configuredApiBase}/users/?role=DOCTOR&limit=500`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const response = await apiRequest(`/users/?role=CLINICAL_SPECIALIST&limit=500`)
       if (response.ok) {
         const data = await response.json()
         setAllDoctors(Array.isArray(data) ? data : [])
@@ -323,18 +318,17 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
 
   const updateAppointmentStatus = async (appointmentId: string, newStatus: string) => {
     try {
-      const token = localStorage.getItem('bloomcare_access_token')
-      const response = await fetch(`${configuredApiBase}/appointments/${appointmentId}/status`, {
+      const response = await apiRequest(`/appointments/${appointmentId}/status`, {
         method: "PATCH",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({ status: newStatus }),
       })
       if (response.ok) {
-        // Reload appointments after status update
-        loadDoctorAppointments()
+        // Reload both doctor appointments and today's appointments after status update
+        await loadDoctorAppointments()
+        await loadTodayAppointments()
       } else {
         console.error("Failed to update appointment status:", response.statusText)
       }
@@ -1056,12 +1050,6 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Notifications */}
-          <button className="relative p-2 hover:bg-slate-100 rounded-lg transition-colors">
-            <Bell className="w-5 h-5 text-slate-600" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-[#F97316] rounded-full" />
-          </button>
-
           {/* Language Toggle */}
           <div className="relative">
             <button
@@ -2400,81 +2388,15 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
         </main>
       </div>
 
-      {/* Bilingual GenAI Assistant Chat UI */}
-      <div className="fixed bottom-8 right-8 z-[100]">
-        {!showChat ? (
-          <Button
-            onClick={() => setShowChat(true)}
-            className="w-16 h-16 rounded-3xl bg-slate-900 border-0 shadow-2xl shadow-slate-900/30 text-white hover:scale-110 active:scale-95 transition-all duration-300 group"
-          >
-            <div className="absolute top-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white animate-pulse" />
-            <Brain className="w-8 h-8 group-hover:rotate-12 transition-transform" />
-          </Button>
-        ) : (
-          <div className="w-[380px] bg-white rounded-[32px] border-0 shadow-2xl shadow-slate-900/20 overflow-hidden animate-in fade-in slide-in-from-bottom-8 duration-500">
-            <div className="bg-bloom-gradient h-2" />
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <Brain className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">{getText("GenAI Assistant", "GenAI සහායක", "GenAI உதவியாளர்")}</h3>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{getText("Online", "සජීවී", "நேரலை")}</span>
-                    </div>
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowChat(false)}
-                  className="w-10 h-10 rounded-xl hover:bg-slate-50"
-                >
-                  <ChevronDown className="w-5 h-5 text-slate-400" />
-                </Button>
-              </div>
+      <ProfileSettingsDialog
+        open={showProfileSettings}
+        onOpenChange={setShowProfileSettings}
+        userProfile={userProfile}
+        onProfileSaved={(profile) => {
+          setUserProfile(profile)
+        }}
+      />
 
-              <div className="h-[320px] bg-slate-50/50 rounded-2xl border border-slate-100 p-4 mb-4 overflow-y-auto space-y-4">
-                <div className="flex gap-3 max-w-[85%]">
-                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <Brain className="w-4 h-4 text-primary" />
-                  </div>
-                  <div className="bg-white border border-slate-100 p-3 rounded-2xl rounded-tl-none shadow-sm">
-                    <p className="text-xs font-medium text-slate-700 leading-relaxed">
-                      {getText(
-                        "Hello, I am the BloomCare Intelligence Assistant. How can I help you analyze the risks for " + (activePatient?.name || "this patient") + "?",
-                        "ආයුබෝවන්, මම බ්ලූම්කෙයාර් බුද්ධි සහායකයා. " + (activePatient?.name || "මෙම රෝගියා") + " සඳහා අවදානම් විශ්ලේෂණය කිරීමට මම ඔබට උදව් කරන්නේ කෙසේද?",
-                        "வணக்கம், நான் புளூம்கேர் நுண்ணறிவு உதவியாளர். " + (activePatient?.name || "இந்த நோயாளர்") + " க்கான அபாயங்களை பகுப்பாய்வு செய்ய நான் உங்களுக்கு எவ்வாறு உதவ முடியும்?"
-                      )}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <div className="flex-1 relative">
-                  <Input
-                    placeholder={getText("Consult with AI...", "AI උපදෙස් පතන්න...", "AI ஆலோசகரை வினவவும்...")}
-                    value={chatMessage}
-                    onChange={(e) => setChatMessage(e.target.value)}
-                    className="h-12 bg-slate-50 border-slate-200 rounded-xl pl-4 pr-10 text-xs font-medium focus:bg-white transition-all shadow-inner focus:ring-1 focus:ring-primary/20"
-                  />
-                  <Globe className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                </div>
-                <Button className="w-12 h-12 rounded-xl bg-slate-900 border-0 text-white shadow-lg shadow-slate-900/20 hover:scale-105 active:scale-95 transition-all p-0">
-                  <Send className="w-5 h-5" />
-                </Button>
-              </div>
-              <p className="text-[8px] font-bold text-slate-400 text-center mt-4 uppercase tracking-widest">
-                Trilingual Medical AI Protocol Active
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   )
 }

@@ -10,7 +10,6 @@ import {
   Activity,
   Calendar,
   Clock,
-  Bell,
   Settings,
   LogOut,
   CheckCircle,
@@ -32,6 +31,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { getWeeklyInsight } from "@/lib/weekly-insights"
@@ -81,6 +81,22 @@ interface LatestScreeningsPayload {
   } | null
 }
 
+interface BackendStage1HistoryItem {
+  screening_id?: string
+  patient_id?: string
+  patient_name?: string | null
+  collected_at?: string | null
+  gestational_age_weeks?: number | null
+  systolic?: number | null
+  diastolic?: number | null
+  heart_rate?: number | null
+  temperature?: number | null
+  blood_sugar?: number | null
+  edge_risk_score?: number | null
+  edge_risk_classification?: string | null
+  risk_label?: string | null
+}
+
 interface PatientPortalProps {
   onLogout: () => void
 }
@@ -116,6 +132,34 @@ interface PrescriptionItem {
   start_date?: string | null
   end_date?: string | null
   is_active: boolean
+}
+
+interface AppointmentItem {
+  id: string
+  patient_id: string
+  specialist_name?: string | null
+  appointment_type?: string | null
+  appointment_date: string
+  status?: string | null
+  notes?: string | null
+  queue_number?: number | null
+}
+
+interface AppointmentViewItem {
+  id: string
+  patient_id: string
+  type: string
+  typeSi: string
+  typeTa: string
+  specialist_name: string
+  appointment_type: string
+  date: string
+  time: string
+  location: string
+  status: string
+  notes?: string | null
+  queue_number?: number | null
+  appointmentDateValue: number
 }
 
 const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "")
@@ -170,6 +214,10 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
   const [isOffline, setIsOffline] = useState(false)
   const [patientData, setPatientData] = useState<PatientDisplayData>(DEFAULT_PATIENT_DATA)
   const [prescriptions, setPrescriptions] = useState<PrescriptionItem[]>([])
+  const [appointments, setAppointments] = useState<AppointmentItem[]>([])
+  const [screeningHistory, setScreeningHistory] = useState<BackendStage1HistoryItem[]>([])
+  const [latestScreenings, setLatestScreenings] = useState<LatestScreeningsPayload | null>(null)
+  const [selectedAppointment, setSelectedAppointment] = useState<AppointmentViewItem | null>(null)
   const [isAiExplaining, setIsAiExplaining] = useState(false)
   const [aiScreeningMessages, setAiScreeningMessages] = useState<{ screening1: string; screening2: string }>({
     screening1: "",
@@ -341,6 +389,129 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
     void hydratePrescriptions()
   }, [])
 
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const hydrateAppointments = async () => {
+      const token = window.localStorage.getItem("bloomcare_access_token")
+      if (!token) {
+        setAppointments([])
+        return
+      }
+
+      const profileRaw = window.localStorage.getItem("bloomcare_user_profile")
+      let patientId: string | null = null
+      if (profileRaw) {
+        try {
+          const profile = JSON.parse(profileRaw) as StoredProfile
+          patientId = profile.id || null
+        } catch {
+          patientId = null
+        }
+      }
+
+      if (!patientId) {
+        setAppointments([])
+        return
+      }
+
+      for (const baseUrl of getApiBaseCandidates()) {
+        try {
+          const response = await fetch(`${baseUrl}/appointments/patient/${patientId}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          })
+
+          if (!response.ok) {
+            if (response.status === 404) continue
+            break
+          }
+
+          const payload = (await response.json()) as AppointmentItem[]
+          setAppointments(Array.isArray(payload) ? payload : [])
+          break
+        } catch {
+          // Try next candidate URL
+        }
+      }
+    }
+
+    void hydrateAppointments()
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const hydrateScreeningHistory = async () => {
+      const token = window.localStorage.getItem("bloomcare_access_token")
+      if (!token) {
+        setScreeningHistory([])
+        return
+      }
+
+      for (const baseUrl of getApiBaseCandidates()) {
+        try {
+          const response = await fetch(`${baseUrl}/triage/history?limit=12`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          })
+
+          if (!response.ok) {
+            if (response.status === 404) continue
+            break
+          }
+
+          const payload = (await response.json()) as BackendStage1HistoryItem[]
+          setScreeningHistory(Array.isArray(payload) ? payload : [])
+          break
+        } catch {
+          // Try next candidate URL
+        }
+      }
+    }
+
+    void hydrateScreeningHistory()
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const hydrateLatestScreenings = async () => {
+      const token = window.localStorage.getItem("bloomcare_access_token")
+      if (!token) {
+        setLatestScreenings(null)
+        return
+      }
+
+      for (const baseUrl of getApiBaseCandidates()) {
+        try {
+          const response = await fetch(`${baseUrl}/patients/me/latest-screenings`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          })
+
+          if (!response.ok) {
+            if (response.status === 404) continue
+            break
+          }
+
+          setLatestScreenings((await response.json()) as LatestScreeningsPayload)
+          break
+        } catch {
+          // Try next candidate URL
+        }
+      }
+    }
+
+    void hydrateLatestScreenings()
+  }, [])
+
   const getText = (en: string, si: string, ta: string) => {
     if (selectedLanguage === "SI") return si
     if (selectedLanguage === "TA") return ta
@@ -368,14 +539,6 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
     if (start === "--") return `${getText("Until", "දක්වා", "வரை")} ${end}`
     return `${start} - ${end}`
   }
-
-  const vitalsHistory = [
-    { week: "W16", systolic: 112, diastolic: 72, weight: 58 },
-    { week: "W18", systolic: 115, diastolic: 74, weight: 59.5 },
-    { week: "W20", systolic: 118, diastolic: 76, weight: 61 },
-    { week: "W22", systolic: 120, diastolic: 78, weight: 62.5 },
-    { week: "W24", systolic: 118, diastolic: 76, weight: 64 },
-  ]
 
   const explainMedicalData = async (shapJson: Record<string, number>, conditionName: string) => {
     const response = await fetch("/api/patient-explain", {
@@ -452,6 +615,45 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
     return Object.fromEntries(flatNumeric) as Record<string, number>
   }
 
+  const vitalsHistory = useMemo(() => {
+    const mappedFromHistory = screeningHistory
+      .map((entry) => {
+        const collectedAt = entry.collected_at ? new Date(entry.collected_at) : null
+        const hasValidDate = collectedAt !== null && !Number.isNaN(collectedAt.getTime())
+        const weekLabel = entry.gestational_age_weeks ? `W${entry.gestational_age_weeks}` : null
+
+        if (entry.systolic == null && entry.diastolic == null) return null
+
+        return {
+          week: weekLabel || (hasValidDate ? collectedAt!.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Recorded"),
+          systolic: entry.systolic ?? null,
+          diastolic: entry.diastolic ?? null,
+          collectedAt: hasValidDate ? collectedAt!.getTime() : 0,
+        }
+      })
+      .filter((entry): entry is { week: string; systolic: number | null; diastolic: number | null; collectedAt: number } => entry !== null)
+      .sort((left, right) => left.collectedAt - right.collectedAt)
+
+    if (mappedFromHistory.length > 0) {
+      return mappedFromHistory.slice(-8)
+    }
+
+    const latestStage1 = latestScreenings?.latest_stage1
+    if (latestStage1 && (latestStage1.systolic != null || latestStage1.diastolic != null)) {
+      const fallbackWeek = gestationalWeek ? `W${gestationalWeek}` : "Latest"
+      return [
+        {
+          week: fallbackWeek,
+          systolic: latestStage1.systolic ?? null,
+          diastolic: latestStage1.diastolic ?? null,
+          collectedAt: 0,
+        },
+      ]
+    }
+
+    return []
+  }, [gestationalWeek, latestScreenings, screeningHistory, selectedLanguage])
+
   const explainLatestScreenings = async () => {
     setIsAiExplaining(true)
     setAiScreeningMessages({ screening1: "", screening2: "" })
@@ -486,6 +688,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
           }
 
           latestPayload = (await response.json()) as LatestScreeningsPayload
+          setLatestScreenings(latestPayload)
           break
         } catch {
           // Try next candidate URL
@@ -493,6 +696,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
       }
 
       if (!latestPayload) {
+        setLatestScreenings(null)
         setAiScreeningMessages({
           screening1: getText(
             "No latest screening data found.",
@@ -536,6 +740,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
 
       setAiScreeningMessages({ screening1: screening1Text, screening2: screening2Text })
     } catch {
+      setLatestScreenings(null)
       setAiScreeningMessages({
         screening1: getText(
           "Network issue while loading screening explanations.",
@@ -544,46 +749,34 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
         ),
         screening2: "",
       })
-    } finally {
-      setIsAiExplaining(false)
     }
   }
 
-  const upcomingAppointments = [
-    {
-      id: 1,
-      type: "Prenatal Checkup",
-      typeSi: "ප්‍රසව පූර්ව පරීක්ෂාව",
-      typeTa: "மகப்பேறுக்கு முற்பட்ட பரிசோதனை",
-      date: "April 3, 2026",
-      time: "10:30 AM",
-      doctor: "Dr. Saman Kumara",
-      location: "Hemas Hospital Wattala",
-      status: "confirmed",
-    },
-    {
-      id: 2,
-      type: "Glucose Screening",
-      typeSi: "ග්ලූකෝස් පිරික්සීම",
-      typeTa: "குளுக்கோஸ் ஸ்கிரீனிங்",
-      date: "April 10, 2026",
-      time: "08:00 AM",
-      doctor: "Lab Services",
-      location: "Hemas Hospital Wattala",
-      status: "pending",
-    },
-    {
-      id: 3,
-      type: "Ultrasound Scan",
-      typeSi: "අල්ට්‍රා සවුන්ඩ් ස්කෑන්",
-      typeTa: "அல்ட்ராசவுண்ட் ஸ்கேன்",
-      date: "April 17, 2026",
-      time: "02:00 PM",
-      doctor: "Dr. Priya Fernando",
-      location: "Hemas Hospital Wattala",
-      status: "confirmed",
-    },
-  ]
+  const upcomingAppointments = useMemo(() => {
+    return appointments
+      .map((appointment) => {
+        const appointmentDate = new Date(appointment.appointment_date)
+        if (Number.isNaN(appointmentDate.getTime())) return null
+
+        return {
+          id: appointment.id,
+          patient_id: appointment.patient_id,
+          type: appointment.appointment_type || "Appointment",
+          typeSi: appointment.appointment_type || "නියමනය",
+          typeTa: appointment.appointment_type || "சந்திப்பு",
+          date: appointmentDate.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }),
+          time: appointmentDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          doctor: appointment.specialist_name || "Assigned Specialist",
+          location: "Hemas Hospital Wattala",
+          status: (appointment.status || "scheduled").toLowerCase(),
+          notes: appointment.notes || null,
+          queue_number: appointment.queue_number ?? null,
+          appointmentDateValue: appointmentDate.getTime(),
+        }
+      })
+        .filter((appointment): appointment is AppointmentViewItem => appointment !== null)
+      .sort((left, right) => left.appointmentDateValue - right.appointmentDateValue)
+  }, [appointments])
 
   const insightFactIcons = [Droplets, Heart, Pill]
   const healthTips = weeklyInsight.facts.map((fact, index) => ({
@@ -633,12 +826,6 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
               {getText("Offline", "නොබැඳි", "ஆஃப்லைன்")}
             </Badge>
           )}
-
-          {/* Notifications */}
-          <button className="relative p-3 bg-white border border-slate-100 rounded-xl hover:bg-slate-50 transition-all shadow-sm group hidden sm:inline-flex">
-            <Bell className="w-5 h-5 text-slate-400 group-hover:text-primary transition-colors" />
-            <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-primary rounded-full border-2 border-white shadow-sm" />
-          </button>
 
           {/* Language Toggle */}
           <div className="relative">
@@ -839,18 +1026,29 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                </CardHeader>
                <CardContent className="p-10">
                   <div className="h-80 w-full font-bold">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={vitalsHistory}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                        <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800 }} />
-                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800 }} />
-                        <Tooltip 
-                           contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.1)', fontSize: '10px', fontWeight: 'bold' }}
-                        />
-                        <Line type="monotone" dataKey="systolic" stroke="#F472B6" strokeWidth={4} dot={{ r: 4, fill: '#F472B6', strokeWidth: 2, stroke: '#fff' }} />
-                        <Line type="monotone" dataKey="diastolic" stroke="#20847F" strokeWidth={4} dot={{ r: 4, fill: '#20847F', strokeWidth: 2, stroke: '#fff' }} />
-                      </LineChart>
-                    </ResponsiveContainer>
+                    {vitalsHistory.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={vitalsHistory}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                          <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800 }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800 }} />
+                          <Tooltip
+                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.1)', fontSize: '10px', fontWeight: 'bold' }}
+                          />
+                          <Line type="monotone" dataKey="systolic" stroke="#F472B6" strokeWidth={4} dot={{ r: 4, fill: '#F472B6', strokeWidth: 2, stroke: '#fff' }} />
+                          <Line type="monotone" dataKey="diastolic" stroke="#20847F" strokeWidth={4} dot={{ r: 4, fill: '#20847F', strokeWidth: 2, stroke: '#fff' }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex h-full items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-slate-50/60 px-6 text-center">
+                        <div>
+                          <p className="text-sm font-black text-slate-900">{getText("No screening history yet", "පරීක්ෂණ ඉතිහාසයක් තවම නැත", "இன்னும் திரையிடல் வரலாறு இல்லை")}</p>
+                          <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            {getText("The chart will appear after your first recorded screening.", "ඔබගේ පළමු පරීක්ෂණය සුරැකුණු පසු ප්‍රස්තාරය දිස්වෙයි.", "உங்கள் முதல் பதிவுசெய்யப்பட்ட திரையிடலுக்குப் பிறகு வரைபடம் தோன்றும்.")}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                </CardContent>
             </Card>
@@ -1058,7 +1256,12 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                              {appointment.status}
                           </Badge>
                        </div>
-                       <Button size="icon" className="w-12 h-12 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition-colors">
+                        <Button
+                          size="icon"
+                          className="w-12 h-12 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition-colors"
+                          onClick={() => setSelectedAppointment(appointment)}
+                          aria-label={`View details for ${appointment.type}`}
+                        >
                           <ChevronRight className="w-6 h-6" />
                        </Button>
                     </div>
@@ -1151,6 +1354,68 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
           }))
         }}
       />
+
+      <Dialog open={Boolean(selectedAppointment)} onOpenChange={(open) => !open && setSelectedAppointment(null)}>
+        <DialogContent className="sm:max-w-lg rounded-3xl border-0 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black text-slate-900">Appointment Details</DialogTitle>
+          </DialogHeader>
+
+          {selectedAppointment && (
+            <div className="space-y-4">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-400">Specialist</p>
+                    <p className="text-lg font-black text-slate-900">{selectedAppointment.doctor}</p>
+                  </div>
+                  <Badge className={cn(
+                    "rounded-lg px-3 py-1 text-[10px] font-black uppercase tracking-widest border-0",
+                    selectedAppointment.status === "confirmed"
+                      ? "bg-emerald-500 text-white"
+                      : selectedAppointment.status === "pending"
+                        ? "bg-amber-500 text-white"
+                        : "bg-slate-200 text-slate-700"
+                  )}>
+                    {selectedAppointment.status}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="rounded-2xl border border-slate-100 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Date</p>
+                  <p className="font-bold text-slate-900 mt-1">{selectedAppointment.date}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-100 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Time</p>
+                  <p className="font-bold text-slate-900 mt-1">{selectedAppointment.time}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-100 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Type</p>
+                  <p className="font-bold text-slate-900 mt-1">{selectedAppointment.type}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-100 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Queue</p>
+                  <p className="font-bold text-slate-900 mt-1">{selectedAppointment.queue_number ?? "-"}</p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-100 p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Location</p>
+                <p className="font-bold text-slate-900 mt-1">{selectedAppointment.location}</p>
+              </div>
+
+              {selectedAppointment.notes && (
+                <div className="rounded-2xl border border-slate-100 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Notes</p>
+                  <p className="text-sm text-slate-700 mt-2 leading-relaxed">{selectedAppointment.notes}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

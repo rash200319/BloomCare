@@ -86,8 +86,8 @@ class StaffService:
     ) -> list[StaffResponse]:
         """Retrieve staff members with optional filters."""
         query = db.query(User).filter(
-            User.role.in_([UserRole.FRONTLINE_STAFF,
-                          UserRole.CLINICAL_SPECIALIST])
+            User.role.in_([UserRole.FRONTLINE_STAFF.value,
+                          UserRole.CLINICAL_SPECIALIST.value])
         )
 
         if full_name:
@@ -378,8 +378,8 @@ class AuthService:
 
         user = db.query(User).filter(
             User.email == email,
-            User.role.in_([UserRole.FRONTLINE_STAFF,
-                          UserRole.CLINICAL_SPECIALIST, UserRole.ADMIN])
+            User.role.in_([UserRole.FRONTLINE_STAFF.value,
+                          UserRole.CLINICAL_SPECIALIST.value, UserRole.ADMIN.value])
         ).first()
         if not user:
             raise HTTPException(
@@ -420,8 +420,8 @@ class AuthService:
         # Find staff
         user = db.query(User).filter(
             User.email == email,
-            User.role.in_([UserRole.FRONTLINE_STAFF,
-                          UserRole.CLINICAL_SPECIALIST, UserRole.ADMIN])
+            User.role.in_([UserRole.FRONTLINE_STAFF.value,
+                          UserRole.CLINICAL_SPECIALIST.value, UserRole.ADMIN.value])
         ).first()
         if not user:
             raise HTTPException(

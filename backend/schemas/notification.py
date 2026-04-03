@@ -4,6 +4,18 @@ from datetime import datetime
 from uuid import UUID
 
 
+class NotificationAppointmentContext(BaseModel):
+    """Compact appointment context returned with a notification."""
+    id: str
+    appointment_date: datetime
+    appointment_type: str
+    status: str
+    created_by_id: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class NotificationCreate(BaseModel):
     """Schema for creating a notification"""
     recipient_id: str
@@ -26,6 +38,7 @@ class NotificationResponse(BaseModel):
     read_at: Optional[datetime]
     related_data: Optional[dict]
     created_at: datetime
+    appointment: Optional[NotificationAppointmentContext] = None
 
     class Config:
         from_attributes = True

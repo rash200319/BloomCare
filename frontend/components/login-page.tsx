@@ -140,13 +140,6 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
-  const [isForgotPasswordMode, setIsForgotPasswordMode] = useState(false)
-  const [forgotPasswordStep, setForgotPasswordStep] = useState<1 | 2>(1)
-  const [otp, setOtp] = useState("")
-  const [newPassword, setNewPassword] = useState("")
-  const [confirmNewPassword, setConfirmNewPassword] = useState("")
-  const [otpDestination, setOtpDestination] = useState("")
-  const [otpExpiresIn, setOtpExpiresIn] = useState(0)
 
   const fromApiRole = (role: string): UserRole => {
     const upper = String(role || "").toUpperCase()
@@ -184,89 +177,6 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
       return { national_id: identifier }
     }
     return { email: identifier }
-  }
-
-  const handleForgotPasswordRequest = async () => {
-    if (!identifier) {
-      setErrorMessage(getText("Please enter your email or NIC.", "කරුණාකර ඔබගේ ඊමේල් හෝ NIC ඇතුළත් කරන්න.", "தயவுசெய்து உங்கள் மின்னஞ்சல் அல்லது NIC ஐ உள்ளிடவும்."))
-      return
-    }
-    setIsLoading(true)
-    setErrorMessage("")
-    try {
-      const endpoint = isPatientRole ? "/auth/forgot-password/patient/request" : "/auth/forgot-password/staff/request"
-      const requestBody = isPatientRole ? { national_id: identifier } : { email: identifier }
-
-      const response = await authFetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      })
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}))
-        throw new Error(err?.detail || "Failed to request OTP")
-      }
-
-      const data = await response.json()
-      setOtpDestination(data.destination_masked)
-      setOtpExpiresIn(data.expires_in_seconds || 600)
-      setForgotPasswordStep(2)
-      setErrorMessage(getText(
-        `OTP sent to ${data.destination_masked}`,
-        `OTP ${data.destination_masked} වලට යවා ඇත`,
-        `OTP ${data.destination_masked} இல் அனுப்பப்பட்டுள்ளது`
-      ))
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to request OTP")
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleForgotPasswordVerify = async () => {
-    if (!otp || !newPassword || !confirmNewPassword) {
-      setErrorMessage(getText("Please fill all fields.", "කරුණාකර සියලු ක්ෂේත්ර පුරවන්න.", "தயவுசெய்து அனைத்து புலங்களை நிரப்பவும்."))
-      return
-    }
-    if (newPassword !== confirmNewPassword) {
-      setErrorMessage(getText("Passwords do not match.", "මුරපද ගැළපෙන්නේ නැත.", "கடவுச்சொற்கள் பொருந்தவில்லை."))
-      return
-    }
-    setIsLoading(true)
-    try {
-      const endpoint = isPatientRole ? "/auth/forgot-password/patient/verify-otp" : "/auth/forgot-password/staff/verify-otp"
-      const requestBody = isPatientRole
-        ? { national_id: identifier, otp_code: otp, new_password: newPassword, confirm_password: confirmNewPassword }
-        : { email: identifier, otp_code: otp, new_password: newPassword, confirm_password: confirmNewPassword }
-
-      const response = await authFetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      })
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}))
-        throw new Error(err?.detail || "Failed to reset password")
-      }
-
-      setErrorMessage(getText(
-        "Password reset successfully! Please sign in with your new password.",
-        "මුරපදය සාර්ථකව යළි සකසා ඇත! කරුණාකර ඔබගේ නව මුරපදය සමඟ පුරනය වන්න.",
-        "கடவுச்சொல் வெற்றிகரமாக மீட்டமைக்கப்பட்டது! தயவுசெய்து உங்கள் புதிய கடவுச்சொல் கொண்டு உள்நுழையவும்."
-      ))
-      setIsForgotPasswordMode(false)
-      setForgotPasswordStep(1)
-      setOtp("")
-      setNewPassword("")
-      setConfirmNewPassword("")
-      setPassword("")
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to reset password")
-    } finally {
-      setIsLoading(false)
-    }
   }
 
   const handleLogin = async () => {
@@ -516,18 +426,8 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
                 </CardHeader>
                 <CardContent className="space-y-6 px-12 pb-12">
                   {errorMessage && (
-                    <div className={cn(
-                      "rounded-xl border px-4 py-3 mb-2",
-                      isForgotPasswordMode && forgotPasswordStep === 2 && errorMessage.includes("reset successfully")
-                        ? "border-green-100 bg-green-50"
-                        : "border-rose-100 bg-rose-50"
-                    )}>
-                      <p className={cn(
-                        "text-[11px] font-bold",
-                        isForgotPasswordMode && forgotPasswordStep === 2 && errorMessage.includes("reset successfully")
-                          ? "text-green-700"
-                          : "text-rose-700"
-                      )}>{errorMessage}</p>
+                    <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 mb-2">
+                      <p className="text-[11px] font-bold text-rose-700">{errorMessage}</p>
                     </div>
                   )}
                   <div className="space-y-3">
@@ -590,175 +490,34 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
                     </div>
                   )}
 
-                  {!isForgotPasswordMode && (
-                    <div className="flex items-center justify-between">
-                      <label className="flex items-center gap-3 cursor-pointer group">
-                        <input type="checkbox" className="w-4 h-4 rounded border-slate-200 text-primary focus:ring-primary/20" />
-                        <span className="text-[11px] font-bold text-slate-400 group-hover:text-slate-700 uppercase tracking-wider">{getText("Remember", "මතක", "நினைவில்")}</span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsForgotPasswordMode(true)
-                          setErrorMessage("")
-                          setPassword("")
-                        }}
-                        className="text-[11px] font-black text-primary uppercase tracking-widest hover:opacity-70 transition-opacity"
-                      >
-                        {getText("Forgot?", "අමතකද?", "மறந்துவிட்டீர்களා?")}
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-3 cursor-pointer group">
+                      <input type="checkbox" className="w-4 h-4 rounded border-slate-200 text-primary focus:ring-primary/20" />
+                      <span className="text-[11px] font-bold text-slate-400 group-hover:text-slate-700 uppercase tracking-wider">{getText("Remember", "මතක", "நினைவில்")}</span>
+                    </label>
+                  </div>
 
-                  {/* ═══════════════════════════════════════════════════════════════════════════════
-                      BUTTON STATE MANAGEMENT - CLEAR FLOWS
-                      🔵 Normal Login: Shows "Sign In" button
-                      🟠 Forgot Password Step 1: Shows "Send OTP" button (only when triggered)
-                      🟠 Forgot Password Step 2: Shows "Reset Password" button (after OTP is sent)
-                      ═══════════════════════════════════════════════════════════════════════════════
-                  */}
-                  {isForgotPasswordMode ? (
-                    <>
-                      {/* 🟠 FORGOT PASSWORD - STEP 1: Send OTP */}
-                      {forgotPasswordStep === 1 ? (
-                        <>
-                          <div>
-                            <p className="text-xs font-bold text-slate-600 mb-4">
-                              {getText(
-                                "Enter your email or NIC to receive an OTP.",
-                                "OTP එක ලබා ගැනීමට ඔබගේ ඊමේල් හෝ NIC ඇතුළත් කරන්න.",
-                                "OTP பெற உங்கள் மின்னஞ்சல் அல்லது NIC ஐ உள்ளிடவும்."
-                              )}
-                            </p>
-                          </div>
-                          {/* 🟠 PRIMARY BUTTON - SEND OTP (visible only in forgot password step 1) */}
-                          <div className="pt-2">
-                            <Button
-                              className="w-full bg-primary hover:bg-primary/90 text-white h-14 rounded-2xl shadow-xl shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] font-black uppercase tracking-[0.2em] text-xs"
-                              onClick={handleForgotPasswordRequest}
-                              disabled={!identifier || isLoading}
-                            >
-                              {isLoading ? (
-                                <span className="flex items-center gap-3">
-                                  <span className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin" />
-                                  {getText("Wait...", "මඳක් ඉන්න...", "காத்திருக்க...")}
-                                </span>
-                              ) : (
-                                <span className="flex items-center gap-2">
-                                  {getText("Send OTP", "OTP එක යවන්න", "OTP அனுப்பவும்")}
-                                  <ChevronRight className="w-5 h-5" />
-                                </span>
-                              )}
-                            </Button>
-                          </div>
-                        </>
+                  <div className="pt-2">
+                    <Button
+                      className="w-full bg-primary hover:bg-primary/90 text-white h-14 rounded-2xl shadow-xl shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] font-black uppercase tracking-[0.2em] text-xs"
+                      onClick={handleLogin}
+                      disabled={!identifier || !password || (isFirstLoginMode && !confirmPassword) || isLoading}
+                    >
+                      {isLoading ? (
+                        <span className="flex items-center gap-3">
+                          <span className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin" />
+                          {getText("Wait...", "මඳක් ඉන්න...", "காத்திருக்க...")}
+                        </span>
                       ) : (
-                        <>
-                          {/* 🟠 FORGOT PASSWORD - STEP 2: Verify OTP & Reset Password */}
-                          <div className="space-y-3">
-                            <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
-                              {getText("OTP Code", "OTP කේතය", "OTP குறியீடு")}
-                            </Label>
-                            <Input
-                              type="text"
-                              placeholder="000000"
-                              className="h-12 bg-white/50 border-slate-100 focus:border-primary/30 focus:ring-primary/10 rounded-xl transition-all font-bold text-slate-800 text-center tracking-widest"
-                              value={otp}
-                              onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                              maxLength={6}
-                            />
-                          </div>
-
-                          <div className="space-y-3">
-                            <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
-                              {getText("New Password", "නව මුරපදය", "புதிய கடவுச்சொல்")}
-                            </Label>
-                            <Input
-                              type="password"
-                              placeholder="••••••••"
-                              className="h-12 bg-white/50 border-slate-100 focus:border-primary/30 focus:ring-primary/10 rounded-xl transition-all font-bold text-slate-800"
-                              value={newPassword}
-                              onChange={(e) => setNewPassword(e.target.value)}
-                            />
-                          </div>
-
-                          <div className="space-y-3">
-                            <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
-                              {getText("Confirm Password", "මුරපදය තහවුරු කරන්න", "கடவுச்சொல்லை உறுதிப்படுத்தவும்")}
-                            </Label>
-                            <Input
-                              type="password"
-                              placeholder="••••••••"
-                              className="h-12 bg-white/50 border-slate-100 focus:border-primary/30 focus:ring-primary/10 rounded-xl transition-all font-bold text-slate-800"
-                              value={confirmNewPassword}
-                              onChange={(e) => setConfirmNewPassword(e.target.value)}
-                            />
-                          </div>
-
-                          {/* 🟠 PRIMARY BUTTON - RESET PASSWORD (visible only in forgot password step 2) */}
-                          <div className="pt-2">
-                            <Button
-                              className="w-full bg-primary hover:bg-primary/90 text-white h-14 rounded-2xl shadow-xl shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] font-black uppercase tracking-[0.2em] text-xs"
-                              onClick={handleForgotPasswordVerify}
-                              disabled={!otp || !newPassword || !confirmNewPassword || isLoading}
-                            >
-                              {isLoading ? (
-                                <span className="flex items-center gap-3">
-                                  <span className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin" />
-                                  {getText("Wait...", "මඳක් ඉන්න...", "காத்திருக்க...")}
-                                </span>
-                              ) : (
-                                <span className="flex items-center gap-2">
-                                  {getText("Reset Password", "මුරපදය යළි සකසන්න", "கடவுச்சொல்லை மீட்டமைக்க")}
-                                  <ChevronRight className="w-5 h-5" />
-                                </span>
-                              )}
-                            </Button>
-                          </div>
-
-                          <Button
-                            variant="ghost"
-                            className="w-full text-[10px] font-black text-primary hover:text-primary uppercase tracking-[0.2em] h-10"
-                            onClick={() => {
-                              setIsForgotPasswordMode(false)
-                              setForgotPasswordStep(1)
-                              setOtp("")
-                              setNewPassword("")
-                              setConfirmNewPassword("")
-                              setErrorMessage("")
-                            }}
-                          >
-                            {getText("Back to Sign In", "පුරනයට ආපසු", "உள்நுழைவுக்கு திரும்பு")}
-                          </Button>
-                        </>
+                        <span className="flex items-center gap-2">
+                          {isFirstLoginMode
+                            ? getText("Set Password", "මුරපදය සකසන්න", "கடவுச்சொல்லை அமைக்க")
+                            : getText("Sign In", "පුරනය වන්න", "உள்நுழை")}
+                          <ChevronRight className="w-5 h-5" />
+                        </span>
                       )}
-                    </>
-                  ) : (
-                    <>
-                      {/* 🔵 NORMAL LOGIN FLOW - Primary Button is "Sign In" */}
-                      <div className="pt-2">
-                        <Button
-                          className="w-full bg-primary hover:bg-primary/90 text-white h-14 rounded-2xl shadow-xl shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] font-black uppercase tracking-[0.2em] text-xs"
-                          onClick={handleLogin}
-                          disabled={!identifier || !password || (isFirstLoginMode && !confirmPassword) || isLoading}
-                        >
-                          {isLoading ? (
-                            <span className="flex items-center gap-3">
-                              <span className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin" />
-                              {getText("Wait...", "මඳක් ඉන්න...", "காத்திருக்க...")}
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-2">
-                              {isFirstLoginMode
-                                ? getText("Set Password", "මුරපදය සකසන්න", "கடவுச்சொல்லை அமைக்க")
-                                : getText("Sign In", "පුරනය වන්න", "உள்நுழை")}
-                              <ChevronRight className="w-5 h-5" />
-                            </span>
-                          )}
-                        </Button>
-                      </div>
-                    </>
-                  )}
+                    </Button>
+                  </div>
 
                   {selectedRole !== "admin" && (
                     <Button

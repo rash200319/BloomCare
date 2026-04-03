@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -70,6 +71,7 @@ def get_specialist_availability(
 def create_appointment_by_nic(
     appointment_in: AppointmentCreateByNIC,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> Any:
     """
     Create a new appointment using patient NIC instead of patient_id.
@@ -105,6 +107,7 @@ def create_appointment_by_nic(
         appointment_in.appointment_type,
         appointment_in.notes,
         appointment_in.duration_minutes,
+        current_user,
     )
     return result.appointment
 
@@ -186,6 +189,17 @@ def update_appointment_status(
     
     old_status = appointment.status
     appointment.status = requested_status
+
+    if requested_status == "CANCELLED":
+        cancellation_reason = getattr(status_update, "notes", None)
+        if cancellation_reason:
+            appointment.reason_for_cancellation = cancellation_reason
+        appointment.cancelled_by_id = getattr(current_user, "id", None)
+        appointment.cancelled_at = datetime.now(timezone.utc)
+    elif requested_status == "COMPLETED":
+        appointment.completed_by_id = getattr(current_user, "id", None)
+        appointment.completed_at = datetime.now(timezone.utc)
+
     db.commit()
     db.refresh(appointment)
 
@@ -200,10 +214,11 @@ def update_appointment_status(
         print(f"[NOTIFICATION] Appointment created_by_id: {appointment.created_by_id}", file=sys.stderr)
         print(f"[NOTIFICATION] Patient found: {patient is not None}", file=sys.stderr)
         
-        if old_status != "CONFIRMED" and requested_status == "CONFIRMED":
-            # Appointment confirmed by doctor
-            print(f"[NOTIFICATION] Creating CONFIRMED notification", file=sys.stderr)
-            if appointment.created_by_id and patient:
+        # Send notification to staff member who created the appointment for status changes
+        if appointment.created_by_id and patient:
+            if requested_status == "CONFIRMED" and old_status != "CONFIRMED":
+                # Appointment confirmed by doctor
+                print(f"[NOTIFICATION] Creating CONFIRMED notification", file=sys.stderr)
                 NotificationService.create_appointment_confirmation_notification(
                     db,
                     recipient_id=appointment.created_by_id,
@@ -213,28 +228,22 @@ def update_appointment_status(
                     appointment_date=appointment.appointment_date,
                 )
                 print(f"[NOTIFICATION] CONFIRMED notification created", file=sys.stderr)
-        
-        elif old_status != "CANCELLED" and requested_status == "CANCELLED":
-            # Appointment cancelled by doctor or admin
-            print(f"[NOTIFICATION] Creating CANCELLED notification", file=sys.stderr)
-            if appointment.created_by_id and patient:
-                cancellation_reason = None
-                if hasattr(status_update, 'notes') and status_update.notes:
-                    cancellation_reason = status_update.notes
-                
-                print(f"[NOTIFICATION] Calling create_appointment_cancellation_notification with reason: {cancellation_reason}", file=sys.stderr)
-                NotificationService.create_appointment_cancellation_notification(
-                    db,
-                    recipient_id=appointment.created_by_id,
-                    appointment_id=appointment_id,
-                    patient_name=patient.full_name,
-                    specialist_name=current_user.full_name or "Unknown",
-                    appointment_date=appointment.appointment_date,
-                    reason=cancellation_reason,
-                )
+            
+            elif requested_status == "CANCELLED" and old_status != "CANCELLED":
+                # Appointment cancelled by doctor or admin
+                print(f"[NOTIFICATION] Creating CANCELLED notification", file=sys.stderr)
+                NotificationService.create_appointment_notification(db, appointment, "CANCELLED")
                 print(f"[NOTIFICATION] CANCELLED notification created", file=sys.stderr)
+            
+            elif requested_status == "COMPLETED" and old_status != "COMPLETED":
+                # Appointment completed
+                print(f"[NOTIFICATION] Creating COMPLETED notification", file=sys.stderr)
+                NotificationService.create_appointment_notification(db, appointment, "COMPLETED")
+                print(f"[NOTIFICATION] COMPLETED notification created", file=sys.stderr)
             else:
-                print(f"[NOTIFICATION] Skipping - created_by_id or patient is missing", file=sys.stderr)
+                print(f"[NOTIFICATION] No notification sent for status {requested_status}", file=sys.stderr)
+        else:
+            print(f"[NOTIFICATION] Skipping - created_by_id or patient is missing", file=sys.stderr)
     except Exception as e:
         import traceback
         print(f"[NOTIFICATION ERROR] Error creating notification: {e}", file=sys.stderr)
@@ -259,6 +268,28 @@ def delete_appointment(
     result = AppointmentService.cancel_appointment(
         db, appointment_id, current_user)
     return result.appointment
+
+
+@router.get(
+    "/created-by/me",
+    response_model=List[AppointmentResponse],
+    summary="Get Appointments Created By Current User",
+    description="Retrieve appointments created by the currently authenticated user",
+)
+def get_my_created_appointments(
+    status_filter: Optional[str] = Query(
+        None,
+        alias="status",
+        description="Filter by appointment status (PENDING, CONFIRMED, SCHEDULED, COMPLETED, CANCELLED)",
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    return AppointmentService.get_appointments_created_by_user(
+        db,
+        current_user,
+        status_filter,
+    )
 
 
 @router.get(
@@ -342,8 +373,8 @@ def list_appointments(
 
     query = db.query(Appointment)
 
-    # If specialist is requesting, they can only see HIGH/MODERATE RISK appointments
-    # (either assigned to them or unassigned high-risk cases)
+    # Specialists should always see appointments assigned to them.
+    # In addition, include unassigned high-risk cases for triage workflows.
     if current_user.role in [UserRole.DOCTOR, UserRole.CLINICAL_SPECIALIST]:
         # Subquery to get patient IDs with high/moderate risk (escalate classification)
         high_risk_patients = db.query(Stage1Screening.patient_id).filter(
@@ -352,14 +383,15 @@ def list_appointments(
         ).distinct()
 
         # Show appointments where:
-        # 1. Patient is high-risk AND (specialist_id is current user OR specialist_id is NULL)
+        # 1. Appointment is assigned to current specialist, OR
+        # 2. Appointment is unassigned and patient is high-risk.
         query = query.filter(
-            and_(
-                Appointment.patient_id.in_(high_risk_patients),
-                or_(
-                    Appointment.specialist_id == current_user.id,
-                    Appointment.specialist_id == None  # noqa: E712
-                )
+            or_(
+                Appointment.specialist_id == current_user.id,
+                and_(
+                    Appointment.specialist_id == None,  # noqa: E712
+                    Appointment.patient_id.in_(high_risk_patients),
+                ),
             )
         )
     # If specialist_id is provided in query params, use it (for backwards compatibility)

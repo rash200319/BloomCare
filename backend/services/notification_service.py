@@ -3,14 +3,70 @@ Notification Service
 Handles creating, retrieving, and managing notifications for users
 """
 from datetime import datetime, timezone
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
+from sqlalchemy.orm import joinedload
+from backend.models.appointment import Appointment
 from backend.models.notification import Notification
 from backend.schemas.notification import NotificationCreate, NotificationResponse, NotificationListResponse
 
 
 class NotificationService:
     """Service for managing notifications"""
+
+    @staticmethod
+    def create_appointment_notification(
+        db: Session,
+        appointment: Appointment,
+        new_status: str,
+    ) -> NotificationResponse:
+        """Create a status-change notification for the appointment creator."""
+        if not appointment.created_by_id:
+            raise ValueError("Appointment has no creator to notify")
+
+        status_value = new_status.strip().upper()
+        if status_value not in {"COMPLETED", "CANCELLED"}:
+            raise ValueError(f"Unsupported notification status '{new_status}'")
+
+        patient = appointment.patient
+        specialist = appointment.specialist
+        patient_name = patient.full_name if patient else "the patient"
+        specialist_name = specialist.full_name if specialist else "the specialist"
+        appointment_date = appointment.appointment_date
+
+        if status_value == "COMPLETED":
+            title = "Appointment Completed"
+            message = (
+                f"Dr. {specialist_name} marked the appointment for {patient_name} "
+                f"on {appointment_date.strftime('%B %d, %Y at %I:%M %p')} as completed."
+            )
+        else:
+            reason_text = (
+                f" Reason: {appointment.reason_for_cancellation}."
+                if appointment.reason_for_cancellation else ""
+            )
+            title = "Appointment Cancelled"
+            message = (
+                f"Dr. {specialist_name} cancelled the appointment for {patient_name} "
+                f"scheduled on {appointment_date.strftime('%B %d, %Y at %I:%M %p')}."
+                f"{reason_text}"
+            )
+
+        notification = NotificationCreate(
+            recipient_id=appointment.created_by_id,
+            appointment_id=appointment.id,
+            notification_type=f"APPOINTMENT_{status_value}",
+            title=title,
+            message=message,
+            related_data={
+                "patient_name": patient_name,
+                "specialist_name": specialist_name,
+                "appointment_date": appointment_date.isoformat(),
+                "appointment_type": appointment.appointment_type,
+                "new_status": status_value,
+            },
+        )
+        return NotificationService.create_notification(db, notification)
 
     @staticmethod
     def create_notification(
@@ -103,15 +159,25 @@ class NotificationService:
         limit: int = 50,
         offset: int = 0,
         unread_only: bool = False,
+        is_read: bool | None = None,
     ) -> NotificationListResponse:
         """Get notifications for a user"""
         import sys
-        print(f"[GET-NOTIF] Fetching notifications for user: {user_id}, limit: {limit}, offset: {offset}, unread_only: {unread_only}", file=sys.stderr)
-        query = db.query(Notification).filter(
-            Notification.recipient_id == user_id
+        print(f"[GET-NOTIF] Fetching notifications for user: {user_id}, limit: {limit}, offset: {offset}, unread_only: {unread_only}, is_read: {is_read}", file=sys.stderr)
+        appointment_ids_query = db.query(Appointment.id).filter(
+            Appointment.created_by_id == user_id
         )
 
-        if unread_only:
+        query = db.query(Notification).filter(
+            or_(
+                Notification.recipient_id == user_id,
+                Notification.appointment_id.in_(appointment_ids_query),
+            )
+        ).options(joinedload(Notification.appointment))
+
+        if is_read is not None:
+            query = query.filter(Notification.is_read == is_read)
+        elif unread_only:
             query = query.filter(Notification.is_read == False)
 
         total = query.count()
@@ -122,7 +188,10 @@ class NotificationService:
 
         unread_count = db.query(Notification).filter(
             and_(
-                Notification.recipient_id == user_id,
+                or_(
+                    Notification.recipient_id == user_id,
+                    Notification.appointment_id.in_(appointment_ids_query),
+                ),
                 Notification.is_read == False,
             )
         ).count()
@@ -136,6 +205,30 @@ class NotificationService:
             total=total,
             unread_count=unread_count,
         )
+
+    @staticmethod
+    def mark_notification_as_read_for_user(
+        db: Session,
+        notification_id: str,
+        user_id: str,
+    ) -> NotificationResponse:
+        """Mark a notification as read if it belongs to the current staff user."""
+        notification = db.query(Notification).options(joinedload(Notification.appointment)).filter(
+            Notification.id == notification_id
+        ).first()
+
+        if not notification:
+            raise ValueError(f"Notification {notification_id} not found")
+
+        appointment_owner_id = notification.appointment.created_by_id if notification.appointment else None
+        if notification.recipient_id != user_id and appointment_owner_id != user_id:
+            raise ValueError("Notification not found")
+
+        notification.is_read = True
+        notification.read_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(notification)
+        return NotificationResponse.from_orm(notification)
 
     @staticmethod
     def mark_notification_as_read(
@@ -162,9 +255,16 @@ class NotificationService:
         user_id: str,
     ) -> None:
         """Mark all notifications as read for a user"""
+        appointment_ids_query = db.query(Appointment.id).filter(
+            Appointment.created_by_id == user_id
+        )
+
         db.query(Notification).filter(
             and_(
-                Notification.recipient_id == user_id,
+                or_(
+                    Notification.recipient_id == user_id,
+                    Notification.appointment_id.in_(appointment_ids_query),
+                ),
                 Notification.is_read == False,
             )
         ).update({

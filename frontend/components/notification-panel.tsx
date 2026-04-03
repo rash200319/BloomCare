@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils"
 interface Notification {
   id: string
   appointment_id: string
-  notification_type: "APPOINTMENT_CONFIRMED" | "APPOINTMENT_CANCELLED" | "ESCALATION_ALERT"
+  notification_type: "APPOINTMENT_CONFIRMED" | "APPOINTMENT_CANCELLED" | "APPOINTMENT_COMPLETED" | "ESCALATION_ALERT"
   title: string
   message: string
   is_read: boolean
@@ -42,7 +42,7 @@ export default function NotificationPanel({ patientId }: NotificationPanelProps)
   const [filteredNotifications, setFilteredNotifications] = useState<Notification[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [filterType, setFilterType] = useState<"ALL" | "CONFIRMED" | "CANCELLED">("ALL")
+  const [filterType, setFilterType] = useState<"ALL" | "CONFIRMED" | "CANCELLED" | "COMPLETED">("ALL")
   const [filterReadStatus, setFilterReadStatus] = useState<"ALL" | "READ" | "UNREAD">("ALL")
   const mountedRef = useRef(true)
 
@@ -137,6 +137,8 @@ export default function NotificationPanel({ patientId }: NotificationPanelProps)
       filtered = filtered.filter((n) => n.notification_type === "APPOINTMENT_CONFIRMED")
     } else if (filterType === "CANCELLED") {
       filtered = filtered.filter((n) => n.notification_type === "APPOINTMENT_CANCELLED")
+    } else if (filterType === "COMPLETED") {
+      filtered = filtered.filter((n) => n.notification_type === "APPOINTMENT_COMPLETED")
     }
 
     console.log(`After type filter: ${filtered.length} notifications`)
@@ -344,6 +346,15 @@ export default function NotificationPanel({ patientId }: NotificationPanelProps)
             <AlertCircle className="w-4 h-4" />
             Cancelled
           </Button>
+          <Button
+            variant={filterType === "COMPLETED" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterType("COMPLETED")}
+            className="flex items-center gap-2 bg-purple-50 text-purple-700 hover:bg-purple-100 border-purple-200"
+          >
+            <CheckCircle className="w-4 h-4" />
+            Completed
+          </Button>
         </div>
 
         {/* Read Status Filters */}
@@ -419,6 +430,8 @@ export default function NotificationPanel({ patientId }: NotificationPanelProps)
                   "border-green-200 bg-green-50/50",
                 notification.notification_type === "APPOINTMENT_CANCELLED" &&
                   "border-red-200 bg-red-50/50",
+                notification.notification_type === "APPOINTMENT_COMPLETED" &&
+                  "border-purple-200 bg-purple-50/50",
                 !notification.is_read && "border-blue-300 bg-blue-50/30"
               )}
             >
@@ -433,6 +446,10 @@ export default function NotificationPanel({ patientId }: NotificationPanelProps)
                     ) : notification.notification_type === "APPOINTMENT_CANCELLED" ? (
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
                         <AlertCircle className="h-6 w-6 text-red-600" />
+                      </div>
+                    ) : notification.notification_type === "APPOINTMENT_COMPLETED" ? (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100">
+                        <CheckCircle className="h-6 w-6 text-purple-600" />
                       </div>
                     ) : (
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
@@ -451,7 +468,9 @@ export default function NotificationPanel({ patientId }: NotificationPanelProps)
                             notification.notification_type === "APPOINTMENT_CONFIRMED" &&
                               "text-green-900",
                             notification.notification_type === "APPOINTMENT_CANCELLED" &&
-                              "text-red-900"
+                              "text-red-900",
+                            notification.notification_type === "APPOINTMENT_COMPLETED" &&
+                              "text-purple-900"
                           )}
                         >
                           {notification.title}
@@ -470,7 +489,9 @@ export default function NotificationPanel({ patientId }: NotificationPanelProps)
                         notification.notification_type === "APPOINTMENT_CONFIRMED" &&
                           "text-green-800",
                         notification.notification_type === "APPOINTMENT_CANCELLED" &&
-                          "text-red-800"
+                          "text-red-800",
+                        notification.notification_type === "APPOINTMENT_COMPLETED" &&
+                          "text-purple-800"
                       )}
                     >
                       {notification.message}

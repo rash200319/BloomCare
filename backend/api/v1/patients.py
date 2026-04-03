@@ -142,7 +142,7 @@ def read_patients(
     else:
         patients = (
             db.query(DBPatient)
-            .filter(cast(DBPatient.assigned_worker_id, String) == str(current_user.id))
+            .filter(DBPatient.assigned_worker_id == str(current_user.id))
             .offset(skip)
             .limit(limit)
             .all()

@@ -94,6 +94,7 @@ export interface PendingScreening {
 
 export interface PatientMiniProfile {
   patient_id: string;
+  national_id?: string;
   patient_name: string;
   age?: number;
   gestation_weeks?: number;

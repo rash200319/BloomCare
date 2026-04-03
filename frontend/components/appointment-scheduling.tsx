@@ -38,16 +38,19 @@ interface Specialization {
 }
 
 interface Specialist {
-  user_id: string
+  id: string
   full_name: string
   specialization: string
-  contact?: string
+  phone_number?: string
+  email?: string
 }
 
 interface TimeSlot {
   time: string
   available: boolean
   label: string
+  date: string
+  startDateTime: string
 }
 
 interface Appointment {
@@ -85,6 +88,28 @@ const languages = [
   { code: "SI", label: "Sinhala" },
   { code: "TA", label: "Tamil" },
 ]
+
+function buildFallbackSlots(date: string): TimeSlot[] {
+  if (!date) return []
+
+  const slots: TimeSlot[] = []
+  for (let hour = 8; hour < 17; hour += 1) {
+    for (const minute of [0, 30]) {
+      const hourLabel = String(hour).padStart(2, "0")
+      const minuteLabel = String(minute).padStart(2, "0")
+      const timeLabel = `${hourLabel}:${minuteLabel}`
+      slots.push({
+        time: timeLabel,
+        available: true,
+        label: timeLabel,
+        date,
+        startDateTime: `${date}T${timeLabel}:00`,
+      })
+    }
+  }
+
+  return slots
+}
 
 export default function AppointmentScheduling({
   patientId,
@@ -196,7 +221,22 @@ export default function AppointmentScheduling({
         setError(null)
         const response = await apiRequest("/appointments/specializations")
         const data = await response.json()
-        setSpecializations(data)
+        const obstetricsSpecializations = Array.isArray(data)
+          ? Array.from(
+              data.reduce((acc: Map<string, Specialization>, item: any) => {
+                const specialization = String(item?.specialization || "").trim()
+                if (!specialization || !/obstetr/i.test(specialization) || acc.has(specialization)) {
+                  return acc
+                }
+                acc.set(specialization, {
+                  specialization,
+                  specialist_count: Number(item?.specialist_count || 0),
+                })
+                return acc
+              }, new Map<string, Specialization>()).values()
+            )
+          : []
+        setSpecializations(obstetricsSpecializations)
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load specializations")
       } finally {
@@ -240,8 +280,10 @@ export default function AppointmentScheduling({
         if (Array.isArray(data)) {
           const slots: TimeSlot[] = data.flatMap((daySlot: any) =>
             (daySlot.available_slots || []).map((slot: any) => {
+              const slotDate = String(daySlot?.date || "").trim()
               // Extract time from slot - handle both ISO datetime and plain time formats
-              let timeStr = typeof slot === 'string' ? slot : (slot.start_time || slot.time || '')
+              const rawStart = typeof slot === 'string' ? slot : (slot.start_time || slot.time || '')
+              let timeStr = String(rawStart || '').trim()
 
               // If it's a full ISO datetime (contains T), extract just the time part
               if (timeStr && timeStr.includes('T')) {
@@ -252,14 +294,20 @@ export default function AppointmentScheduling({
               }
 
               const isAvailable = typeof slot === 'string' ? true : (slot.is_available !== false)
+              const normalizedStart = String(rawStart || '').includes('T')
+                ? String(rawStart)
+                : `${slotDate}T${timeStr}`
               return {
                 time: timeStr,
                 available: isAvailable,
                 label: timeStr,
+                date: slotDate,
+                startDateTime: normalizedStart,
               }
             })
           )
           setAvailableTimeSlots(slots)
+          setSelectedTimeSlot(null)
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load availability")
@@ -275,15 +323,19 @@ export default function AppointmentScheduling({
     const loadAppointments = async () => {
       try {
         setError(null)
-        const response = await apiRequest(`/appointments/patient/${patientId}`)
+        const endpoint = viewerRole && viewerRole !== "patient"
+          ? "/appointments/created-by/me"
+          : `/appointments/patient/${patientId}`
+        const response = await apiRequest(endpoint)
         const data = await response.json()
-        setAppointments(data)
+        setAppointments(Array.isArray(data) ? data : [])
       } catch (err) {
         console.warn("Failed to load appointments:", err)
       }
     }
+    if (!viewerRole) return
     loadAppointments()
-  }, [patientId])
+  }, [patientId, viewerRole])
 
   // Load and poll for notifications (for FLS)
   useEffect(() => {
@@ -346,37 +398,24 @@ export default function AppointmentScheduling({
       setIsLoading(true)
       setError(null)
 
-      // Time slot format: either HH:MM:SS or ISO datetime string
-      let timeStr = String(selectedTimeSlot).trim()
-      
-      // If timeStr is an ISO datetime, extract just the time part
-      if (timeStr.includes('T')) {
-        const timePart = timeStr.split('T')[1] || timeStr
-        // Remove Z and any milliseconds: "14:30:00Z" -> "14:30:00"
-        timeStr = timePart.split('.')[0].replace('Z', '').trim()
-      }
-      
-      if (!timeStr || !timeStr.includes(':')) {
+      let appointmentDateTimePayload = String(selectedTimeSlot).trim()
+      if (!appointmentDateTimePayload) {
         throw new Error("Invalid time slot selected")
       }
 
-      // Create ISO 8601 datetime - combine date and time
-      const dateStr = String(selectedDate).trim()
-      const appointmentDateTime = new Date(`${dateStr}T${timeStr}Z`)
-
-      // Validate the date is correct
-      if (isNaN(appointmentDateTime.getTime())) {
-        throw new Error("Invalid date or time value")
+      // Ensure selected slot belongs to selected date when booking from grouped availability
+      if (!appointmentDateTimePayload.includes("T")) {
+        const dateStr = String(selectedDate).trim()
+        appointmentDateTimePayload = `${dateStr}T${appointmentDateTimePayload}`
       }
-
-      const isoDateTime = appointmentDateTime.toISOString()
 
       const response = await apiRequest("/appointments/", {
         method: "POST",
         body: JSON.stringify({
           patient_id: patientId,
           specialist_name: selectedSpecialist.full_name,
-          appointment_date: isoDateTime,
+          appointment_date: appointmentDateTimePayload,
+          appointment_type: "PRENATAL_CHECKUP",
           duration_minutes: 30,
           notes: notes || null,
         }),
@@ -456,6 +495,24 @@ export default function AppointmentScheduling({
   const filteredSpecialists = specialists.filter((spec) =>
     spec.full_name.toLowerCase().includes(searchSpecialist.toLowerCase())
   )
+
+  const slotsForSelectedDate = selectedDate
+    ? availableTimeSlots.filter((slot) => slot.date === selectedDate)
+    : []
+
+  const displaySlotsForSelectedDate = selectedDate
+    ? (slotsForSelectedDate.length > 0 ? slotsForSelectedDate : buildFallbackSlots(selectedDate))
+    : []
+
+  const selectedTimeLabel = selectedTimeSlot
+    ? selectedTimeSlot.includes("T")
+      ? selectedTimeSlot.split("T")[1]?.split(".")[0]?.replace("Z", "") || selectedTimeSlot
+      : selectedTimeSlot
+    : ""
+
+  useEffect(() => {
+    setSelectedTimeSlot(null)
+  }, [selectedDate])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50">
@@ -706,14 +763,14 @@ export default function AppointmentScheduling({
                     ) : (
                       filteredSpecialists.map((specialist, index) => (
                         <button
-                          key={`specialist-${specialist.user_id}-${index}`}
+                          key={`specialist-${specialist.id}-${index}`}
                           onClick={() => {
                             setSelectedSpecialist(specialist)
                             setActiveStep("date")
                           }}
                           className={cn(
                             "w-full p-4 rounded-lg border-2 text-left transition-all",
-                            selectedSpecialist?.user_id === specialist.user_id
+                            selectedSpecialist?.id === specialist.id
                               ? "border-blue-600 bg-blue-50"
                               : "border-gray-200 bg-white hover:border-blue-400"
                           )}
@@ -764,19 +821,19 @@ export default function AppointmentScheduling({
                           {getText("Preferred Time", "선호하는 시간", "விருப்பமான நேரம்")}
                         </label>
                         <div className="grid grid-cols-4 gap-2">
-                          {availableTimeSlots.length === 0 ? (
+                          {displaySlotsForSelectedDate.length === 0 ? (
                             <p className="col-span-4 text-gray-500 text-center py-4">
                               {getText("No slots available", "ස්ලට්ටු නැත", "இடங்கள் கிடைக்கவில்லை")}
                             </p>
                           ) : (
-                            availableTimeSlots.map((slot, index) => (
+                            displaySlotsForSelectedDate.map((slot, index) => (
                               <button
                                 key={`slot-${slot.time}-${index}`}
-                                onClick={() => setSelectedTimeSlot(slot.time)}
+                                onClick={() => setSelectedTimeSlot(slot.startDateTime)}
                                 disabled={!slot.available}
                                 className={cn(
                                   "p-2 rounded-lg border text-sm font-medium transition-all",
-                                  selectedTimeSlot === slot.time
+                                  selectedTimeSlot === slot.startDateTime
                                     ? "border-blue-600 bg-blue-50 text-blue-900"
                                     : "border-gray-200 text-gray-700 hover:border-blue-400"
                                 )}
@@ -841,7 +898,7 @@ export default function AppointmentScheduling({
                     </div>
                     <div className="flex justify-between items-center p-3 bg-white rounded-lg">
                       <span className="text-gray-600">{getText("Time", "වේලාව", "நேரம்")}</span>
-                      <span className="font-medium">{selectedTimeSlot}</span>
+                      <span className="font-medium">{selectedTimeLabel}</span>
                     </div>
                   </div>
                   <Button
