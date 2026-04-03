@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -27,6 +28,7 @@ import {
 } from '../types';
 import { calculateMap, DEFAULT_IMPUTE, offlineStage1Risk } from '../services/riskEngine';
 import authService from '../services/authService';
+import offlineDatabase from '../services/offlineDatabase';
 import patientCacheService from '../services/patientCacheService';
 import {
   createAppointmentForFrontline,
@@ -34,10 +36,13 @@ import {
   getPendingFrontlineActionCount,
   getCachedPatientStage1History,
   getDirtyVitalsCount,
+  loadAppointmentSpecializations,
+  loadAppointmentSpecialists,
+  loadSpecialistAvailability,
   queueReferralCard,
   registerPatientForFrontline,
   saveDirtyOfflineVitalsUpdate,
-  searchPatientInLocalCache,
+    searchPatientInLocalCache,
   submitRiskOnline,
   syncDirtyVitalsUpdates,
   syncPendingFrontlineActions,
@@ -78,10 +83,17 @@ const initialRegisterForm = {
   blood_group: '',
 };
 
-const initialAppointmentForm = {
-  appointment_date: '',
-  appointment_type: 'PRENATAL_CHECKUP',
-  notes: '',
+const BLOOD_TYPE_OPTIONS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+const formatDueDateInput = (value: string): string => {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 4) {
+    return digits;
+  }
+  if (digits.length <= 6) {
+    return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+  }
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
 };
 
 const BLOOMCARE_PATIENTS_CACHE_KEY = 'bloomcare_patients_cache';
@@ -104,7 +116,73 @@ interface BloomcareSyncQueueItem {
   sync_status: 'PENDING';
 }
 
+interface AppointmentSpecialization {
+  specialization: string;
+  specialist_count: number;
+}
+
+interface AppointmentSpecialist {
+  id: string;
+  full_name: string;
+  specialization: string;
+  phone_number?: string;
+  email?: string;
+}
+
+interface AppointmentSlot {
+  label: string;
+  startDateTime: string;
+}
+
 const normalizeNicValue = (value: string): string => value.trim().toUpperCase();
+
+const mapPatientProfile = (patient: any): PatientMiniProfile => ({
+  patient_id: String(patient.patient_id ?? patient.id ?? ''),
+  national_id: patient.national_id ? String(patient.national_id) : undefined,
+  patient_name: String(patient.patient_name ?? patient.full_name ?? 'Unknown Patient'),
+  age: typeof patient.age === 'number' ? patient.age : undefined,
+  gestation_weeks:
+    typeof patient.gestation_weeks === 'number' ? patient.gestation_weeks : undefined,
+  risk_level: patient.risk_level === 'high' ? 'high' : 'low',
+  last_screening_at: patient.last_screening_at ?? patient.updated_at ?? undefined,
+  history_note: patient.history_note ?? undefined,
+});
+
+const mergePatientLists = (patients: PatientMiniProfile[]): PatientMiniProfile[] => {
+  const byKey = new Map<string, PatientMiniProfile>();
+
+  for (const patient of patients) {
+    const key = normalizeNicValue(patient.national_id ?? '') || patient.patient_id;
+    const existing = byKey.get(key);
+    byKey.set(key, existing ? { ...existing, ...patient } : patient);
+  }
+
+  return Array.from(byKey.values()).sort((left, right) =>
+    left.patient_name.localeCompare(right.patient_name)
+  );
+};
+
+const findCachedPatientByNic = async (nic: string): Promise<PatientMiniProfile | null> => {
+  const normalizedNic = normalizeNicValue(nic);
+  if (!normalizedNic) {
+    return null;
+  }
+
+  const cachedPatients = await readBloomcarePatientsCache();
+  const match = cachedPatients.find((item) => normalizeNicValue(item.nic) === normalizedNic);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    patient_id: match.id,
+    national_id: match.nic,
+    patient_name: match.patient_name,
+    age: match.age,
+    risk_level: 'low',
+  };
+};
 
 const safeParseArray = <T,>(raw: string | null): T[] => {
   if (!raw) return [];
@@ -169,7 +247,7 @@ const badgeStyle = (online: boolean): object => ({
   color: online ? '#166534' : '#991b1b'
 });
 
-export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffScreenProps) {
+export default function FrontlineStaffScreen({ user, onLogout, isOnline }: FrontlineStaffScreenProps) {
   const [language, setLanguage] = useState<LanguageCode>('en');
   const [fields, setFields] = useState(initialFields);
   const [risk, setRisk] = useState<RiskResponse | null>(null);
@@ -188,9 +266,21 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
   const [verifiedPatient, setVerifiedPatient] = useState<PatientMiniProfile | null>(null);
   const [registerForm, setRegisterForm] = useState(initialRegisterForm);
   const [registering, setRegistering] = useState(false);
-  const [appointmentForm, setAppointmentForm] = useState(initialAppointmentForm);
+  const [showBloodTypeDropdown, setShowBloodTypeDropdown] = useState(false);
   const [showAppointmentForm, setShowAppointmentForm] = useState(false);
+  const [appointmentSpecializations, setAppointmentSpecializations] = useState<AppointmentSpecialization[]>([]);
+  const [appointmentSpecialists, setAppointmentSpecialists] = useState<AppointmentSpecialist[]>([]);
+  const [appointmentSlots, setAppointmentSlots] = useState<AppointmentSlot[]>([]);
+  const [selectedSpecialization, setSelectedSpecialization] = useState<string | null>(null);
+  const [selectedSpecialist, setSelectedSpecialist] = useState<AppointmentSpecialist | null>(null);
+  const [selectedAppointmentDate, setSelectedAppointmentDate] = useState('');
+  const [selectedAppointmentSlot, setSelectedAppointmentSlot] = useState<AppointmentSlot | null>(null);
+  const [appointmentNotes, setAppointmentNotes] = useState('');
+  const [appointmentLoading, setAppointmentLoading] = useState(false);
+  const [appointmentError, setAppointmentError] = useState<string | null>(null);
+  const [appointmentSearch, setAppointmentSearch] = useState('');
   const [offlineUnregisteredNic, setOfflineUnregisteredNic] = useState<string | null>(null);
+  const previousOnlineState = useRef<boolean | undefined>(undefined);
 
   const t = text[language];
 
@@ -216,11 +306,15 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
     try {
       // Always bootstrap from local cache first.
       const [cachedPatients, cachedHistory] = await Promise.all([
-        searchPatientInLocalCache(''),
+        offlineDatabase.getAllPatientProfiles(),
         getCachedPatientStage1History(''),
       ]);
 
-      setAllPatients(cachedPatients);
+      const localPatients = cachedPatients
+        .map(mapPatientProfile)
+        .filter((patient) => patient.patient_id.length > 0);
+
+      setAllPatients(localPatients);
       setScreeningHistory(cachedHistory);
 
       if (!online) {
@@ -331,7 +425,6 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
       }
 
       if (mappedPatients.length > 0) {
-        setAllPatients(mappedPatients);
         await patientCacheService.initialize();
         await patientCacheService.cacheMorningProfiles(
           mappedPatients,
@@ -347,6 +440,8 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
             age: patient.age,
           });
         }
+
+        setAllPatients(mergePatientLists([...localPatients, ...mappedPatients]));
       }
     } catch (error) {
       console.error('Failed to load registry/history from backend:', error);
@@ -358,7 +453,8 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
 
     loadRegistryAndHistory();
 
-    Promise.all([syncDirtyVitalsUpdates(), syncPendingFrontlineActions()])
+    syncPendingFrontlineActions()
+      .then(() => syncDirtyVitalsUpdates())
       .then(() => Promise.all([refreshQueueCount(), loadRegistryAndHistory()]))
       .catch(() => {
         // Keep local queue if immediate sync fails.
@@ -369,7 +465,8 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
       setOnline(nowOnline);
 
       if (nowOnline) {
-        Promise.all([syncDirtyVitalsUpdates(), syncPendingFrontlineActions()])
+        syncPendingFrontlineActions()
+          .then(() => syncDirtyVitalsUpdates())
           .then(() => Promise.all([refreshQueueCount(), loadRegistryAndHistory()]))
           .catch(() => {
             // Ignore transient sync failures; records remain flagged dirty.
@@ -383,9 +480,83 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
   }, []);
 
   useEffect(() => {
+    if (typeof isOnline !== 'boolean') {
+      return;
+    }
+
+    setOnline(isOnline);
+
+    const cameOnline = previousOnlineState.current === false && isOnline === true;
+    previousOnlineState.current = isOnline;
+
+    if (!cameOnline) {
+      return;
+    }
+
+    syncPendingFrontlineActions()
+      .then(() => syncDirtyVitalsUpdates())
+      .then(() => Promise.all([refreshQueueCount(), loadRegistryAndHistory()]))
+      .catch((error) => {
+        console.error('Reconnect sync failed:', error);
+      });
+  }, [isOnline]);
+
+  useEffect(() => {
     if (!online) return;
     loadRegistryAndHistory();
   }, [online]);
+
+  useEffect(() => {
+    if (!showAppointmentForm) return;
+    setAppointmentError(null);
+    setAppointmentLoading(true);
+    loadAppointmentSpecializations(online)
+      .then((list) => {
+        setAppointmentSpecializations(list);
+      })
+      .catch(() => {
+        setAppointmentError('Failed to load specializations.');
+      })
+      .finally(() => {
+        setAppointmentLoading(false);
+      });
+  }, [showAppointmentForm, online]);
+
+  useEffect(() => {
+    if (!selectedSpecialization) {
+      setAppointmentSpecialists([]);
+      return;
+    }
+    setAppointmentLoading(true);
+    loadAppointmentSpecialists(selectedSpecialization, online)
+      .then((list) => {
+        setAppointmentSpecialists(list);
+      })
+      .catch(() => {
+        setAppointmentError('Failed to load specialists.');
+      })
+      .finally(() => {
+        setAppointmentLoading(false);
+      });
+  }, [selectedSpecialization, online]);
+
+  useEffect(() => {
+    if (!selectedSpecialist || !selectedAppointmentDate) {
+      setAppointmentSlots([]);
+      return;
+    }
+    setAppointmentLoading(true);
+    loadSpecialistAvailability(selectedSpecialist.full_name, selectedAppointmentDate, online)
+      .then((slots) => {
+        setAppointmentSlots(slots);
+      })
+      .catch(() => {
+        setAppointmentSlots([]);
+      })
+      .finally(() => {
+        setAppointmentLoading(false);
+      });
+  }, [selectedSpecialist, selectedAppointmentDate, online]);
 
   const buildVitalsInput = (): Stage1VitalsInput => {
     const systolic = num(fields.systolic, DEFAULT_IMPUTE.systolic);
@@ -411,6 +582,14 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
       map
     };
   };
+
+  const filteredAppointmentSpecialists = useMemo(() => {
+    const query = appointmentSearch.trim().toLowerCase();
+    if (!query) return appointmentSpecialists;
+    return appointmentSpecialists.filter((spec) =>
+      spec.full_name.toLowerCase().includes(query)
+    );
+  }, [appointmentSpecialists, appointmentSearch]);
 
   const handleCalculateRisk = async (): Promise<void> => {
     if (!nicInput.trim()) {
@@ -495,13 +674,6 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
       const vitals = buildVitalsInput();
 
       if (!online) {
-        const appointmentPayload = {
-          appointment_date: appointmentForm.appointment_date.trim() || new Date().toISOString(),
-          appointment_type: appointmentForm.appointment_type.trim() || 'PRENATAL_CHECKUP',
-          notes: appointmentForm.notes.trim() || undefined,
-          status: 'PENDING_SYNC',
-        };
-
         if (verifiedPatient) {
           const screeningId = uuidv4();
           await appendToBloomcareSyncQueue([
@@ -509,10 +681,6 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
               patient_id: verifiedPatient.patient_id,
               screening_id: screeningId,
               ...vitals,
-            }),
-            buildPendingQueueItem('CREATE_APPOINTMENT', {
-              patient_id: verifiedPatient.patient_id,
-              ...appointmentPayload,
             }),
           ]);
 
@@ -525,11 +693,10 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
             recommendations: risk.recommendations,
           });
 
-          Alert.alert('Saved Offline', 'Queued screening and appointment for sync.');
+          Alert.alert('Saved Offline', 'Queued screening for sync.');
           setFields(initialFields);
           setRisk(null);
           setShowAppointmentForm(false);
-          setAppointmentForm(initialAppointmentForm);
           await refreshQueueCount();
           return;
         }
@@ -564,10 +731,6 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
             screening_id: screeningId,
             ...vitals,
           }),
-          buildPendingQueueItem('CREATE_APPOINTMENT', {
-            patient_id: newPatientUuid,
-            ...appointmentPayload,
-          }),
         ]);
 
         await upsertBloomcarePatient({
@@ -595,11 +758,10 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
         });
         setRegisterForm(initialRegisterForm);
         setOfflineUnregisteredNic(null);
-        Alert.alert('Saved Offline', 'Temporary patient, screening, and appointment queued for sync.');
+        Alert.alert('Saved Offline', 'Temporary patient and screening queued for sync.');
         setFields(initialFields);
         setRisk(null);
         setShowAppointmentForm(false);
-        setAppointmentForm(initialAppointmentForm);
         await refreshQueueCount();
         return;
       }
@@ -639,8 +801,31 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
     setVerifiedPatient(null);
     setNicInput('');
     setShowAppointmentForm(false);
-    setAppointmentForm(initialAppointmentForm);
+    setSelectedSpecialization(null);
+    setSelectedSpecialist(null);
+    setSelectedAppointmentDate('');
+    setSelectedAppointmentSlot(null);
+    setAppointmentNotes('');
     setRisk(null);
+  };
+
+  const resetAppointmentFlow = (): void => {
+    setSelectedSpecialization(null);
+    setSelectedSpecialist(null);
+    setSelectedAppointmentDate('');
+    setSelectedAppointmentSlot(null);
+    setAppointmentNotes('');
+    setAppointmentSearch('');
+    setAppointmentError(null);
+  };
+
+  const handleOpenAppointmentFlow = (): void => {
+    if (!verifiedPatient) {
+      Alert.alert('Patient Required', 'Verify NIC before creating an appointment.');
+      return;
+    }
+    resetAppointmentFlow();
+    setShowAppointmentForm(true);
   };
 
   const handleVerifyNic = async (): Promise<void> => {
@@ -653,33 +838,18 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
     setLoading(true);
     try {
       if (!online) {
-        const normalizedNic = normalizeNicValue(nic);
-        const cachedPatients = await readBloomcarePatientsCache();
-        const cachedMatch = cachedPatients.find(
-          (item) => normalizeNicValue(item.nic) === normalizedNic
-        );
+        const cachedProfile = await findCachedPatientByNic(nic);
 
-        if (!cachedMatch) {
+        if (!cachedProfile) {
           setVerifiedPatient(null);
-          setOfflineUnregisteredNic(normalizedNic);
+          setOfflineUnregisteredNic(null);
           setRegisterForm((prev) => ({
             ...prev,
-            national_id: normalizedNic,
+            national_id: normalizeNicValue(nic),
           }));
-          Alert.alert(
-            'Offline Mode',
-            'Offline Mode: Patient not found locally. Proceeding with temporary offline registration.'
-          );
+          Alert.alert('Patient not in local cache', 'Register the patient first, then assess once it is cached on this device.');
           return;
         }
-
-        const cachedProfile: PatientMiniProfile = {
-          patient_id: cachedMatch.id,
-          national_id: cachedMatch.nic,
-          patient_name: cachedMatch.patient_name,
-          age: cachedMatch.age,
-          risk_level: 'low',
-        };
 
         setVerifiedPatient(cachedProfile);
         setOfflineUnregisteredNic(null);
@@ -688,6 +858,7 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
           patientName: cachedProfile.patient_name,
           age: typeof cachedProfile.age === 'number' ? String(cachedProfile.age) : prev.age,
         }));
+        setActiveTab('triage');
         Alert.alert('Verified', 'Patient found in local cache. Proceed to Stage 1 screening.');
         return;
       }
@@ -714,6 +885,7 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
         patientName: match.patient_name,
         age: typeof match.age === 'number' ? String(match.age) : prev.age,
       }));
+      setActiveTab('triage');
       Alert.alert('Verified', 'Patient registration confirmed. You can assess now.');
     } catch (error) {
       Alert.alert('Error', 'Failed to verify NIC.');
@@ -745,12 +917,26 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
 
       setVerifiedPatient(patient);
       setNicInput(registerForm.national_id.trim());
+      if (patient.national_id) {
+        await upsertBloomcarePatient({
+          id: patient.patient_id,
+          nic: patient.national_id,
+          patient_name: patient.patient_name,
+          age: patient.age,
+        });
+      }
       setFields((prev) => ({
         ...prev,
         patientName: patient.patient_name,
         age: typeof patient.age === 'number' ? String(patient.age) : prev.age,
       }));
+      setActiveTab('triage');
+      setShowBloodTypeDropdown(false);
       setRegisterForm(initialRegisterForm);
+      if (online) {
+        await syncPendingFrontlineActions();
+      }
+      await loadRegistryAndHistory();
       Alert.alert('Saved', online ? 'Patient registered successfully.' : 'Saved offline. Will sync automatically when online.');
     } catch (error) {
       Alert.alert('Error', 'Could not register patient right now.');
@@ -790,8 +976,8 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
       return;
     }
 
-    if (!appointmentForm.appointment_date.trim()) {
-      Alert.alert('Missing Date', 'Enter appointment date/time in ISO format (YYYY-MM-DDTHH:mm).');
+    if (!selectedSpecialist || !selectedAppointmentSlot) {
+      Alert.alert('Missing Details', 'Select a specialist, date, and time slot.');
       return;
     }
 
@@ -799,14 +985,18 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
       await createAppointmentForFrontline(
         {
           patient_id: verifiedPatient.patient_id,
-          appointment_date: appointmentForm.appointment_date.trim(),
-          appointment_type: appointmentForm.appointment_type.trim() || 'PRENATAL_CHECKUP',
-          notes: appointmentForm.notes.trim() || undefined,
+          patient_nic: verifiedPatient.national_id ?? nicInput.trim(),
+          patient_full_name: verifiedPatient.patient_name,
+          specialist_id: selectedSpecialist.id,
+          specialist_name: selectedSpecialist.full_name,
+          appointment_date: selectedAppointmentSlot.startDateTime,
+          appointment_type: 'PRENATAL_CHECKUP',
+          notes: appointmentNotes.trim() || undefined,
           duration_minutes: 30,
         },
         online
       );
-      setAppointmentForm(initialAppointmentForm);
+      resetAppointmentFlow();
       setShowAppointmentForm(false);
       Alert.alert('Appointment', online ? 'Appointment created.' : 'Appointment saved offline and queued for sync.');
     } catch {
@@ -822,7 +1012,27 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
         return;
       }
       const rows = await searchPatientInLocalCache(searchQuery.trim());
-      setSearchResults(rows);
+      const cachedProfile = rows[0] ?? null;
+
+      if (!cachedProfile) {
+        setSearchResults([]);
+        setSelectedHistory([]);
+        setVerifiedPatient(null);
+        setOfflineUnregisteredNic(null);
+        Alert.alert('Patient not in local cache', 'Search a NIC that has already been cached on this device.');
+        return;
+      }
+
+      setSearchResults([cachedProfile]);
+      setVerifiedPatient(cachedProfile);
+      setOfflineUnregisteredNic(null);
+      setNicInput(cachedProfile.national_id ?? searchQuery.trim());
+      setFields((prev) => ({
+        ...prev,
+        patientName: cachedProfile.patient_name,
+        age: typeof cachedProfile.age === 'number' ? String(cachedProfile.age) : prev.age,
+      }));
+      setActiveTab('triage');
     } catch (error) {
       Alert.alert('Error', 'Failed to search local cache');
     }
@@ -830,13 +1040,19 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
 
   const handlePickPatient = async (patient: PatientMiniProfile): Promise<void> => {
     try {
+      setVerifiedPatient(patient);
+      setOfflineUnregisteredNic(null);
       setFields((prev) => ({
         ...prev,
         patientName: patient.patient_name,
         age: patient.age ? String(patient.age) : prev.age,
       }));
+      if (patient.national_id) {
+        setNicInput(patient.national_id);
+      }
       const history = await getCachedPatientStage1History(patient.patient_id);
       setSelectedHistory(history);
+      setActiveTab('triage');
     } catch {
       setSelectedHistory([]);
     }
@@ -852,10 +1068,8 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
 
     setSyncing(true);
     try {
-      const [dirtyResult, actionResult] = await Promise.all([
-        syncDirtyVitalsUpdates(),
-        syncPendingFrontlineActions(),
-      ]);
+      const actionResult = await syncPendingFrontlineActions();
+      const dirtyResult = await syncDirtyVitalsUpdates();
       await refreshQueueCount();
 
       const totalSynced = dirtyResult.synced + actionResult.synced;
@@ -872,6 +1086,33 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
       );
     } catch (error) {
       Alert.alert('Sync Failed', 'Could not sync records right now. Please try again.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSyncRegisteredPatients = async (): Promise<void> => {
+    if (syncing) return;
+
+    if (!online) {
+      Alert.alert('Offline', 'Connect to the internet before syncing registered patients.');
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      const result = await syncPendingFrontlineActions();
+      await refreshQueueCount();
+      await loadRegistryAndHistory();
+
+      Alert.alert(
+        'Registration Sync',
+        result.synced > 0
+          ? `Synced ${result.synced} registered patient(s). Pending: ${result.pending}`
+          : `No registered patients were pending sync. Pending: ${result.pending}`
+      );
+    } catch (error) {
+      Alert.alert('Sync Failed', 'Could not sync registered patients right now. Please try again.');
     } finally {
       setSyncing(false);
     }
@@ -898,11 +1139,6 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
         <View style={[styles.badge, badgeStyle(online) as any]}>
           <Text style={styles.badgeText}>{online ? t.online : t.offline}</Text>
         </View>
-        {pendingCount > 0 && (
-          <View style={styles.pendingBadge}>
-            <Text style={styles.pendingBadgeText}>{t.pendingSync}: {pendingCount}</Text>
-          </View>
-        )}
       </View>
 
       {/* Language Selector */}
@@ -979,10 +1215,18 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
                 style={[styles.input, styles.halfWidth]}
                 placeholder="Due Date (YYYY-MM-DD)"
                 placeholderTextColor="#999"
+                keyboardType="number-pad"
+                maxLength={10}
                 value={registerForm.due_date}
-                onChangeText={(value) => setRegisterForm((prev) => ({ ...prev, due_date: value }))}
+                onChangeText={(value) =>
+                  setRegisterForm((prev) => ({
+                    ...prev,
+                    due_date: formatDueDateInput(value),
+                  }))
+                }
               />
             </View>
+            <Text style={styles.inputHint}>Due date format: YYYY-MM-DD</Text>
             <TextInput
               style={styles.input}
               placeholder="Contact number"
@@ -997,13 +1241,53 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
               value={registerForm.emergency_contact}
               onChangeText={(value) => setRegisterForm((prev) => ({ ...prev, emergency_contact: value }))}
             />
-            <TextInput
-              style={styles.input}
-              placeholder="Blood group"
-              placeholderTextColor="#999"
-              value={registerForm.blood_group}
-              onChangeText={(value) => setRegisterForm((prev) => ({ ...prev, blood_group: value }))}
-            />
+            <View style={styles.dropdownContainer}>
+              <Text style={styles.label}>Blood Type</Text>
+              <Pressable
+                style={styles.dropdownTrigger}
+                onPress={() => setShowBloodTypeDropdown((prev) => !prev)}
+              >
+                <View style={styles.dropdownTriggerRow}>
+                  <Text
+                    style={
+                      registerForm.blood_group
+                        ? styles.dropdownSelectedText
+                        : styles.dropdownPlaceholderText
+                    }
+                  >
+                    {registerForm.blood_group || 'Select blood type'}
+                  </Text>
+                  <Text style={styles.dropdownChevron}>▼</Text>
+                </View>
+              </Pressable>
+            </View>
+            <Modal
+              visible={showBloodTypeDropdown}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setShowBloodTypeDropdown(false)}
+            >
+              <Pressable
+                style={styles.dropdownModalBackdrop}
+                onPress={() => setShowBloodTypeDropdown(false)}
+              >
+                <View style={styles.dropdownModalCard}>
+                  <Text style={styles.dropdownModalTitle}>Select Blood Type</Text>
+                  {BLOOD_TYPE_OPTIONS.map((bloodType) => (
+                    <Pressable
+                      key={bloodType}
+                      style={styles.dropdownItem}
+                      onPress={() => {
+                        setRegisterForm((prev) => ({ ...prev, blood_group: bloodType }));
+                        setShowBloodTypeDropdown(false);
+                      }}
+                    >
+                      <Text style={styles.dropdownItemText}>{bloodType}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </Pressable>
+            </Modal>
             <Pressable
               style={[styles.button, styles.primaryButton, registering && styles.buttonDisabled]}
               onPress={handleRegisterPatient}
@@ -1039,7 +1323,7 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
             <Text style={styles.sectionTitle}>Local Patient Cache (Sync & Go)</Text>
             <TextInput
               style={styles.input}
-              placeholder="Search patient name (offline cache)"
+              placeholder="Search NIC in local cache"
               placeholderTextColor="#999"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -1051,6 +1335,13 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
             >
               <Text style={styles.secondaryButtonText}>Search Local Cache</Text>
             </Pressable>
+            <Pressable
+              style={[styles.button, styles.primaryButton, { marginTop: 8 }, syncing && styles.buttonDisabled]}
+              onPress={handleSyncRegisteredPatients}
+              disabled={syncing}
+            >
+              {syncing ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sync Registered Patients</Text>}
+            </Pressable>
 
             {searchResults.length > 0 && (
               <View style={{ marginTop: 10, gap: 8 }}>
@@ -1061,6 +1352,9 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
                     onPress={() => handlePickPatient(patient)}
                   >
                     <Text style={styles.searchResultName}>{patient.patient_name}</Text>
+                    <Text style={styles.searchResultMeta}>
+                      NIC: {patient.national_id ?? 'n/a'}
+                    </Text>
                     <Text style={styles.searchResultMeta}>
                       Last Risk: {patient.risk_level ?? 'n/a'} | Weeks: {patient.gestation_weeks ?? 'n/a'}
                     </Text>
@@ -1379,7 +1673,7 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
               <View style={styles.buttonGroup}>
                 <Pressable
                   style={[styles.button, styles.primaryButton]}
-                  onPress={() => setShowAppointmentForm((prev) => !prev)}
+                  onPress={handleOpenAppointmentFlow}
                 >
                   <Text style={styles.buttonText}>Make New Appointment</Text>
                 </Pressable>
@@ -1394,30 +1688,158 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
               {showAppointmentForm && (
                 <View style={styles.cardSection}>
                   <Text style={styles.sectionTitle}>New Appointment</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Date-Time (YYYY-MM-DDTHH:mm)"
-                    placeholderTextColor="#999"
-                    value={appointmentForm.appointment_date}
-                    onChangeText={(value) => setAppointmentForm((prev) => ({ ...prev, appointment_date: value }))}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Appointment type (e.g. PRENATAL_CHECKUP)"
-                    placeholderTextColor="#999"
-                    value={appointmentForm.appointment_type}
-                    onChangeText={(value) => setAppointmentForm((prev) => ({ ...prev, appointment_type: value }))}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Notes"
-                    placeholderTextColor="#999"
-                    value={appointmentForm.notes}
-                    onChangeText={(value) => setAppointmentForm((prev) => ({ ...prev, notes: value }))}
-                  />
-                  <Pressable style={[styles.button, styles.primaryButton]} onPress={handleCreateAppointment}>
-                    <Text style={styles.buttonText}>Save Appointment</Text>
+                  <Pressable
+                    style={[styles.button, styles.secondaryButton, { marginBottom: 12 }]}
+                    onPress={() => {
+                      setShowAppointmentForm(false);
+                      resetAppointmentFlow();
+                    }}
+                  >
+                    <Text style={styles.secondaryButtonText}>Close</Text>
                   </Pressable>
+                  {appointmentError && (
+                    <Text style={styles.inputHint}>{appointmentError}</Text>
+                  )}
+                  {appointmentLoading && (
+                    <ActivityIndicator color="#e11d48" style={{ marginBottom: 8 }} />
+                  )}
+
+                  <Text style={styles.label}>1. Select Specialization</Text>
+                  <View style={{ gap: 8, marginBottom: 12 }}>
+                    {appointmentSpecializations.length === 0 ? (
+                      <Text style={styles.inputHint}>No specializations available offline.</Text>
+                    ) : (
+                      appointmentSpecializations.map((spec) => (
+                        <Pressable
+                          key={spec.specialization}
+                          style={[
+                            styles.slotButton,
+                            selectedSpecialization === spec.specialization && styles.slotButtonActive,
+                          ]}
+                          onPress={() => {
+                            setSelectedSpecialization(spec.specialization);
+                            setSelectedSpecialist(null);
+                            setSelectedAppointmentDate('');
+                            setSelectedAppointmentSlot(null);
+                          }}
+                        >
+                          <Text style={styles.slotButtonText}>
+                            {spec.specialization} ({spec.specialist_count})
+                          </Text>
+                        </Pressable>
+                      ))
+                    )}
+                  </View>
+
+                  {selectedSpecialization && (
+                    <>
+                      <Text style={styles.label}>2. Select Specialist</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Search specialists"
+                        placeholderTextColor="#999"
+                        value={appointmentSearch}
+                        onChangeText={setAppointmentSearch}
+                      />
+                      <View style={{ gap: 8, marginBottom: 12 }}>
+                        {filteredAppointmentSpecialists.length === 0 ? (
+                          <Text style={styles.inputHint}>No specialists cached for this specialization.</Text>
+                        ) : (
+                          filteredAppointmentSpecialists.map((spec) => (
+                            <Pressable
+                              key={spec.id}
+                              style={[
+                                styles.slotButton,
+                                selectedSpecialist?.id === spec.id && styles.slotButtonActive,
+                              ]}
+                              onPress={() => {
+                                setSelectedSpecialist(spec);
+                                setSelectedAppointmentDate('');
+                                setSelectedAppointmentSlot(null);
+                              }}
+                            >
+                              <Text style={styles.slotButtonText}>{spec.full_name}</Text>
+                              <Text style={styles.inputHint}>{spec.specialization}</Text>
+                            </Pressable>
+                          ))
+                        )}
+                      </View>
+                    </>
+                  )}
+
+                  {selectedSpecialist && (
+                    <>
+                      <Text style={styles.label}>3. Select Date</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="YYYY-MM-DD"
+                        placeholderTextColor="#999"
+                        value={selectedAppointmentDate}
+                        onChangeText={(value) => {
+                          setSelectedAppointmentDate(value);
+                          setSelectedAppointmentSlot(null);
+                        }}
+                      />
+                      <Text style={styles.label}>Time Slot</Text>
+                      <View style={styles.slotGrid}>
+                        {appointmentSlots.length === 0 ? (
+                          <Text style={styles.inputHint}>Select a date to load slots.</Text>
+                        ) : (
+                          appointmentSlots.map((slot) => (
+                            <Pressable
+                              key={slot.startDateTime}
+                              style={[
+                                styles.slotButton,
+                                selectedAppointmentSlot?.startDateTime === slot.startDateTime && styles.slotButtonActive,
+                              ]}
+                              onPress={() => {
+                                setSelectedAppointmentSlot(slot);
+                              }}
+                            >
+                              <Text style={styles.slotButtonText}>{slot.label}</Text>
+                            </Pressable>
+                          ))
+                        )}
+                      </View>
+                      <Text style={styles.label}>Notes (Optional)</Text>
+                      <TextInput
+                        style={[styles.input, { height: 80 }]}
+                        placeholder="Add notes"
+                        placeholderTextColor="#999"
+                        value={appointmentNotes}
+                        onChangeText={setAppointmentNotes}
+                        multiline
+                      />
+                    </>
+                  )}
+
+                  {selectedSpecialist && selectedAppointmentSlot && (
+                    <View style={{ marginTop: 12 }}>
+                      <View style={styles.infoCard}>
+                        <Text style={styles.infoLabel}>Specialist</Text>
+                        <Text style={styles.infoValue}>{selectedSpecialist.full_name}</Text>
+                        <Text style={styles.infoLabel}>Date & Time</Text>
+                        <Text style={styles.infoValue}>{selectedAppointmentSlot.startDateTime}</Text>
+                      </View>
+                      <View style={styles.buttonGroup}>
+                        <Pressable
+                          style={[styles.button, styles.primaryButton]}
+                          onPress={handleCreateAppointment}
+                        >
+                          <Text style={styles.buttonText}>Confirm Appointment</Text>
+                        </Pressable>
+                        <Pressable
+                          style={[styles.button, styles.secondaryButton]}
+                          onPress={() => {
+                            setShowAppointmentForm(false);
+                            resetAppointmentFlow();
+                          }}
+                        >
+                          <Text style={styles.secondaryButtonText}>Cancel</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  )}
                 </View>
               )}
             </View>
@@ -1429,16 +1851,25 @@ export default function FrontlineStaffScreen({ user, onLogout }: FrontlineStaffS
             <Text style={styles.sectionTitle}>Patient Registry</Text>
             <TextInput
               style={styles.input}
-              placeholder="Search patient name or ID"
+              placeholder="Search NIC or name"
               value={registrySearchQuery}
               onChangeText={setRegistrySearchQuery}
               placeholderTextColor="#999"
             />
             {allPatients
-              .filter((p) => p.patient_name.toLowerCase().includes(registrySearchQuery.toLowerCase()))
+              .filter((p) => {
+                const query = registrySearchQuery.trim().toLowerCase();
+                if (!query) return true;
+                return (
+                  p.patient_name.toLowerCase().includes(query) ||
+                  (p.national_id ?? '').toLowerCase().includes(query) ||
+                  p.patient_id.toLowerCase().includes(query)
+                );
+              })
               .map((patient, idx) => (
                 <View key={idx} style={styles.registryCard}>
                   <Text style={styles.registryName}>{patient.patient_name}</Text>
+                  <Text style={styles.registryDetail}>NIC: {patient.national_id ?? 'N/A'}</Text>
                   <Text style={styles.registryDetail}>ID: {patient.patient_id}</Text>
                   <View style={styles.registryRow}>
                     <Text style={styles.registryLabel}>Age:</Text>
@@ -1785,6 +2216,111 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     fontSize: 14,
     backgroundColor: '#f9fafb',
+  },
+  slotGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  slotButton: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+  },
+  slotButtonActive: {
+    borderColor: '#e11d48',
+    backgroundColor: '#ffe4e6',
+  },
+  slotButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  inputHint: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: -2,
+    marginBottom: 8,
+  },
+  dropdownContainer: {
+    marginBottom: 8,
+    position: 'relative',
+    zIndex: 10,
+  },
+  dropdownTrigger: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    backgroundColor: '#f9fafb',
+  },
+  dropdownTriggerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dropdownPlaceholderText: {
+    fontSize: 14,
+    color: '#999',
+  },
+  dropdownSelectedText: {
+    fontSize: 14,
+    color: '#1f2937',
+    fontWeight: '600',
+  },
+  dropdownChevron: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginLeft: 8,
+  },
+  dropdownModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  dropdownModalCard: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+  },
+  dropdownModalTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1f2937',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    backgroundColor: '#f9fafb',
+  },
+  dropdownMenu: {
+    marginTop: 4,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  dropdownItemText: {
+    fontSize: 14,
+    color: '#1f2937',
   },
   buttonGroup: {
     flexDirection: 'row',

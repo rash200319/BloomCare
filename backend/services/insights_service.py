@@ -206,6 +206,9 @@ class InsightsService:
         # Get the latest gestational age
         latest_screening = screenings[-1]  # Most recent
         gestational_weeks = latest_screening.gestational_age_weeks or 0
+
+        def _safe_blood_sugar(screening: Stage1Screening):
+            return getattr(screening, "blood_sugar", None) or getattr(screening, "Blood_sugar", None)
         
         # Calculate vitals averages
         vitals_data = VitalsSummary(
@@ -214,7 +217,7 @@ class InsightsService:
             avg_heart_rate=int(sum(s.heart_rate for s in screenings if s.heart_rate) / len([s for s in screenings if s.heart_rate])) if any(s.heart_rate for s in screenings) else None,
             avg_temperature=float(sum(s.temperature for s in screenings if s.temperature) / len([s for s in screenings if s.temperature])) if any(s.temperature for s in screenings) else None,
             avg_bmi=float(sum(s.bmi for s in screenings if s.bmi) / len([s for s in screenings if s.bmi])) if any(s.bmi for s in screenings) else None,
-            avg_blood_sugar=float(sum(s.blood_sugar for s in screenings if s.blood_sugar) / len([s for s in screenings if s.blood_sugar])) if any(s.blood_sugar for s in screenings) else None,
+            avg_blood_sugar=float(sum(_safe_blood_sugar(s) for s in screenings if _safe_blood_sugar(s)) / len([s for s in screenings if _safe_blood_sugar(s)])) if any(_safe_blood_sugar(s) for s in screenings) else None,
             avg_hemoglobin=float(sum(s.hemoglobin for s in screenings if s.hemoglobin) / len([s for s in screenings if s.hemoglobin])) if any(s.hemoglobin for s in screenings) else None
         )
         

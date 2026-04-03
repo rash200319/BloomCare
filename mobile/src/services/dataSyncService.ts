@@ -84,14 +84,14 @@ class DataSyncService {
       if (Array.isArray(appointments)) {
         const cachedAppointments: CachedAppointment[] = appointments.map((appt: any) => ({
           appointment_id: appt.appointment_id || appt.id,
-          patient_id: patientId,
-          title: appt.title || 'Appointment',
+          patient_id: appt.patient_id || patientId,
+          title: appt.title || appt.appointment_type || 'Appointment',
           description: appt.description,
-          scheduled_for: appt.scheduled_for,
-          appointment_type: appt.appointment_type,
-          status: appt.status || 'scheduled',
-          created_at: appt.created_at,
-          updated_at: appt.updated_at,
+          scheduled_for: appt.scheduled_for || appt.appointment_date || appt.date,
+          appointment_type: appt.appointment_type || appt.title,
+          status: appt.status || appt.appointment_status || 'scheduled',
+          created_at: appt.created_at || appt.createdAt || new Date().toISOString(),
+          updated_at: appt.updated_at || appt.updatedAt || new Date().toISOString(),
         }));
 
         await offlineDatabase.cacheAppointments(cachedAppointments);
@@ -244,6 +244,10 @@ class DataSyncService {
     for (const sync of pendingSyncs) {
       try {
         const payload = JSON.parse(sync.payload_json);
+        const patientId = String(payload?.patient_id ?? sync.patient_id ?? '').trim();
+        if (patientId.startsWith('local-patient-')) {
+          continue;
+        }
         const triageItem = this.buildTriageItem(payload);
 
         if (!triageItem) {

@@ -1,9 +1,11 @@
 from typing import Any, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import String, cast
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 import secrets
 import string
+import logging
 from backend.core.deps import get_db, get_current_active_user
 from backend.core.security import get_password_hash
 from backend.schemas.patient import (
@@ -21,6 +23,7 @@ from backend.models.user import User
 import uuid
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _role_name(user: User) -> str:
@@ -157,13 +160,17 @@ def create_patient(
     patient_in: PatientCreate,
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    patient = db.query(DBPatient).filter(
-        DBPatient.national_id == patient_in.national_id).first()
+    normalized_nic = patient_in.national_id.strip().upper() if patient_in.national_id else None
+    patient = None
+    if normalized_nic:
+        patient = db.query(DBPatient).filter(DBPatient.national_id == normalized_nic).first()
+
     default_hashed_password = get_password_hash(_generate_internal_password())
 
-    if patient and patient_in.national_id:
+    if patient and normalized_nic:
         patient.full_name = patient_in.full_name
         patient.age = patient_in.age
+        patient.due_date = patient_in.due_date
         patient.contact_number = patient_in.contact_number
         patient.emergency_contact = patient_in.emergency_contact
         patient.blood_group = patient_in.blood_group
@@ -178,7 +185,7 @@ def create_patient(
 
     db_patient = DBPatient(
         id=str(uuid.uuid4()),
-        national_id=patient_in.national_id,
+        national_id=normalized_nic,
         full_name=patient_in.full_name,
         age=patient_in.age,
         due_date=patient_in.due_date,
@@ -190,9 +197,34 @@ def create_patient(
         assigned_worker_id=current_user.id
     )
     db.add(db_patient)
-    db.commit()
-    db.refresh(db_patient)
-    return db_patient
+    try:
+        db.commit()
+        db.refresh(db_patient)
+        return db_patient
+    except IntegrityError as exc:
+        db.rollback()
+
+        if normalized_nic:
+            existing = db.query(DBPatient).filter(DBPatient.national_id == normalized_nic).first()
+            if existing:
+                existing.full_name = patient_in.full_name
+                existing.age = patient_in.age
+                existing.due_date = patient_in.due_date
+                existing.contact_number = patient_in.contact_number
+                existing.emergency_contact = patient_in.emergency_contact
+                existing.blood_group = patient_in.blood_group
+                if not existing.assigned_worker_id:
+                    existing.assigned_worker_id = current_user.id
+                if not existing.hashed_password:
+                    existing.hashed_password = default_hashed_password
+                    existing.first_time_login = True
+                db.commit()
+                db.refresh(existing)
+                logger.info("create_patient deduplicated by national_id=%s", normalized_nic)
+                return existing
+
+        logger.exception("create_patient failed")
+        raise HTTPException(status_code=500, detail="Unable to create patient") from exc
 
 
 @router.get("/{patient_id}/history", response_model=PatientHistoryResponse)

@@ -17,6 +17,7 @@ import authService from '../services/authService';
 import { API_BASE_URL } from '../config/api';
 import offlineDatabase from '../services/offlineDatabase';
 import { getWeeklyInsight } from '../lib/weekly-insights';
+import patientOperationsService from '../services/patientOperationsService';
 
 interface PatientPortalScreenProps {
   user: User;
@@ -49,6 +50,7 @@ interface Appointment {
   scheduled_for: string;
   appointment_type?: string;
   status?: string;
+  duration_minutes?: number;
 }
 
 interface PatientProfile {
@@ -145,6 +147,43 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
     return factors;
   };
 
+  const normalizeAppointment = (appt: any): Appointment | null => {
+    if (!appt) return null;
+    const scheduledFor = appt.scheduled_for || appt.appointment_date || appt.date || appt.created_at;
+    if (!scheduledFor) return null;
+    if (typeof scheduledFor === 'string') {
+      const trimmed = scheduledFor.trim().toLowerCase();
+      if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return null;
+    }
+    const parsed = new Date(scheduledFor);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return {
+      id: String(appt.appointment_id || appt.id || `appt-${Date.now()}`),
+      title: appt.title || appt.appointment_type || 'Appointment',
+      scheduled_for: parsed.toISOString(),
+      appointment_type: appt.appointment_type,
+      status: appt.status || appt.appointment_status || 'Scheduled',
+      duration_minutes: appt.duration_minutes || appt.duration || undefined,
+    };
+  };
+
+  const getSafeDate = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+  };
+
+  const formatTimeSlot = (date: Date | null, durationMinutes?: number) => {
+    if (!date) return 'Time TBD';
+    const startLabel = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const minutes = Number.isFinite(durationMinutes) && Number(durationMinutes) > 0
+      ? Number(durationMinutes)
+      : 30;
+    const end = new Date(date.getTime() + minutes * 60 * 1000);
+    const endLabel = end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `${startLabel} - ${endLabel}`;
+  };
+
   const buildLocalScreeningExplanation = (): string => {
     const stage1 = latestScreening?.latest_stage1;
     const stage2 = latestScreening?.latest_stage2;
@@ -189,6 +228,24 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
         const token = await getStoredToken();
         if (!token) {
           console.log('No token available - using offline mode');
+          const cachedPatient = await offlineDatabase.getPatientProfile(user.id).catch(() => null);
+          if (cachedPatient) {
+            setPatientProfile((prev) => ({
+              ...prev,
+              full_name: cachedPatient.full_name || prev.full_name,
+              due_date: cachedPatient.due_date || prev.due_date,
+              blood_group: cachedPatient.blood_group || prev.blood_group,
+            }));
+          }
+          try {
+            const apptRows = await patientOperationsService.getAppointments(user.id);
+            const normalized = apptRows
+              .map(normalizeAppointment)
+              .filter((appt): appt is Appointment => Boolean(appt));
+            setAppointments(normalized);
+          } catch (err) {
+            console.log('Appointments fetch failed:', err);
+          }
           setIsLoading(false);
           return;
         }
@@ -247,13 +304,11 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
 
         // Fetch appointments
         try {
-          const apptRes = await fetch(`${API_BASE_URL}/appointments/patient/${user.id}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (apptRes.ok) {
-            const apptData = await apptRes.json();
-            setAppointments(Array.isArray(apptData) ? apptData : []);
-          }
+          const apptRows = await patientOperationsService.getAppointments(user.id);
+          const normalized = apptRows
+            .map(normalizeAppointment)
+            .filter((appt): appt is Appointment => Boolean(appt));
+          setAppointments(normalized);
         } catch (err) {
           console.log('Appointments fetch failed:', err);
         }
@@ -316,6 +371,10 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
     const daysToDelivery = patientProfile.due_date ? 
       Math.max(0, Math.ceil((new Date(patientProfile.due_date).getTime() - new Date().getTime()) / (24 * 60 * 60 * 1000))) 
       : 0;
+    const upcomingAppointments = appointments.filter((appt) => {
+      const when = new Date(appt.scheduled_for).getTime();
+      return Number.isFinite(when) && when >= Date.now();
+    });
     
     return (
       <View>
@@ -354,22 +413,26 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
         </View>
 
         {/* Upcoming Appointments */}
-        {appointments.length > 0 && (
+        {upcomingAppointments.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>
               {language === 'en' ? 'Upcoming Appointments' : language === 'si' ? 'ඉදිරි පත්‍රිකා' : 'வரவிருக்கும் சந்திப்புகள்'}
             </Text>
-            {appointments.slice(0, 2).map((appt, idx) => {
-              const apptDate = new Date(appt.scheduled_for);
+            {upcomingAppointments.slice(0, 2).map((appt, idx) => {
+              const apptDate = getSafeDate(appt.scheduled_for);
               return (
                 <View key={idx} style={styles.appointmentItem}>
                   <View style={styles.appointmentDate}>
-                    <Text style={styles.appointmentDay}>{apptDate.getDate().toString().padStart(2, '0')}</Text>
-                    <Text style={styles.appointmentMonth}>{apptDate.toLocaleString('default', { month: 'short' }).toUpperCase()}</Text>
+                    <Text style={styles.appointmentDay}>
+                      {apptDate ? apptDate.getDate().toString().padStart(2, '0') : '--'}
+                    </Text>
+                    <Text style={styles.appointmentMonth}>
+                      {apptDate ? apptDate.toLocaleString('default', { month: 'short' }).toUpperCase() : 'TBD'}
+                    </Text>
                   </View>
                   <View style={styles.appointmentDetails}>
                     <Text style={styles.appointmentType} numberOfLines={1}>{appt.title || appt.appointment_type || 'Appointment'}</Text>
-                    <Text style={styles.appointmentTime}>{apptDate.toLocaleTimeString()}</Text>
+                    <Text style={styles.appointmentTime}>{formatTimeSlot(apptDate, appt.duration_minutes)}</Text>
                   </View>
                 </View>
               );
@@ -477,19 +540,23 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
         </View>
       ) : (
         appointments.map((appt, idx) => {
-          const apptDate = new Date(appt.scheduled_for);
+          const apptDate = getSafeDate(appt.scheduled_for);
 
           return (
             <View key={idx} style={styles.card}>
               <View style={styles.appointmentHeader}>
                 <View style={styles.largeDate}>
-                  <Text style={styles.largeDay}>{apptDate.getDate().toString().padStart(2, '0')}</Text>
-                  <Text style={styles.largeMonth}>{apptDate.toLocaleString('default', { month: 'short' }).toUpperCase()}</Text>
-                  <Text style={styles.largeYear}>{apptDate.getFullYear()}</Text>
+                  <Text style={styles.largeDay}>
+                    {apptDate ? apptDate.getDate().toString().padStart(2, '0') : '--'}
+                  </Text>
+                  <Text style={styles.largeMonth}>
+                    {apptDate ? apptDate.toLocaleString('default', { month: 'short' }).toUpperCase() : 'TBD'}
+                  </Text>
+                  <Text style={styles.largeYear}>{apptDate ? apptDate.getFullYear() : '----'}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.appointmentTitle}>{appt.title || appt.appointment_type || 'Appointment'}</Text>
-                  <Text style={styles.appointmentTime}>{apptDate.toLocaleTimeString()}</Text>
+                  <Text style={styles.appointmentTime}>{formatTimeSlot(apptDate, appt.duration_minutes)}</Text>
                   <Text style={[styles.appointmentTime, { marginTop: 4 }]}>
                     {language === 'en' ? 'Status: ' : language === 'si' ? 'තත්ත්වය: ' : 'நிலை: '}
                     {appt.status || 'Scheduled'}

@@ -284,6 +284,26 @@ class PatientCacheService {
     );
     return row?.count ?? 0;
   }
+
+  async remapPatientId(localId: string, newId: string): Promise<void> {
+    const db = await this.getDb();
+    if (!localId || !newId || localId === newId) {
+      return;
+    }
+
+    await db.runAsync(
+      `UPDATE patient_mini_profiles SET patient_id = ? WHERE patient_id = ?`,
+      [newId, localId]
+    );
+    await db.runAsync(
+      `UPDATE patient_stage1_history SET patient_id = ? WHERE patient_id = ?`,
+      [newId, localId]
+    );
+    await db.runAsync(
+      `UPDATE dirty_vitals_updates SET patient_id = ? WHERE patient_id = ?`,
+      [newId, localId]
+    );
+  }
 }
 
 export default new PatientCacheService();

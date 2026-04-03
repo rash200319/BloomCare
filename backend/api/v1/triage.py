@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query, status
 from typing import List, Any
 import logging
 from sqlalchemy import String, cast
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from datetime import datetime
 import hashlib
@@ -28,6 +29,40 @@ def compute_hash(payload: dict) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
+def _is_valid_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(str(value))
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def _upsert_sync_log(
+    db: Session,
+    *,
+    existing_log: SyncQueueLog | None,
+    device_id: str | None,
+    payload_hash: str,
+    sync_status: str,
+    error_message: str | None = None,
+) -> None:
+    if existing_log:
+        existing_log.device_id = device_id
+        existing_log.sync_status = sync_status
+        existing_log.error_message = error_message
+        db.commit()
+        return
+
+    db_log = SyncQueueLog(
+        device_id=device_id,
+        payload_hash=payload_hash,
+        sync_status=sync_status,
+        error_message=error_message,
+    )
+    db.add(db_log)
+    db.commit()
+
+
 @router.post("/sync", response_model=List[TriageSyncResponse], status_code=status.HTTP_201_CREATED)
 def triage_sync(
     payload_batch: BatchedTriageSyncInput,
@@ -47,6 +82,34 @@ def triage_sync(
             logger.info("Skipping duplicated payload based on hash.")
             continue
 
+        patient_id = str(payload.patient_id).strip()
+        if not _is_valid_uuid(patient_id):
+            error_message = f"Invalid patient_id for sync: {payload.patient_id}"
+            logger.warning(error_message)
+            _upsert_sync_log(
+                db,
+                existing_log=existing_log,
+                device_id=payload.device_id,
+                payload_hash=payload_hash,
+                sync_status="FAILED",
+                error_message=error_message,
+            )
+            continue
+
+        patient = db.query(DBPatient).filter(cast(DBPatient.id, String) == patient_id).first()
+        if not patient:
+            error_message = f"Patient not found for sync patient_id: {patient_id}"
+            logger.warning(error_message)
+            _upsert_sync_log(
+                db,
+                existing_log=existing_log,
+                device_id=payload.device_id,
+                payload_hash=payload_hash,
+                sync_status="FAILED",
+                error_message=error_message,
+            )
+            continue
+
         # Parse Dates
         try:
             coll_at = datetime.fromisoformat(
@@ -60,7 +123,7 @@ def triage_sync(
         screening_id = str(uuid.uuid4())
         db_screening = Stage1Screening(
             id=screening_id,
-            patient_id=payload.patient_id,
+            patient_id=patient_id,
             worker_id=current_user.id,
             encounter_id=payload.encounter_id,
             gestational_age_weeks=payload.gestational_age_weeks,
@@ -91,7 +154,7 @@ def triage_sync(
         report_title = f"Stage 1 Screening Report - {coll_at.date().isoformat()}"
         db_report = PatientReport(
             id=str(uuid.uuid4()),
-            patient_id=payload.patient_id,
+            patient_id=patient_id,
             stage1_screening_id=screening_id,
             stage2_diagnostic_id=None,
             report_type="stage1",
@@ -117,18 +180,33 @@ def triage_sync(
         )
         db.add(db_report)
 
-        # Logging sync
-        db_log = SyncQueueLog(
-            device_id=payload.device_id,
-            payload_hash=payload_hash,
-            sync_status="SUCCESS"
-        )
-        db.add(db_log)
-        db.commit()
+        try:
+            db.commit()
+            _upsert_sync_log(
+                db,
+                existing_log=existing_log,
+                device_id=payload.device_id,
+                payload_hash=payload_hash,
+                sync_status="SUCCESS",
+                error_message=None,
+            )
+        except IntegrityError as exc:
+            db.rollback()
+            error_message = f"Failed to persist triage sync payload: {exc.orig}"
+            logger.error(error_message)
+            _upsert_sync_log(
+                db,
+                existing_log=existing_log,
+                device_id=payload.device_id,
+                payload_hash=payload_hash,
+                sync_status="FAILED",
+                error_message=error_message,
+            )
+            continue
 
         responses.append({
             "screening_id": screening_id,
-            "patient_id": payload.patient_id,
+            "patient_id": patient_id,
             "encounter_id": payload.encounter_id,
             "server_risk_tier": payload.edge_risk_classification,
             "synced_at": datetime.utcnow().isoformat(),

@@ -171,6 +171,39 @@ class OfflineDatabase {
       CREATE INDEX IF NOT EXISTS idx_pending_status
       ON pending_syncs(sync_status, created_at);
 
+      -- Offline credentials (multiple users, unique PIN per device)
+      CREATE TABLE IF NOT EXISTS offline_credentials (
+        user_id TEXT PRIMARY KEY NOT NULL,
+        identifier TEXT NOT NULL,
+        full_name TEXT NOT NULL,
+        role TEXT NOT NULL,
+        pin_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_offline_pin_hash
+      ON offline_credentials(pin_hash);
+
+      -- Appointment reference data (specializations + specialists)
+      CREATE TABLE IF NOT EXISTS appointment_specializations (
+        specialization TEXT PRIMARY KEY NOT NULL,
+        specialist_count INTEGER DEFAULT 0,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS appointment_specialists (
+        specialist_id TEXT PRIMARY KEY NOT NULL,
+        full_name TEXT NOT NULL,
+        specialization TEXT NOT NULL,
+        phone_number TEXT,
+        email TEXT,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_specialist_specialization
+      ON appointment_specialists(specialization);
+
       -- Sync log
       CREATE TABLE IF NOT EXISTS sync_log (
         sync_id TEXT PRIMARY KEY NOT NULL,
@@ -294,10 +327,180 @@ class OfflineDatabase {
     return result || null;
   }
 
+  async remapPatientId(
+    localId: string,
+    newId: string,
+    updated?: Partial<PatientMiniProfile & {
+      national_id?: string;
+      contact_number?: string;
+      emergency_contact?: string;
+      blood_group?: string;
+      due_date?: string;
+      assigned_worker_id?: string;
+      risk_level?: string;
+      last_screening_at?: string;
+    }>
+  ): Promise<void> {
+    const db = await this.getDb();
+    const now = new Date().toISOString();
+
+    if (!localId || !newId || localId === newId) {
+      return;
+    }
+
+    const existing = await this.getPatientProfile(localId);
+    const merged = {
+      patient_id: newId,
+      national_id: updated?.national_id ?? existing?.national_id ?? null,
+      full_name: updated?.patient_name ?? existing?.full_name ?? 'Unknown Patient',
+      age: updated?.age ?? existing?.age ?? null,
+      due_date: updated?.due_date ?? existing?.due_date ?? null,
+      contact_number: updated?.contact_number ?? existing?.contact_number ?? null,
+      emergency_contact: updated?.emergency_contact ?? existing?.emergency_contact ?? null,
+      blood_group: updated?.blood_group ?? existing?.blood_group ?? null,
+      assigned_worker_id: updated?.assigned_worker_id ?? existing?.assigned_worker_id ?? null,
+      risk_level: updated?.risk_level ?? existing?.risk_level ?? 'low',
+      last_screening_at: updated?.last_screening_at ?? existing?.last_screening_at ?? null,
+    };
+
+    await db.runAsync(
+      `
+        INSERT OR REPLACE INTO patient_profiles
+        (patient_id, national_id, full_name, age, due_date, contact_number,
+         emergency_contact, blood_group, assigned_worker_id, risk_level,
+         last_screening_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        merged.patient_id,
+        merged.national_id,
+        merged.full_name,
+        merged.age,
+        merged.due_date,
+        merged.contact_number,
+        merged.emergency_contact,
+        merged.blood_group,
+        merged.assigned_worker_id,
+        merged.risk_level,
+        merged.last_screening_at,
+        now,
+        now,
+      ]
+    );
+
+    await db.runAsync(
+      `UPDATE appointments SET patient_id = ? WHERE patient_id = ?`,
+      [newId, localId]
+    );
+    await db.runAsync(
+      `UPDATE screening_history SET patient_id = ? WHERE patient_id = ?`,
+      [newId, localId]
+    );
+    await db.runAsync(
+      `UPDATE pending_syncs SET patient_id = ? WHERE patient_id = ?`,
+      [newId, localId]
+    );
+
+    const pendingRows = await db.getAllAsync<{ record_id: string; payload_json: string }>(
+      `
+        SELECT record_id, payload_json
+        FROM pending_syncs
+        WHERE sync_status = 'pending'
+      `
+    );
+
+    for (const row of pendingRows) {
+      if (!row.payload_json) continue;
+      try {
+        const payload = JSON.parse(row.payload_json);
+        if (payload?.patient_id === localId) {
+          payload.patient_id = newId;
+          await db.runAsync(
+            `UPDATE pending_syncs SET payload_json = ? WHERE record_id = ?`,
+            [JSON.stringify(payload), row.record_id]
+          );
+        }
+      } catch {
+        // Ignore malformed payloads.
+      }
+    }
+
+    await db.runAsync(
+      `DELETE FROM patient_profiles WHERE patient_id = ?`,
+      [localId]
+    );
+  }
+
   async getAllPatientProfiles(): Promise<any[]> {
     const db = await this.getDb();
     return await db.getAllAsync(
       'SELECT * FROM patient_profiles ORDER BY full_name ASC'
+    );
+  }
+
+  // ============= APPOINTMENT REFERENCE DATA =============
+
+  async cacheAppointmentSpecializations(
+    specializations: { specialization: string; specialist_count?: number }[]
+  ): Promise<void> {
+    const db = await this.getDb();
+    const now = new Date().toISOString();
+
+    for (const item of specializations) {
+      if (!item?.specialization) continue;
+      await db.runAsync(
+        `
+          INSERT OR REPLACE INTO appointment_specializations
+          (specialization, specialist_count, updated_at)
+          VALUES (?, ?, ?)
+        `,
+        [item.specialization, item.specialist_count ?? 0, now]
+      );
+    }
+  }
+
+  async getAppointmentSpecializations(): Promise<{ specialization: string; specialist_count: number }[]> {
+    const db = await this.getDb();
+    return await db.getAllAsync(
+      `
+        SELECT specialization, specialist_count
+        FROM appointment_specializations
+        ORDER BY specialization ASC
+      `
+    );
+  }
+
+  async cacheAppointmentSpecialists(
+    specialists: { id: string; full_name: string; specialization: string; phone_number?: string; email?: string }[]
+  ): Promise<void> {
+    const db = await this.getDb();
+    const now = new Date().toISOString();
+
+    for (const item of specialists) {
+      if (!item?.id || !item?.full_name || !item?.specialization) continue;
+      await db.runAsync(
+        `
+          INSERT OR REPLACE INTO appointment_specialists
+          (specialist_id, full_name, specialization, phone_number, email, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `,
+        [item.id, item.full_name, item.specialization, item.phone_number ?? null, item.email ?? null, now]
+      );
+    }
+  }
+
+  async getAppointmentSpecialistsBySpecialization(
+    specialization: string
+  ): Promise<{ id: string; full_name: string; specialization: string; phone_number?: string; email?: string }[]> {
+    const db = await this.getDb();
+    return await db.getAllAsync(
+      `
+        SELECT specialist_id as id, full_name, specialization, phone_number, email
+        FROM appointment_specialists
+        WHERE specialization = ?
+        ORDER BY full_name ASC
+      `,
+      [specialization]
     );
   }
 
@@ -517,6 +720,81 @@ class OfflineDatabase {
       `,
       [patientId, limit]
     );
+  }
+
+  // ============= OFFLINE CREDENTIALS =============
+
+  async upsertOfflineCredential(params: {
+    user_id: string;
+    identifier: string;
+    full_name: string;
+    role: string;
+    pin_hash: string;
+  }): Promise<void> {
+    const db = await this.getDb();
+    const now = new Date().toISOString();
+
+    await db.runAsync(
+      `
+        INSERT OR REPLACE INTO offline_credentials
+        (user_id, identifier, full_name, role, pin_hash, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        params.user_id,
+        params.identifier,
+        params.full_name,
+        params.role,
+        params.pin_hash,
+        now,
+        now,
+      ]
+    );
+  }
+
+  async getOfflineCredentialByPinHash(pinHash: string): Promise<{
+    user_id: string;
+    identifier: string;
+    full_name: string;
+    role: string;
+    pin_hash: string;
+  } | null> {
+    const db = await this.getDb();
+    const result = await db.getFirstAsync<any>(
+      `
+        SELECT user_id, identifier, full_name, role, pin_hash
+        FROM offline_credentials
+        WHERE pin_hash = ?
+        LIMIT 1
+      `,
+      [pinHash]
+    );
+    return result || null;
+  }
+
+  async isPinHashInUse(pinHash: string, excludeUserId?: string): Promise<boolean> {
+    const db = await this.getDb();
+    if (excludeUserId) {
+      const row = await db.getFirstAsync<any>(
+        `
+          SELECT user_id FROM offline_credentials
+          WHERE pin_hash = ? AND user_id <> ?
+          LIMIT 1
+        `,
+        [pinHash, excludeUserId]
+      );
+      return !!row;
+    }
+
+    const result = await db.getFirstAsync<any>(
+      `
+        SELECT user_id FROM offline_credentials
+        WHERE pin_hash = ?
+        LIMIT 1
+      `,
+      [pinHash]
+    );
+    return !!result;
   }
 
   async getLatestScreening(patientId: string): Promise<CachedScreening | null> {

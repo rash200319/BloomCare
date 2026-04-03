@@ -3,6 +3,7 @@ import dataSyncService from './dataSyncService';
 import authService from './authService';
 import frontlineStaffOperationsService from './frontlineStaffOperationsService';
 import patientOperationsService from './patientOperationsService';
+import { syncPendingFrontlineActions } from './syncService';
 
 /**
  * BackgroundSyncService
@@ -65,6 +66,8 @@ class BackgroundSyncService {
         }
       } else if (user.role === 'frontline_staff') {
         // Sync frontline staff data
+        const registryResult = await syncPendingFrontlineActions();
+        console.log(`Frontline registry sync: ${registryResult.synced} synced, ${registryResult.pending} pending`);
         const result = await frontlineStaffOperationsService.syncPendingOperations();
         console.log(`Frontline staff sync: ${result.synced} synced, ${result.failed} failed`);
       }

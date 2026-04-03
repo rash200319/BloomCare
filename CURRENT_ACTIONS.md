@@ -1,263 +1,97 @@
-# BloomCare – Current Actions & Features by Role
+# BloomCare - Current Actions
 
 **Last Updated:** April 3, 2026  
-**Current Version:** 2.0.0  
-**Status:** Development (Alpha)
+**Version:** 2.0.0  
+**Status:** Active development
 
----
+## Current Website Capabilities
 
-## Table of Contents
+### Authentication And Entry
+- Role-based login for frontline staff, doctors, admins, and patients.
+- National ID login for patients and email login for staff.
+- First-login password setup for new users.
+- Session persistence through localStorage.
+- Multilingual sign-in UI in English, Sinhala, and Tamil.
 
-1. [System Overview](#system-overview)
-2. [Admin Role Features](#admin-role-features)
-3. [Doctor / Clinical Specialist Features](#doctor--clinical-specialist-features)
-4. [Frontline Staff Features](#frontline-staff-features)
-5. [Patient Features](#patient-features)
-6. [Public / Unauthenticated Features](#public--unauthenticated-features)
-7. [AI & ML Pipeline](#ai--ml-pipeline)
-8. [Frontend Features](#frontend-features)
-9. [Authentication & Security](#authentication--security)
-10. [API Health & Monitoring](#api-health--monitoring)
+### Frontline Staff
+- Search and register patients.
+- Open patient profiles and history.
+- Record Stage 1 screening data and vitals.
+- Assess risk offline or online.
+- Sync queued screenings when back online.
+- Generate referral summaries.
+- Book appointments for patients.
+- View appointment history and status.
+- Receive notifications when doctors confirm, cancel, or complete appointments they created.
+- Mark notifications as read.
+- Update profile settings.
 
----
+### Doctor / Clinical Specialist
+- View escalated patients and histories.
+- Review Stage 1 and Stage 2 results.
+- Inspect risk trends and AI explainability.
+- Change appointment status to confirmed, completed, or cancelled.
+- Add cancellation reasons and completion audit details.
+- View today’s appointments and queues.
+- Search and filter appointments.
+- Book appointments with specialist, date, and time slot selection.
+- View and create prescriptions.
+- Generate clinical and differential diagnosis reports.
+- Read appointment notifications.
+- Update profile settings.
 
-## System Overview
+### Patient Portal
+- View pregnancy progress, trimester, and due date countdown.
+- Check screening results and vitals trends.
+- Review screening history.
+- Read AI explanations of screening outcomes.
+- View prescriptions and appointment history.
+- Receive confirmation, cancellation, and completion notifications.
+- Read weekly pregnancy guidance.
+- Update profile information and password.
+- Use the portal in three languages.
+- Continue with cached offline data when available.
 
-BloomCare is a **two-stage maternal risk intelligence system**:
+### Admin Dashboard
+- View analytics KPIs and screening trends.
+- Monitor high-risk counts and workload distribution.
+- Export monthly screening reports.
+- Manage staff accounts.
+- Create, filter, and delete staff.
+- Update admin profile settings.
 
-| Component | Purpose | Technology |
-|-----------|---------|-----------|
-| **Stage 1 Triage** | On-device risk screening from vital signs | Mobile app (React Native) |
-| **Stage 2 Diagnosis** | Server-side ML pipeline + biomarker analysis | FastAPI backend + scikit-learn |
-| **Frontend** | Web UI for all roles + admin/clinical dashboards | Next.js 14 (React) |
-| **Chatbot** | Trilingual (English, Sinhala, Tamil) navigation assistant | Key-answer based (no external API) |
+### Shared Features
+- Appointment scheduling with availability slots.
+- Notification center with read/unread state.
+- Profile settings dialogs across portals.
+- Role-based access control.
+- Offline-first screening support.
+- Service worker and web app manifest support.
+- Trilingual interface support.
+- AI chatbot for navigation and guidance.
 
----
+## Recent Completed Work
+- Added full appointment status notifications for staff who created the appointment.
+- Added staff notification retrieval based on appointment ownership.
+- Added a dedicated staff notifications route at /api/v1/staff/notifications.
+- Removed forgot-password UI from all login screens.
+- Expanded appointment availability so booking shows daily slots.
+- Updated the root README with a full feature list.
+- Merged the latest remote branch commits and pushed successfully.
 
-## Admin Role Features
+## Project Structure
 
-### Access Level
-- **User Role:** `ADMIN`
-- **Permissions:** System-wide access; override all patient/staff/appointment operations
+- `frontend/`: Next.js web application.
+- `backend/`: FastAPI and SQLAlchemy API.
+- `mobile/`: React Native mobile app.
+- `models/`: ML models for maternal risk prediction.
+- `Data/`: Training and reference datasets.
 
-### 1. Dashboard Access
-**Endpoint:** `GET /api/v1/dashboard/admin/dashboard`  
-**Summary:** Admin Dashboard  
-**Returns:**
-```json
-{
-  "message": "Welcome to Admin Dashboard",
-  "dashboard": {
-    "title": "Admin Dashboard",
-    "features": [
-      "Staff Management",
-      "Patient Management",
-      "System Monitoring",
-      "Appointment Management",
-      "Reports & Analytics"
-    ]
-  }
-}
-```
+## Notes
 
-### 2. Staff Management
-
-#### Create Staff Member
-**Endpoint:** `POST /api/v1/staff-management/create-staff`  
-**Body:**
-```json
-{
-  "full_name": "Dr. Silva",
-  "email": "dr.silva@bloomcare.lk",
-  "phone_number": "+94712345678",
-  "role": "CLINICAL_SPECIALIST",
-  "specialization": "Maternal-Fetal Medicine"
-}
-```
-**Returns:** Temporary password for first login
-**Status:** HTTP 201
-
-#### List Staff Members
-**Endpoint:** `GET /api/v1/staff-management/staff`  
-**Query Parameters:**
-- `full_name` (optional) – Partial name match
-- `id` (optional) – User primary key
-- `email` (optional) – Exact email match
-- `role` (optional) – Filter by `FRONTLINE_STAFF` or `CLINICAL_SPECIALIST`
-
-**Returns:** Array of staff member profiles
-
-#### Get Staff by Name
-**Endpoint:** `GET /api/v1/staff-management/by-name/{name}`  
-**Returns:** List of matching staff members
-
-### 3. Patient Management
-
-#### List All Patients
-**Endpoint:** `GET /api/v1/patients`  
-**Query Parameters:**
-- `skip` (default: 0)
-- `limit` (default: 100)
-
-**Returns:** Array of all patient records
-
-#### Create/Register Patient
-**Endpoint:** `POST /api/v1/patients`  
-**Body:**
-```json
-{
-  "national_id": "123456789V",
-  "full_name": "Nimalka Fernando",
-  "age": 28,
-  "due_date": "2026-05-15",
-  "contact_number": "+94712345678",
-  "emergency_contact": "+94787654321",
-  "blood_group": "O+"
-}
-```
-**Returns:** Patient object with auto-generated password  
-**Status:** HTTP 201
-
-#### View Patient History
-**Endpoint:** `GET /api/v1/patients/{patient_id}/history`  
-**Returns:**
-- Full Stage-2 diagnostic history
-- Linked Stage-1 vital signs context
-- Risk timeline
-- Condition probabilities
-
-### 4. Appointment Management
-
-#### List All Appointments
-**Endpoint:** `GET /api/v1/appointments/specialist/{specialist_name}`  
-**Query Parameters:**
-- `date` (optional) – Filter by date (YYYY-MM-DD)
-
-**Returns:** Array of appointments for specialist
-
-#### Approve/Update Appointments
-**Endpoint:** `PATCH /api/v1/appointments/{appointment_id}`  
-**Body:**
-```json
-{
-  "status": "CONFIRMED",
-  "appointment_date": "2026-04-10T14:30:00",
-  "notes": "Patient confirmed arrival"
-}
-```
-**Returns:** Updated appointment object
-
-#### Cancel Appointment
-**Endpoint:** `DELETE /api/v1/appointments/{appointment_id}`  
-**Returns:** Cancelled appointment object  
-**Status:** HTTP 200
-
-### 5. Reports & Analytics
-
-#### Generate Admin Analytics Report
-**Endpoint:** `GET /api/v1/admin/analytics`  
-**Query Parameters:**
-- `date_from` (optional) – Start date
-- `date_to` (optional) – End date
-- `by_specialist` (optional) – Group by specialist
-
-**Returns:**
-- Total consultations
-- High-risk case count
-- Condition breakdowns
-- Specialist workload
-- Trending conditions
-
-#### Generate Stage-1 Report
-**Endpoint:** `POST /api/v1/reports/stage1`  
-**Body:**
-```json
-{
-  "stage1_screening_id": "screening-uuid"
-}
-```
-**Returns:** PDF / JSON report with contributing factors and recommendations
-
-### 6. System Health & Monitoring
-
-#### Health Check
-**Endpoint:** `GET /api/v1/health`  
-**Returns:** Detailed component health status
-
----
-
-## Doctor / Clinical Specialist Features
-
-### Access Level
-- **User Role:** `CLINICAL_SPECIALIST` or `DOCTOR`
-- **Permissions:** Access assigned patient records; perform Stage-2 diagnosis; schedule/manage appointments; view specialist team appointments
-
-### 1. Dashboard Access
-**Endpoint:** `GET /api/v1/dashboard/doctor/dashboard`  
-**Summary:** Clinical Dashboard  
-**Returns:**
-```json
-{
-  "message": "Welcome to Doctor Dashboard",
-  "dashboard": {
-    "title": "Clinical Dashboard",
-    "features": [
-      "Today's Appointments",
-      "Patient Queue",
-      "Patient History",
-      "Clinical Notes",
-      "Appointment Scheduling"
-    ]
-  }
-}
-```
-
-### 2. Patient Management
-
-#### View Assigned Patients
-**Endpoint:** `GET /api/v1/patients`  
-**Returns:** Only patients assigned to this doctor
-
-#### View Patient History
-**Endpoint:** `GET /api/v1/patients/{patient_id}/history`  
-**Returns:**
-- Full diagnostic history
-- Stage-1 vital context
-- Condition risk scores
-- Timeline of interventions
-
-### 3. Stage-2 ML Diagnosis
-
-#### Run Full Diagnostic Pipeline
-**Endpoint:** `POST /api/v1/diagnose`  
-**Body:**
-```json
-{
-  "patient_id": "pat-uuid",
-  "gestational_age_weeks": 28,
-  "primary_disease_to_check": "preeclampsia",
-  "stage1_screening_id": "screening-uuid",
-  "sflt1_plgf_ratio": 52.3,
-  "papp_a": 0.31,
-  "metabolomics": {
-    "glucose_fasting": 6.8,
-    "hba1c": 6.2,
-    "triglycerides": 3.1,
-    "hdl_cholesterol": 1.1,
-    "creatinine": 85.0,
-    "uric_acid": 380.0
-  },
-  "doppler": {
-    "uterine_artery_pi": 1.72,
-    "umbilical_artery_ri": 0.79,
-    "middle_cerebral_artery_pi": 1.45,
-    "cerebroplacental_ratio": 0.84,
-    "end_diastolic_flow": "present"
-  },
-  "cervical_length_mm": 22.0
-}
-```
-**Returns:**
+- The website currently supports staff, doctor, admin, and patient workflows end to end.
+- The booking and notification paths are wired to the current backend APIs.
+- Stage 1 offline workflows and multilingual UI remain core product features.
 ```json
 {
   "status": "success",

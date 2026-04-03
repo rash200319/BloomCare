@@ -234,22 +234,33 @@ class AuthService {
    */
   async loginWithPin(pin: string): Promise<{ user: User; token: string }> {
     try {
-      const isPinValid = await secureStore.verifyPin(pin);
-      if (!isPinValid) throw new Error('Invalid PIN');
+      if (!pin || pin.length < 4 || pin.length > 6) {
+        throw new Error('PIN must be 4-6 digits');
+      }
 
-      const session = await secureStore.getSession();
-      if (!session) throw new Error('No session. Please login online first.');
+      const pinHash = await secureStore.computePinHash(pin);
+      const credential = await offlineDatabase.getOfflineCredentialByPinHash(pinHash);
+      if (!credential) throw new Error('Invalid PIN');
 
-      this.token = session.token;
+      this.token = '';
       this.user = {
-        id: session.userId,
-        email: session.email,
-        full_name: session.fullName,
-        role: roleFromApi(session.role),
+        id: credential.user_id,
+        email: credential.identifier,
+        full_name: credential.full_name,
+        role: roleFromApi(credential.role),
         is_active: true,
       };
 
       this.isOffline = true;
+
+      await secureStore.saveSession(
+        this.user.id,
+        this.user.email,
+        this.user.full_name,
+        this.user.role,
+        '',
+        pin
+      );
 
       return { user: this.user, token: this.token };
     } catch (error) {
@@ -269,6 +280,12 @@ class AuthService {
         throw new Error('PIN must be 4-6 digits');
       }
 
+      const pinHash = await secureStore.computePinHash(pin);
+      const pinInUse = await offlineDatabase.isPinHashInUse(pinHash, this.user.id);
+      if (pinInUse) {
+        throw new Error('This PIN is already used on this device. Choose a different PIN.');
+      }
+
       await secureStore.saveSession(
         session.userId,
         session.email,
@@ -277,6 +294,14 @@ class AuthService {
         session.token,
         pin
       );
+
+      await offlineDatabase.upsertOfflineCredential({
+        user_id: this.user.id,
+        identifier: session.email,
+        full_name: session.fullName,
+        role: session.role,
+        pin_hash: pinHash,
+      });
     } catch (error) {
       throw error;
     }
@@ -294,6 +319,12 @@ class AuthService {
         throw new Error('PIN must be 4-6 digits');
       }
 
+      const pinHash = await secureStore.computePinHash(newPin);
+      const pinInUse = await offlineDatabase.isPinHashInUse(pinHash, this.user.id);
+      if (pinInUse) {
+        throw new Error('This PIN is already used on this device. Choose a different PIN.');
+      }
+
       await secureStore.saveSession(
         session.userId,
         session.email,
@@ -302,6 +333,14 @@ class AuthService {
         session.token,
         newPin
       );
+
+      await offlineDatabase.upsertOfflineCredential({
+        user_id: this.user.id,
+        identifier: session.email,
+        full_name: session.fullName,
+        role: session.role,
+        pin_hash: pinHash,
+      });
     } catch (error) {
       throw error;
     }

@@ -35,6 +35,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
   const [pinConfirm, setPinConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [allowPinSkip, setAllowPinSkip] = useState(false);
 
   const t = text[language];
 
@@ -84,7 +85,10 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
           return;
         }
 
-        onLoginSuccess(user.role);
+        setPin('');
+        setPinConfirm('');
+        setAllowPinSkip(true);
+        setStep('pin-setup');
       } catch (error) {
         Alert.alert('Login Failed', error instanceof Error ? error.message : 'Unknown error');
       } finally {
@@ -113,7 +117,10 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
         return;
       }
 
-      onLoginSuccess(user.role);
+      setPin('');
+      setPinConfirm('');
+      setAllowPinSkip(true);
+      setStep('pin-setup');
     } catch (error) {
       Alert.alert('Login Failed', error instanceof Error ? error.message : 'Unknown error');
     } finally {
@@ -155,11 +162,18 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
     setIsLoading(true);
     try {
       if (selectedRole === 'patient') {
-        await authService.setupPatientFirstLoginPassword(nationalId.trim().toUpperCase(), newPassword, confirmPassword);
+        const nic = nationalId.trim().toUpperCase();
+        await authService.setupPatientFirstLoginPassword(nic, newPassword, confirmPassword);
+        await authService.loginPatient(nic, newPassword);
       } else {
-        await authService.setupStaffFirstLoginPassword(email.trim().toLowerCase(), newPassword, confirmPassword);
+        const userEmail = email.trim().toLowerCase();
+        await authService.setupStaffFirstLoginPassword(userEmail, newPassword, confirmPassword);
+        await authService.loginStaff(userEmail, newPassword);
       }
 
+      setPin('');
+      setPinConfirm('');
+      setAllowPinSkip(false);
       setStep('pin-setup');
     } catch (error) {
       Alert.alert('Password Setup Failed', error instanceof Error ? error.message : 'Unknown error');
@@ -409,6 +423,20 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
             <Pressable style={[styles.submitButton, isLoading && styles.submitButtonDisabled]} onPress={handlePinSetup} disabled={isLoading}>
               {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>Activate Offline Access</Text>}
             </Pressable>
+            {allowPinSkip && (
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={() => {
+                  const user = authService.getUser();
+                  if (user) {
+                    onLoginSuccess(user.role);
+                  }
+                }}
+                disabled={isLoading}
+              >
+                <Text style={styles.secondaryButtonText}>Skip for Now</Text>
+              </Pressable>
+            )}
           </View>
         )}
 

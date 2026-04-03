@@ -10,6 +10,26 @@ import { readPendingQueue, writePendingQueue } from './offlineQueue';
 import { API_BASE_URL, STAGE1_PREDICT_URL } from '../config/api';
 
 const DEFAULT_TIMEOUT_MS = 8000;
+const PATIENT_CREATE_URL = `${API_BASE_URL}/patients/`;
+const isLocalPatientId = (value: unknown): boolean =>
+  String(value ?? '').startsWith('local-patient-');
+
+const buildFallbackSlots = (date: string): { label: string; startDateTime: string }[] => {
+  if (!date) return [];
+  const slots: { label: string; startDateTime: string }[] = [];
+  for (let hour = 8; hour < 17; hour += 1) {
+    for (const minute of [0, 30]) {
+      const hourLabel = String(hour).padStart(2, '0');
+      const minuteLabel = String(minute).padStart(2, '0');
+      const timeLabel = `${hourLabel}:${minuteLabel}`;
+      slots.push({
+        label: timeLabel,
+        startDateTime: `${date}T${timeLabel}:00`,
+      });
+    }
+  }
+  return slots;
+};
 
 interface MorningSyncResult {
   assignedCount: number;
@@ -34,6 +54,10 @@ export interface FrontlinePatientRegistration {
 
 export interface FrontlineAppointmentDraft {
   patient_id: string;
+  patient_nic?: string;
+  patient_full_name?: string;
+  specialist_id?: string;
+  specialist_name?: string;
   appointment_date: string;
   appointment_type?: string;
   duration_minutes?: number;
@@ -59,6 +83,39 @@ const normalizeMiniProfile = (raw: any): PatientMiniProfile => ({
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
+
+const sanitizeRegistrationPayload = (payload: Record<string, any>): Record<string, any> => {
+  const { local_id, ...rest } = payload ?? {};
+  const cleaned: Record<string, any> = {};
+  for (const [key, value] of Object.entries(rest)) {
+    if (value === undefined || value === null || value === '') continue;
+    cleaned[key] = value;
+  }
+  return cleaned;
+};
+
+const fetchPatientByNationalId = async (
+  nationalId: string,
+  token: string
+): Promise<any | null> => {
+  const normalized = nationalId.trim();
+  if (!normalized) return null;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/patients?skip=0&limit=500`, {
+      headers: authHeaders(token),
+    });
+    if (!response.ok) return null;
+    const rows = await response.json();
+    const list = Array.isArray(rows) ? rows : [];
+    const match = list.find((item: any) =>
+      String(item?.national_id ?? '').trim() === normalized
+    );
+    return match ?? null;
+  } catch {
+    return null;
+  }
+};
 
 export const buildPendingRecord = (vitals: Stage1VitalsInput): PendingScreening => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -153,7 +210,8 @@ export const morningSyncAssignedPatients = async (
     .map(normalizeMiniProfile)
     .filter((p: PatientMiniProfile) => p.patient_id.length > 0);
 
-  await patientCacheService.cacheMorningProfiles(miniProfiles, today);
+  const assignedDate = new Date().toISOString().slice(0, 10);
+  await patientCacheService.cacheMorningProfiles(miniProfiles, assignedDate);
 
   let totalHistory = 0;
 
@@ -212,13 +270,22 @@ export const saveDirtyOfflineVitalsUpdate = async (payload: {
 };
 
 /**
- * Search local cache only. Used in field/offline mode.
+ * Search local cache only by NIC. Used in field/offline mode.
  */
 export const searchPatientInLocalCache = async (
   query: string
 ): Promise<PatientMiniProfile[]> => {
-  await patientCacheService.initialize();
-  return patientCacheService.searchPatientByName(query);
+  const normalizedNic = query.trim().toUpperCase();
+  if (!normalizedNic) {
+    return [];
+  }
+
+  await offlineDatabase.initialize();
+  const patients = await offlineDatabase.getAllPatientProfiles();
+
+  return patients
+    .filter((patient: any) => String(patient.national_id ?? '').trim().toUpperCase() === normalizedNic)
+    .map((patient: any) => normalizeMiniProfile(patient));
 };
 
 /**
@@ -251,6 +318,9 @@ export const syncDirtyVitalsUpdates = async (): Promise<DirtySyncResult> => {
   let synced = 0;
 
   for (const update of dirty) {
+    if (isLocalPatientId(update.patient_id)) {
+      continue;
+    }
     try {
       const triagePayload = {
         patient_id: update.patient_id,
@@ -374,7 +444,7 @@ export const registerPatientForFrontline = async (
     const token = await authService.getStoredToken();
     if (token) {
       try {
-        const response = await fetch(`${API_BASE_URL}/patient-management/create-patient`, {
+        const response = await fetch(PATIENT_CREATE_URL, {
           method: 'POST',
           headers: authHeaders(token),
           body: JSON.stringify(normalizedPayload),
@@ -390,6 +460,19 @@ export const registerPatientForFrontline = async (
             contact_number: created.contact_number,
             emergency_contact: created.emergency_contact,
             blood_group: created.blood_group,
+          });
+          return mapped;
+        }
+        const existing = await fetchPatientByNationalId(normalizedPayload.national_id, token);
+        if (existing) {
+          const mapped = normalizeMiniProfile(existing);
+          await offlineDatabase.cachePatientProfile({
+            ...mapped,
+            national_id: existing.national_id,
+            due_date: existing.due_date,
+            contact_number: existing.contact_number,
+            emergency_contact: existing.emergency_contact,
+            blood_group: existing.blood_group,
           });
           return mapped;
         }
@@ -427,13 +510,150 @@ export const registerPatientForFrontline = async (
   return localProfile;
 };
 
+export const loadAppointmentSpecializations = async (
+  online: boolean
+): Promise<{ specialization: string; specialist_count: number }[]> => {
+  await offlineDatabase.initialize();
+  if (!online) {
+    return await offlineDatabase.getAppointmentSpecializations();
+  }
+
+  const token = await authService.getStoredToken();
+  if (!token) {
+    return await offlineDatabase.getAppointmentSpecializations();
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/appointments/specializations`, {
+      headers: authHeaders(token),
+    });
+    if (!response.ok) {
+      return await offlineDatabase.getAppointmentSpecializations();
+    }
+    const data = await response.json();
+    const list = Array.isArray(data) ? data : [];
+    const obstetrics = Array.from(
+      list.reduce((acc: Map<string, { specialization: string; specialist_count: number }>, item: any) => {
+        const specialization = String(item?.specialization || '').trim();
+        if (!specialization || !/obstetr/i.test(specialization) || acc.has(specialization)) {
+          return acc;
+        }
+        acc.set(specialization, {
+          specialization,
+          specialist_count: Number(item?.specialist_count || 0),
+        });
+        return acc;
+      }, new Map()).values()
+    );
+    await offlineDatabase.cacheAppointmentSpecializations(obstetrics);
+    return obstetrics;
+  } catch {
+    return await offlineDatabase.getAppointmentSpecializations();
+  }
+};
+
+export const loadAppointmentSpecialists = async (
+  specialization: string,
+  online: boolean
+): Promise<{ id: string; full_name: string; specialization: string; phone_number?: string; email?: string }[]> => {
+  await offlineDatabase.initialize();
+  if (!specialization) return [];
+
+  if (!online) {
+    return await offlineDatabase.getAppointmentSpecialistsBySpecialization(specialization);
+  }
+
+  const token = await authService.getStoredToken();
+  if (!token) {
+    return await offlineDatabase.getAppointmentSpecialistsBySpecialization(specialization);
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/appointments/specialists/${encodeURIComponent(specialization)}`, {
+      headers: authHeaders(token),
+    });
+    if (!response.ok) {
+      return await offlineDatabase.getAppointmentSpecialistsBySpecialization(specialization);
+    }
+    const data = await response.json();
+    const list = Array.isArray(data) ? data : [];
+    const mapped = list
+      .map((item: any) => ({
+        id: String(item?.id ?? item?.user_id ?? ''),
+        full_name: String(item?.full_name ?? ''),
+        specialization: String(item?.specialization ?? specialization),
+        phone_number: item?.phone_number ? String(item.phone_number) : undefined,
+        email: item?.email ? String(item.email) : undefined,
+      }))
+      .filter((item) => item.id && item.full_name);
+    await offlineDatabase.cacheAppointmentSpecialists(mapped);
+    return mapped;
+  } catch {
+    return await offlineDatabase.getAppointmentSpecialistsBySpecialization(specialization);
+  }
+};
+
+export const loadSpecialistAvailability = async (
+  specialistName: string,
+  selectedDate: string,
+  online: boolean
+): Promise<{ label: string; startDateTime: string }[]> => {
+  if (!specialistName || !selectedDate) return [];
+  if (!online) {
+    return buildFallbackSlots(selectedDate);
+  }
+
+  const token = await authService.getStoredToken();
+  if (!token) {
+    return buildFallbackSlots(selectedDate);
+  }
+
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/appointments/availability/${encodeURIComponent(specialistName)}?days_ahead=14`,
+      { headers: authHeaders(token) }
+    );
+    if (!response.ok) {
+      return buildFallbackSlots(selectedDate);
+    }
+    const data = await response.json();
+    const slots = Array.isArray(data)
+      ? data.flatMap((daySlot: any) =>
+          (daySlot.available_slots || []).map((slot: any) => {
+            const slotDate = String(daySlot?.date || '').trim();
+            const rawStart = typeof slot === 'string' ? slot : slot.start_time || slot.time || '';
+            let timeStr = String(rawStart || '').trim();
+            if (timeStr.includes('T')) {
+              const parts = timeStr.split('T');
+              const timePortion = parts[1] || '';
+              timeStr = timePortion.split('.')[0].replace('Z', '').trim();
+            }
+            const normalizedStart = String(rawStart || '').includes('T')
+              ? String(rawStart)
+              : `${slotDate}T${timeStr}`;
+            return {
+              label: timeStr,
+              startDateTime: normalizedStart,
+            };
+          })
+        )
+      : [];
+    const filtered = slots.filter((slot: any) => String(slot.startDateTime).startsWith(`${selectedDate}T`));
+    return filtered.length > 0 ? filtered : buildFallbackSlots(selectedDate);
+  } catch {
+    return buildFallbackSlots(selectedDate);
+  }
+};
+
 export const createAppointmentForFrontline = async (
   payload: FrontlineAppointmentDraft,
   online: boolean
 ): Promise<void> => {
   await offlineDatabase.initialize();
 
-  if (online) {
+  const isLocal = isLocalPatientId(payload.patient_id);
+
+  if (online && !isLocal) {
     const token = await authService.getStoredToken();
     if (token) {
       try {
@@ -441,11 +661,54 @@ export const createAppointmentForFrontline = async (
           method: 'POST',
           headers: authHeaders(token),
           body: JSON.stringify({
-            ...payload,
+            patient_id: payload.patient_id,
+            specialist_id: payload.specialist_id,
+            specialist_name: payload.specialist_name,
+            appointment_date: payload.appointment_date,
+            appointment_type: payload.appointment_type,
+            notes: payload.notes ?? null,
             duration_minutes: payload.duration_minutes ?? 30,
           }),
         });
 
+        if (response.ok) {
+          const created = await response.json();
+          await offlineDatabase.cacheAppointment({
+            appointment_id: String(created.id ?? `appt-${Date.now()}`),
+            patient_id: String(created.patient_id ?? payload.patient_id),
+            title: created.appointment_type ?? payload.appointment_type ?? 'Appointment',
+            description: created.notes ?? payload.notes ?? '',
+            scheduled_for: created.appointment_date ?? payload.appointment_date,
+            appointment_type: created.appointment_type ?? payload.appointment_type ?? 'PRENATAL_CHECKUP',
+            status: created.status ?? 'PENDING',
+            created_at: created.created_at ?? new Date().toISOString(),
+            updated_at: created.updated_at ?? new Date().toISOString(),
+          });
+          return;
+        }
+      } catch {
+        // Fallback to local pending queue below.
+      }
+    }
+  }
+
+  if (online && isLocal && payload.patient_nic && payload.patient_full_name) {
+    const token = await authService.getStoredToken();
+    if (token) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/appointments/by-nic`, {
+          method: 'POST',
+          headers: authHeaders(token),
+          body: JSON.stringify({
+            patient_nic: payload.patient_nic,
+            patient_full_name: payload.patient_full_name,
+            specialist_name: payload.specialist_name,
+            appointment_date: payload.appointment_date,
+            appointment_type: payload.appointment_type ?? 'PRENATAL_CHECKUP',
+            duration_minutes: payload.duration_minutes ?? 30,
+            notes: payload.notes ?? null,
+          }),
+        });
         if (response.ok) {
           const created = await response.json();
           await offlineDatabase.cacheAppointment({
@@ -510,19 +773,70 @@ export const syncPendingFrontlineActions = async (): Promise<{ pending: number; 
       const payload = JSON.parse(item.payload_json || '{}');
 
       if (item.entity_type === 'patient_registration' && item.operation === 'create') {
-        const response = await fetch(`${API_BASE_URL}/patient-management/create-patient`, {
+        const localId = payload?.local_id ? String(payload.local_id) : '';
+        const cleanedPayload = sanitizeRegistrationPayload(payload);
+        const response = await fetch(PATIENT_CREATE_URL, {
           method: 'POST',
           headers: authHeaders(token),
-          body: JSON.stringify(payload),
+          body: JSON.stringify(cleanedPayload),
         });
-        if (!response.ok) {
-          continue;
+        let created: any | null = null;
+        if (response.ok) {
+          created = await response.json();
+        } else {
+          created = await fetchPatientByNationalId(String(payload?.national_id ?? ''), token);
+          if (!created) {
+            continue;
+          }
+        }
+        const mapped = normalizeMiniProfile(created);
+        await offlineDatabase.cachePatientProfile({
+          ...mapped,
+          national_id: created.national_id,
+          due_date: created.due_date,
+          contact_number: created.contact_number,
+          emergency_contact: created.emergency_contact,
+          blood_group: created.blood_group,
+        });
+        if (localId && mapped.patient_id && localId !== mapped.patient_id) {
+          await offlineDatabase.remapPatientId(localId, mapped.patient_id, {
+            patient_name: mapped.patient_name,
+            national_id: created.national_id,
+            age: mapped.age,
+            due_date: created.due_date,
+            contact_number: created.contact_number,
+            emergency_contact: created.emergency_contact,
+            blood_group: created.blood_group,
+          });
+          await patientCacheService.remapPatientId(localId, mapped.patient_id);
         }
       } else if (item.entity_type === 'appointment' && item.operation === 'create') {
-        const response = await fetch(`${API_BASE_URL}/appointments/`, {
+        const patientId = String(payload?.patient_id ?? '');
+        const byNic = patientId.startsWith('local-patient-') && payload?.patient_nic && payload?.patient_full_name;
+        const endpoint = byNic ? `${API_BASE_URL}/appointments/by-nic` : `${API_BASE_URL}/appointments/`;
+        const body = byNic
+          ? {
+              patient_nic: payload.patient_nic,
+              patient_full_name: payload.patient_full_name,
+              specialist_name: payload.specialist_name,
+              appointment_date: payload.appointment_date,
+              appointment_type: payload.appointment_type ?? 'PRENATAL_CHECKUP',
+              duration_minutes: payload.duration_minutes ?? 30,
+              notes: payload.notes ?? null,
+            }
+          : {
+              patient_id: payload.patient_id,
+              specialist_id: payload.specialist_id,
+              specialist_name: payload.specialist_name,
+              appointment_date: payload.appointment_date,
+              appointment_type: payload.appointment_type,
+              duration_minutes: payload.duration_minutes ?? 30,
+              notes: payload.notes ?? null,
+            };
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: authHeaders(token),
-          body: JSON.stringify(payload),
+          body: JSON.stringify(body),
         });
         if (!response.ok) {
           continue;

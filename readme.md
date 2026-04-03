@@ -1,75 +1,147 @@
- BloomCare 
+# BloomCare
 
-BloomCare is an AI-powered maternity care intelligence platform designed to improve maternal health outcomes through advanced predictive diagnostics and role-based monitoring dashboards.
+BloomCare is an AI-powered maternal healthcare platform for screening, triage, appointments, longitudinal tracking, and role-based clinical workflows.
 
-##  Project Structure
+## What The Website Can Do
 
-currently
+### Authentication And Onboarding
+- Sign in as frontline staff, clinician, admin, or patient.
+- Route users to the correct portal after login.
+- Persist sessions across refreshes.
+- Support national ID login for patients and email login for staff.
+- Support first-login password setup for new accounts.
+- Provide multilingual authentication UI in English, Sinhala, and Tamil.
 
-- **`frontend/`**: A modern Next.js 16 (React 19) application featuring:
-  - **Frontline Dashboard**
-  - **Clinical Dashboard**
-  - **Admin Dashboard**
-  - **Patient Portal**
-  - **Trilingual Support**
-- **`models/`**: Predictive machine learning models (Stage 1 & Stage 2) for:
-  - Preeclampsia Risk
-  - Gestational Diabetes (GDM)
-  - Preterm Birth
-- **`Data/`**: Datasets used for model training and reference.
+### Frontline Staff Portal
+- Search and register patients.
+- Open patient profiles and view recent screening history.
+- Record Stage 1 screening data.
+- Capture vitals, pregnancy history, and risk factors.
+- Run offline or online risk scoring.
+- Save screenings locally when offline and sync later.
+- Generate risk classification and escalation triggers.
+- Print referral cards and screening summaries.
+- Create appointments for patients.
+- Choose specialization, specialist, date, and time slot.
+- Add appointment notes.
+- View appointment history and status.
+- Receive notifications when doctors confirm, cancel, or complete appointments they created.
+- Mark notifications as read.
+- Edit profile settings.
+- Switch between English, Sinhala, and Tamil.
 
-##  Getting Started
+### Doctor And Clinical Specialist Portal
+- View escalated patients and patient histories.
+- Review Stage 1 and Stage 2 screening results.
+- Inspect risk scores, trend charts, and explainability details.
+- Change appointment status to confirmed, completed, or cancelled.
+- Record cancellation reasons and completion audit data.
+- View today’s appointments and queue numbers.
+- Filter appointments by status.
+- Book appointments with specialist selection and availability lookup.
+- Add notes during scheduling.
+- View and manage patient prescriptions.
+- Add prescriptions with dosage, frequency, route, and instructions.
+- Generate and review clinical reports.
+- Review differential diagnosis outputs.
+- Read appointment notifications.
+- Update profile settings.
+- Use the portal in English, Sinhala, or Tamil.
 
-### Frontend (User Interface)
+### Patient Portal
+- View pregnancy status and gestational tracking.
+- See due date, trimester, and pregnancy countdown.
+- Review screening results and vital sign trends.
+- View screening history over time.
+- Read AI explanations of screening results.
+- See active and historical prescriptions.
+- View appointments, confirmations, and cancellations.
+- Read notification history and mark items as read.
+- Access weekly pregnancy guidance and reminders.
+- Update profile information and password.
+- Use the portal in three languages.
+- Continue using cached offline data when available.
 
-1. Navigate to the frontend directory:
+### Admin Portal
+- View analytics dashboards and KPIs.
+- Track total screenings, high-risk cases, and clinic trends.
+- Monitor referral efficiency and workload distribution.
+- Review monthly screening trends and charts.
+- Export monthly screening reports.
+- View and manage staff accounts.
+- Create new frontline staff and clinician accounts.
+- Search, filter, and delete staff records.
+- Edit admin profile settings.
+- Switch between English, Sinhala, and Tamil.
+
+### AI Assistant
+- Answer questions about the platform.
+- Help users navigate to the right portal or page.
+- Guide users through features and workflows.
+- Support multilingual chat interactions.
+
+## Cross-Cutting Capabilities
+- Offline-first screening workflow.
+- Service worker and web app manifest support.
+- Local queueing and reconnect sync.
+- AI fallback inference when the backend is unavailable.
+- Responsive layout across desktop and mobile.
+- Role-based access control.
+- Notification badges and read/unread filtering.
+- Profile settings dialogs across portals.
+- Appointment scheduling with time-slot selection.
+- Longitudinal patient tracking.
+
+## Project Structure
+
+- `frontend/`: Next.js 16 and React 19 web application.
+  - Frontline dashboard
+  - Clinical dashboard
+  - Admin dashboard
+  - Patient portal
+  - Login page
+  - Appointment scheduling
+  - Notifications panel
+  - Chatbot assistant
+  - Profile settings dialog
+  - Trilingual support
+- `backend/`: FastAPI and SQLAlchemy API.
+- `models/`: Stage 1 and Stage 2 prediction models.
+- `Data/`: Datasets used for training and reference.
+
+## Getting Started
+
+### Frontend
+
+1. Go to the frontend directory:
    ```bash
    cd frontend
    ```
 2. Install dependencies:
    ```bash
    npm install
-   # or
-   pnpm install
    ```
-3. Run the development server:
+3. Start the development server:
    ```bash
    npm run dev
    ```
-4. Open [http://localhost:3000](http://localhost:3000) in your browser.(currently on local host)
+4. Open [http://localhost:3000](http://localhost:3000).
 
-### Backend & Models
+### Backend And Models
 
-The models are implemented in Python. Ensure you have the required dependencies installed:
+Install Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-## 📊 Model Performance Highlights
+## Model Performance Highlights
 
-- **GDM Stage 2**: 0.9983 ROC-AUC
-- **Preterm Stage 2**: 0.9911 ROC-AUC
-- **Preeclampsia Stage 2**: 0.9749 ROC-AUC
+- GDM Stage 2: 0.9983 ROC-AUC
+- Preterm Stage 2: 0.9911 ROC-AUC
+- Preeclampsia Stage 2: 0.9749 ROC-AUC
 
 For detailed data mapping, see [DATA_DICTIONARY.md](./DATA_DICTIONARY.md).
 
 ---
 © 2026 Hemas Hospitals Intelligence
-
-## Recent Work Added (March 2026)
-
-The following updates were implemented in this project:
-
-- Added offline-first Stage 1 flow for the frontline triage experience.
-- Integrated a service worker and web app manifest for PWA-style offline support.
-- Added local queueing of screenings with reconnect sync behavior.
-- Wired offline AI inference using stage1_offline_ai.js fallback when backend is unavailable.
-- Improved responsive behavior across key screens (frontline workspace and patient portal).
-- Updated Stage 1 inputs to the Golden Features set:
-   - Age, BMI, Systolic_BP, Diastolic, Heart_Rate, BS, Body_Temp, Hemoglobin,
-      PCOS, Previous_Complications, Preexisting_Diabetes, Mental_Health,
-      Sleep_Pattern, Exercise, Education.
-- Added automatic Mean Arterial Pressure (MAP) calculation and display:
-   - MAP = (Systolic_BP + 2 x Diastolic) / 3.
-- Added imputation-style defaults for unknown values in frontend payload creation.
 

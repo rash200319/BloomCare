@@ -176,6 +176,13 @@ class SecureStoreService {
   }
 
   /**
+   * Compute PIN hash for offline credential storage
+   */
+  async computePinHash(pin: string): Promise<string> {
+    return this.hashPin(pin);
+  }
+
+  /**
    * Check if user has a stored session
    */
   async hasSession(): Promise<boolean> {
