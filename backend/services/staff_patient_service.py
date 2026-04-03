@@ -1,6 +1,7 @@
 """
 Staff, Patient, and Auth services.
 """
+from sqlalchemy import String, cast
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 import secrets
@@ -217,8 +218,7 @@ class AuthService:
         """Authenticate frontline staff or doctor using email + password."""
         user = db.query(User).filter(
             User.email == email,
-            User.role.in_([UserRole.FRONTLINE_STAFF,
-                          UserRole.CLINICAL_SPECIALIST, UserRole.ADMIN]),
+            cast(User.role, String).in_(["FRONTLINE_STAFF", "CLINICAL_SPECIALIST", "DOCTOR", "ADMIN"]),
         ).first()
         if not user or not verify_password(password, user.hashed_password):
             raise HTTPException(
@@ -255,8 +255,7 @@ class AuthService:
         """Set first-login password for staff/doctor using email."""
         user = db.query(User).filter(
             User.email == email,
-            User.role.in_([UserRole.FRONTLINE_STAFF,
-                          UserRole.CLINICAL_SPECIALIST]),
+            cast(User.role, String).in_(["FRONTLINE_STAFF", "CLINICAL_SPECIALIST", "DOCTOR", "ADMIN"]),
         ).first()
         if not user:
             raise HTTPException(
@@ -281,15 +280,23 @@ class AuthService:
             )
 
         user = db.query(User).filter(User.id == user_pk).first()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-        if not verify_password(old_password, user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
+        if user:
+            if not verify_password(old_password, user.hashed_password):
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
 
-        user.hashed_password = get_password_hash(new_password)
-        user.first_time_login = False
+            user.hashed_password = get_password_hash(new_password)
+            user.first_time_login = False
+            db.commit()
+            return {"message": "Password changed successfully"}
+
+        patient = db.query(Patient).filter(Patient.id == user_pk).first()
+        if not patient:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        if not verify_password(old_password, patient.hashed_password):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
+
+        patient.hashed_password = get_password_hash(new_password)
+        patient.first_time_login = False
         db.commit()
         return {"message": "Password changed successfully"}
 

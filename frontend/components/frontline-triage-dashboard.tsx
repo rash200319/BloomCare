@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import AppointmentScheduling from "./appointment-scheduling"
+import ProfileSettingsDialog from "./profile-settings-dialog"
 
 const languages: { code: "EN" | "SI" | "TA"; label: string }[] = [
   { code: "EN", label: "English" },
@@ -258,6 +259,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false)
   const [showResult, setShowResult] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [showProfileSettings, setShowProfileSettings] = useState(false)
   const [userProfile, setUserProfile] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
@@ -1194,12 +1196,6 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
         </div>
 
         <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-          {/* Emergency Badge */}
-          <div className="hidden lg:flex items-center gap-3 px-4 py-2 bg-rose-50 rounded-full border border-rose-100 mr-2">
-            <Phone className="w-3.5 h-3.5 text-primary animate-pulse" />
-            <span className="text-[10px] font-black text-primary uppercase tracking-widest">0117 888 888</span>
-          </div>
-
           {/* Language Toggle */}
           <div className="relative">
             <button
@@ -1253,9 +1249,15 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
               <div className="absolute top-full right-0 mt-3 bg-white border border-slate-100 rounded-2xl shadow-2xl z-50 min-w-[220px] py-2 overflow-hidden animate-in fade-in slide-in-from-top-2">
                 <div className="px-5 py-4 border-b border-slate-50">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Signed in as</p>
-                  <p className="text-xs font-bold text-slate-900">{userProfile?.email || "N/A"}</p>
+                  <p className="text-xs font-bold text-slate-900">{userProfile?.full_name || userProfile?.email || "N/A"}</p>
                 </div>
-                <button className="w-full px-5 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setShowUserMenu(false)
+                    setShowProfileSettings(true)
+                  }}
+                  className="w-full px-5 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 flex items-center gap-3"
+                >
                   <Settings className="w-4 h-4 text-slate-400" />
                   Profile Settings
                 </button>
@@ -2584,6 +2586,15 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
           background: #cbd5e1;
         }
       `}</style>
+
+      <ProfileSettingsDialog
+        open={showProfileSettings}
+        onOpenChange={setShowProfileSettings}
+        userProfile={userProfile}
+        onProfileSaved={(profile) => {
+          setUserProfile(profile)
+        }}
+      />
     </div>
   )
 }

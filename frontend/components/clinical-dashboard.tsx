@@ -28,7 +28,6 @@ import {
   Building2,
   Stethoscope,
   MessageSquare,
-  Send,
   Pill,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -37,6 +36,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
+import ProfileSettingsDialog from "./profile-settings-dialog"
 import {
   BarChart,
   Bar,
@@ -219,6 +219,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
   const [isLoadingCases, setIsLoadingCases] = useState(false)
   const [casesError, setCasesError] = useState<string | null>(null)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [showProfileSettings, setShowProfileSettings] = useState(false)
   const [userProfile, setUserProfile] = useState<any>(null)
   const [activeTab, setActiveTab] = useState("overview")
   const [showChat, setShowChat] = useState(false)
@@ -707,33 +708,87 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
     const rows = [
       {
         name: "Systolic BP",
-        value: activePatient?.vitals.systolic != null ? `${activePatient.vitals.systolic} mmHg` : "--",
+        value: `${specialistInput.systolic_bp.toFixed(0)} mmHg`,
         range: "90-139",
-        status: (activePatient?.vitals.systolic ?? 0) >= 140 ? "high" : "normal",
+        status: specialistInput.systolic_bp >= 140 ? "high" : "normal",
       },
       {
         name: "Diastolic BP",
-        value: activePatient?.vitals.diastolic != null ? `${activePatient.vitals.diastolic} mmHg` : "--",
+        value: `${specialistInput.diastolic_bp.toFixed(0)} mmHg`,
         range: "60-89",
-        status: (activePatient?.vitals.diastolic ?? 0) >= 90 ? "high" : "normal",
+        status: specialistInput.diastolic_bp >= 90 ? "high" : "normal",
       },
       {
         name: "Heart Rate",
-        value: activePatient?.vitals.heartRate != null ? `${activePatient.vitals.heartRate} bpm` : "--",
+        value: `${specialistInput.heart_rate.toFixed(0)} bpm`,
         range: "60-100",
-        status: (activePatient?.vitals.heartRate ?? 0) > 100 ? "high" : "normal",
+        status: specialistInput.heart_rate > 100 ? "high" : "normal",
       },
       {
         name: "Temperature",
-        value: activePatient?.vitals.temperature != null ? `${activePatient.vitals.temperature.toFixed(1)} C` : "--",
+        value: `${specialistInput.temperature.toFixed(1)} C`,
         range: "36.1-37.2",
-        status: (activePatient?.vitals.temperature ?? 0) >= 38 ? "high" : "normal",
+        status: specialistInput.temperature >= 38 ? "high" : "normal",
       },
       {
         name: "Blood Sugar",
-        value: activePatient?.vitals.bloodSugar != null ? `${activePatient.vitals.bloodSugar.toFixed(1)} mg/dL` : "--",
+        value: `${specialistInput.blood_sugar.toFixed(1)} mg/dL`,
         range: "70-139",
-        status: (activePatient?.vitals.bloodSugar ?? 0) >= 140 ? "high" : "normal",
+        status: specialistInput.blood_sugar >= 140 ? "high" : "normal",
+      },
+      {
+        name: "sFlt-1/PlGF Ratio",
+        value: specialistInput.sflt1_plgf_ratio.toFixed(2),
+        range: "< 38",
+        status: specialistInput.sflt1_plgf_ratio >= 38 ? "high" : "normal",
+      },
+      {
+        name: "Serum Creatinine",
+        value: `${specialistInput.serum_creatinine.toFixed(2)} mg/dL`,
+        range: "0.5-1.1",
+        status: specialistInput.serum_creatinine > 1.1 ? "high" : "normal",
+      },
+      {
+        name: "Platelet Count",
+        value: `${specialistInput.platelet_count.toFixed(0)} x10^9/L`,
+        range: "150-450",
+        status: specialistInput.platelet_count < 150 ? "low" : "normal",
+      },
+      {
+        name: "HbA1c",
+        value: `${specialistInput.hba1c.toFixed(1)}%`,
+        range: "< 5.7",
+        status: specialistInput.hba1c >= 6.5 ? "high" : specialistInput.hba1c >= 5.7 ? "elevated" : "normal",
+      },
+      {
+        name: "OGTT 1hr",
+        value: `${specialistInput.ogtt_1hr.toFixed(0)} mg/dL`,
+        range: "< 180",
+        status: specialistInput.ogtt_1hr >= 180 ? "high" : "normal",
+      },
+      {
+        name: "OGTT 2hr",
+        value: `${specialistInput.ogtt_2hr.toFixed(0)} mg/dL`,
+        range: "< 153",
+        status: specialistInput.ogtt_2hr >= 153 ? "high" : "normal",
+      },
+      {
+        name: "Cervical Length",
+        value: `${specialistInput.cervical_length_mm.toFixed(1)} mm`,
+        range: "> 25",
+        status: specialistInput.cervical_length_mm <= 25 ? "low" : "normal",
+      },
+      {
+        name: "fFN Result",
+        value: specialistInput.ffn_result ? "Positive" : "Negative",
+        range: "Negative",
+        status: specialistInput.ffn_result ? "high" : "normal",
+      },
+      {
+        name: "Mean Pulse Pressure",
+        value: `${specialistInput.mean_pulse_pressure.toFixed(0)} mmHg`,
+        range: "30-50",
+        status: specialistInput.mean_pulse_pressure > 50 ? "high" : "normal",
       },
     ]
 
@@ -746,7 +801,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
         clinicalHint: explainability?.clinical_hint ?? null,
       }
     })
-  }, [activePatient, explainabilityByFeature])
+  }, [specialistInput, explainabilityByFeature])
 
   const peProbability = differentialResult?.preeclampsia.probability ?? 0
   const gdmProbability = differentialResult?.gdm.probability ?? 0
@@ -1056,9 +1111,15 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
               <div className="absolute top-full right-0 mt-2 bg-white border border-slate-200 rounded-lg shadow-lg z-50 min-w-[200px] py-2">
                 <div className="px-4 py-2 border-b border-slate-100">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Signed in as</p>
-                  <p className="text-xs font-bold text-slate-900">{userProfile?.email || "N/A"}</p>
+                  <p className="text-xs font-bold text-slate-900">{userProfile?.full_name || userProfile?.email || "N/A"}</p>
                 </div>
-                <button className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setShowUserMenu(false)
+                    setShowProfileSettings(true)
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 flex items-center gap-2"
+                >
                   <Settings className="w-4 h-4 text-slate-400" />
                   {getText("Settings", "සැකසුම්", "அமைப்புகள்")}
                 </button>
@@ -1092,8 +1153,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                   <Calendar className="w-4 h-4 text-primary" />
                   {getText("Today's Appointments", "අද දින ප්‍රකාශන", "இன்றைய நியமனங்கள්")}
                 </>
-              )}
-            </h2>
+              )}            </h2>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
@@ -1122,7 +1182,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                 )}
               >
                 <AlertTriangle className="w-3 h-3 inline mr-1" />
-                {getText("High Risk", "ඉහළ අවදානම", "சிக்கல்")}
+                {getText("High Risk", "ඉහළ අවදානම", "சிக்கல்")}0
               </button>
               <button
                 onClick={() => {
@@ -1161,6 +1221,59 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                 </select>
               </div>
             )}
+
+          <div className="p-3 border-b border-slate-100">
+            {/* View Mode Toggle */}
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={() => setSidebarViewMode("escalated")}
+                className={cn(
+                  "flex-1 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all",
+                  sidebarViewMode === "escalated"
+                    ? "bg-primary text-white shadow-lg shadow-primary/30"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-150"
+                )}
+              >
+                <AlertTriangle className="w-3 h-3 inline mr-1" />
+                {getText("High Risk", "ඉහළ අවදානම", "சிக்கல்")}
+              </button>
+              <button
+                onClick={() => {
+                  setSidebarViewMode("today")
+                  loadTodayAppointments()
+                }}
+                className={cn(
+                  "flex-1 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all",
+                  sidebarViewMode === "today"
+                    ? "bg-primary text-white shadow-lg shadow-primary/30"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-150"
+                )}
+              >
+                <Calendar className="w-3 h-3 inline mr-1" />
+                {getText("Today", "අද", "இன்னද")}
+              </button>
+            </div>
+
+            {/* Doctor Filter for Today's Appointments */}
+            {sidebarViewMode === "today" && uniqueDoctorsInToday.length > 0 && (
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-2">
+                  {getText("Doctor", "වෛද්‍ය", "மருத்துவர்")}
+                </label>
+                <select
+                  value={selectedDoctorFilter || ""}
+                  onChange={(e) => setSelectedDoctorFilter(e.target.value || null)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm font-medium text-slate-700 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="">{getText("All Doctors", "සියලු වෛද්‍යවරුන්", "அனைத்து மருத்துவர்கள்")}</option>
+                  {uniqueDoctorsInToday.map((doctor) => (
+                    <option key={doctor.id} value={doctor.name}>
+                      {doctor.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-2">
@@ -1175,7 +1288,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
             )}
             {sidebarViewMode === "escalated" && !isLoadingCases && !casesError && filteredPatients.length === 0 && (
               <div className="p-6 text-center text-sm font-bold text-slate-500 uppercase tracking-widest">
-                {getText("No high-risk cases found", "ඉහළ අවදානම් අවස්ථා නොමැත", "அதிக ஆபத்து வழக்குகள் இல்லை")}
+                {getText("No high-risk cases found", "ඉහළ අවදානම් රෝගීන් හමු නොවීය", "அதிக ஆபத்து வழக்குகள் இல்லை")}
               </div>
             )}
             {sidebarViewMode === "today" && !isLoadingTodayAppointments && filteredTodayAppointments.length === 0 && (
@@ -1955,7 +2068,18 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                     <div className="h-64">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart
-                          data={activePatient ? [{ week: "Current", systolic: activePatient.vitals.systolic ?? 0, diastolic: activePatient.vitals.diastolic ?? 0 }] : []}
+                          data={[
+                            {
+                              week: "Stage 1",
+                              systolic: activePatient?.vitals.systolic ?? specialistInput.systolic_bp,
+                              diastolic: activePatient?.vitals.diastolic ?? specialistInput.diastolic_bp,
+                            },
+                            {
+                              week: "Differential",
+                              systolic: specialistInput.systolic_bp,
+                              diastolic: specialistInput.diastolic_bp,
+                            },
+                          ]}
                           margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                         >
                           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -2407,3 +2531,4 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
     </div>
   )
 }
+

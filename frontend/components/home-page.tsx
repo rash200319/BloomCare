@@ -183,9 +183,6 @@ export default function HomePage({ onNavigateToLogin }: HomePageProps) {
               <a href="#conditions" className="text-sm font-medium text-slate-600 hover:text-primary transition-colors">
                 {getText("Conditions", "තත්වයන්", "நிலைமைகள்")}
               </a>
-              <a href="#contact" className="text-sm font-medium text-slate-600 hover:text-primary transition-colors">
-                {getText("Contact", "සම්බන්ධ වන්න", "தொடர்பு")}
-              </a>
             </nav>
 
             {/* Right Side Actions */}
@@ -562,17 +559,12 @@ export default function HomePage({ onNavigateToLogin }: HomePageProps) {
               <ul className="space-y-4 text-slate-400 font-bold">
                 <li><a href="#features" className="hover:text-primary transition-colors">{getText("Features", "විශේෂාංග", "අம்சங்கள்")}</a></li>
                 <li><a href="#conditions" className="hover:text-primary transition-colors">{getText("Conditions", "තත්වයන්", "நிலைமைகள்")}</a></li>
-                <li><a href="#contact" className="hover:text-primary transition-colors">{getText("Contact", "සම්බන්ධ වන්න", "தொடர்பு")}</a></li>
               </ul>
             </div>
             
             <div>
               <h5 className="font-black uppercase tracking-widest text-slate-200 mb-6 text-sm">{getText("Contact", "සම්බන්ධ වන්න", "தொடர்பු")}</h5>
               <div className="space-y-4 text-slate-400 font-bold">
-                <p className="flex items-center gap-3">
-                  <Phone className="w-4 h-4 text-primary" />
-                  0117 888 888
-                </p>
                 <p className="flex items-center gap-3">
                   <Mail className="w-4 h-4 text-primary" />
                   bloom@hemas.lk

@@ -76,6 +76,7 @@ def _build_feature_candidates(payload: DifferentialEvaluationRequest) -> Dict[st
         "meanpulsepressure": float(payload.mean_pulse_pressure),
         "pulsepressure": float(payload.mean_pulse_pressure),
         "depressedbp": float(payload.mean_pulse_pressure),
+        "depresseddp": float(payload.diastolic_bp),
     }
 
 
@@ -337,6 +338,21 @@ def _predict_probability(model_name: str, payload: DifferentialEvaluationRequest
     return _clamp_probability(probability)
 
 
+def _has_informative_payload_signal(model_name: str, payload: DifferentialEvaluationRequest) -> bool:
+    artifact = _load_artifact(model_name)
+    model = artifact.get("model") if isinstance(artifact, dict) else artifact
+    feature_cols = (
+        artifact.get("feature_columns") if isinstance(artifact, dict) else list(getattr(model, "feature_names_in_", []))
+    )
+
+    if not feature_cols:
+        return False
+
+    frame = _resolve_feature_row(feature_cols, payload)
+    values = frame.to_numpy(dtype=float)
+    return bool(np.any(np.abs(values) > 1e-9))
+
+
 def _predict_with_explainability(
     model_name: str,
     payload: DifferentialEvaluationRequest,
@@ -431,13 +447,20 @@ def evaluate_differential(
 
     preterm_main, preterm_explainability = _predict_with_explainability("stage2_preterm_main_msf.pkl", payload)
     support_name = "stage2_preterm_support_msf.pkl"
+    support_probability: float | None = None
     try:
-        preterm_support = _predict_probability(support_name, payload)
+        if _has_informative_payload_signal(support_name, payload):
+            support_probability = _predict_probability(support_name, payload)
     except FileNotFoundError:
         # Backward compatibility for existing workspace model naming.
-        preterm_support = _predict_probability("stage2_preterm_support_ehg.pkl", payload)
+        fallback_support_name = "stage2_preterm_support_ehg.pkl"
+        if _has_informative_payload_signal(fallback_support_name, payload):
+            support_probability = _predict_probability(fallback_support_name, payload)
 
-    preterm_probability = _clamp_probability((preterm_main + preterm_support) / 2.0)
+    if support_probability is None:
+        preterm_probability = _clamp_probability(preterm_main)
+    else:
+        preterm_probability = _clamp_probability((preterm_main + support_probability) / 2.0)
 
     result: Dict[str, Dict[str, float | str]] = {
         "preeclampsia": {

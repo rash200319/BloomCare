@@ -11,6 +11,7 @@ from sqlalchemy import func, text
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 import logging
+import json
 from decimal import Decimal
 
 logger = logging.getLogger(__name__)
@@ -81,8 +82,85 @@ class SpecialistWorkload:
         self.avg_severity = avg_severity
 
 
+class Stage2DiagnosticDetail:
+    """Human-readable stage 2 diagnostic row for table displays"""
+
+    def __init__(
+        self,
+        diagnostic_id: str,
+        evaluated_at: Optional[str],
+        patient_name: str,
+        patient_national_id: Optional[str],
+        specialist_name: str,
+        stage1_screening_id: Optional[str],
+        primary_disease_checked: Optional[str],
+        dominant_condition: Optional[str],
+        overall_severity_score: Optional[float],
+        sflt1_plgf_ratio: Optional[float],
+        cervical_length_mm: Optional[float],
+        model_used: Optional[str],
+    ):
+        self.diagnostic_id = diagnostic_id
+        self.evaluated_at = evaluated_at
+        self.patient_name = patient_name
+        self.patient_national_id = patient_national_id
+        self.specialist_name = specialist_name
+        self.stage1_screening_id = stage1_screening_id
+        self.primary_disease_checked = primary_disease_checked
+        self.dominant_condition = dominant_condition
+        self.overall_severity_score = overall_severity_score
+        self.sflt1_plgf_ratio = sflt1_plgf_ratio
+        self.cervical_length_mm = cervical_length_mm
+        self.model_used = model_used
+
+
 class AdminService:
     """Metrics aggregation engine for BloomCare admin dashboard"""
+
+    @staticmethod
+    def _extract_feature_importance(candidate: Any) -> float | None:
+        if isinstance(candidate, (int, float, Decimal)):
+            return float(candidate)
+        if isinstance(candidate, dict):
+            for key in ("importance", "score", "weight", "probability", "contribution"):
+                value = candidate.get(key)
+                if isinstance(value, (int, float, Decimal)):
+                    return float(value)
+        return None
+
+    @staticmethod
+    def _collect_feature_frequencies(payload: Any, accumulator: Dict[str, Dict[str, float]]) -> None:
+        if payload is None:
+            return
+
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except Exception:
+                return
+
+        if isinstance(payload, list):
+            for item in payload:
+                AdminService._collect_feature_frequencies(item, accumulator)
+            return
+
+        if not isinstance(payload, dict):
+            return
+
+        for key, value in payload.items():
+            feature_name = str(key).strip()
+            if not feature_name:
+                continue
+
+            slot = accumulator.setdefault(feature_name, {"frequency": 0.0, "importance_sum": 0.0})
+            slot["frequency"] += 1
+
+            importance = AdminService._extract_feature_importance(value)
+            if importance is not None:
+                slot["importance_sum"] += max(0.0, importance)
+
+            if isinstance(value, (dict, list)):
+                AdminService._collect_feature_frequencies(value, accumulator)
 
     @staticmethod
     def get_dashboard_metrics(db: Session) -> AdminMetrics:
@@ -91,41 +169,35 @@ class AdminService:
         Returns top-row dashboard statistics: Total Patients, High Risk, etc.
         """
         try:
-            # Stage 1 screenings from stage1_screenings table
-            stage1_screenings_count = db.execute(
-                text("SELECT COUNT(*) FROM stage1_screenings WHERE collected_at IS NOT NULL")
+            total_screenings = db.execute(
+                text("SELECT COUNT(*) FROM stage1_screenings")
             ).scalar() or 0
 
-            # Stage 2 diagnostics from stage2_diagnostics table
-            stage2_screenings_count = db.execute(
-                text("SELECT COUNT(*) FROM stage2_diagnostics WHERE evaluated_at IS NOT NULL")
-            ).scalar() or 0
-
-            # Combined total screenings = Stage 1 + Stage 2
-            total_screenings = int(stage1_screenings_count) + int(stage2_screenings_count)
-
-            # High-risk count: edge_risk_classification = 'escalate'
             high_risk_count = db.execute(
-                text("SELECT COUNT(*) FROM stage1_screenings WHERE edge_risk_classification = 'escalate'")
+                text("SELECT COUNT(*) FROM screening_reports WHERE general_risk_flag = 'High'")
             ).scalar() or 0
 
-            # Average severity score from stage1_screenings edge_risk_score field
             avg_severity = db.execute(
-                text("SELECT COALESCE(AVG(edge_risk_score::numeric), 0.0) FROM stage1_screenings WHERE edge_risk_score IS NOT NULL")
+                text(
+                    "SELECT COALESCE(AVG(overall_severity_score::numeric), 0.0) "
+                    "FROM stage2_diagnostics WHERE overall_severity_score IS NOT NULL"
+                )
             ).scalar() or 0.0
 
-            # Total unique patients
-            total_patients = db.execute(
-                text("SELECT COUNT(DISTINCT id) FROM patients WHERE id IS NOT NULL")
-            ).scalar() or 0
+            total_patients = db.execute(text("SELECT COUNT(*) FROM patients")).scalar() or 0
 
-            # Active clinics (unique device_id from recent screenings)
             active_clinics = db.execute(
                 text(
                     "SELECT COUNT(DISTINCT device_id) FROM stage1_screenings "
-                    "WHERE collected_at > NOW() - INTERVAL '30 days' AND device_id IS NOT NULL"
+                    "WHERE device_id IS NOT NULL AND device_id <> ''"
                 )
             ).scalar() or 0
+
+            stage2_screenings_count = db.execute(
+                text("SELECT COUNT(*) FROM stage2_diagnostics")
+            ).scalar() or 0
+
+            stage1_screenings_count = int(total_screenings)
 
             return AdminMetrics(
                 total_screenings=int(total_screenings),
@@ -151,22 +223,20 @@ class AdminService:
         try:
             # Determine time truncation
             if group_by == "week":
-                date_trunc = "DATE_TRUNC('week', s1.collected_at)"
+                date_trunc = "DATE_TRUNC('week', collected_at)"
             else:
-                date_trunc = "DATE_TRUNC('day', s1.collected_at)"
+                date_trunc = "DATE_TRUNC('day', collected_at)"
 
             query = text(
                 f"""
                 SELECT 
                     {date_trunc}::text AS day,
-                    COUNT(DISTINCT s1.id) AS case_count,
-                    COALESCE(sr.general_risk_flag, 'Unknown') AS condition,
-                    COALESCE(AVG(CAST(s1.edge_risk_score AS numeric)), 0) AS severity_avg
-                FROM stage1_screenings s1
-                LEFT JOIN screening_reports sr ON s1.patient_id = sr.patient_id
-                WHERE s1.collected_at > NOW() - INTERVAL '{days_back} days'
-                GROUP BY {date_trunc}, sr.general_risk_flag
-                ORDER BY day DESC
+                    COUNT(*) AS case_count,
+                    COALESCE(AVG(CAST(edge_risk_score AS numeric)), 0) AS severity_avg
+                FROM stage1_screenings
+                WHERE collected_at >= NOW() - INTERVAL '{days_back} days'
+                GROUP BY {date_trunc}
+                ORDER BY {date_trunc} ASC
                 """
             )
 
@@ -175,8 +245,8 @@ class AdminService:
                 TrendDataPoint(
                     timestamp=str(row[0]),
                     case_count=int(row[1]),
-                    condition=str(row[2]),
-                    severity_avg=float(row[3]),
+                    condition="All",
+                    severity_avg=float(row[2]),
                 )
                 for row in results
             ]
@@ -188,37 +258,53 @@ class AdminService:
     def get_top_risk_drivers(db: Session, limit: int = 5) -> List[RiskDriverAggregate]:
         """
         🏆 HEMAS KPI: Top Risk Drivers
-        Analyzes stage1_screenings contributing_factors JSON to identify top risk reasons.
+        Analyzes recent high-risk stage1 and stage2 JSON explainability payloads.
         """
         try:
-            # Query stage1_screenings with high-risk cases
-            # Extract triggers from contributing_factors JSON
-            results = db.execute(
+            rows = db.execute(
                 text(
                     """
-                    SELECT 
-                        jsonb_array_elements(contributing_factors->'triggers')::text AS trigger_text,
-                        COUNT(*) AS frequency,
-                        AVG(CAST(edge_risk_score AS numeric)) AS importance
-                    FROM stage1_screenings
-                    WHERE contributing_factors IS NOT NULL 
-                        AND edge_risk_classification = 'escalate'
-                    GROUP BY trigger_text
-                    ORDER BY frequency DESC, importance DESC
-                    LIMIT :limit
+                    SELECT s1.contributing_factors, s1.edge_risk_score, s2.explainability_data, s2.overall_severity_score
+                    FROM stage1_screenings s1
+                    LEFT JOIN stage2_diagnostics s2 ON s2.stage1_screening_id = s1.id
+                    WHERE s1.edge_risk_classification = 'escalate'
+                    ORDER BY s1.collected_at DESC NULLS LAST
+                    LIMIT 100
                     """
                 ),
-                {"limit": limit},
             ).fetchall()
 
-            return [
-                RiskDriverAggregate(
-                    feature_name=str(row[0]).strip('"'),
-                    frequency=int(row[1]),
-                    avg_importance=float(row[2]) if row[2] else 0.0,
+            aggregated: Dict[str, Dict[str, float]] = {}
+            for contributing_factors, edge_risk_score, explainability_data, overall_severity_score in rows:
+                AdminService._collect_feature_frequencies(contributing_factors, aggregated)
+                AdminService._collect_feature_frequencies(explainability_data, aggregated)
+
+                fallback_importance = None
+                if isinstance(edge_risk_score, (int, float, Decimal)):
+                    fallback_importance = float(edge_risk_score)
+                elif isinstance(overall_severity_score, (int, float, Decimal)):
+                    fallback_importance = float(overall_severity_score)
+
+                if fallback_importance is not None:
+                    for feature in list(aggregated.keys()):
+                        if aggregated[feature]["importance_sum"] <= 0:
+                            aggregated[feature]["importance_sum"] += fallback_importance
+
+            aggregates: List[RiskDriverAggregate] = []
+            for feature_name, values in aggregated.items():
+                frequency = int(values["frequency"])
+                if frequency <= 0:
+                    continue
+                aggregates.append(
+                    RiskDriverAggregate(
+                        feature_name=feature_name,
+                        frequency=frequency,
+                        avg_importance=float(values["importance_sum"]) / float(frequency),
+                    )
                 )
-                for row in results
-            ]
+
+            aggregates.sort(key=lambda item: (item.frequency, item.avg_importance), reverse=True)
+            return aggregates[:limit]
         except Exception as e:
             logger.warning(
                 f"Error fetching top risk drivers with JSON: {str(e)}, using fallback..."
@@ -231,85 +317,66 @@ class AdminService:
         """
         Fallback risk driver aggregation using stage1_screenings direct fields.
         """
+
         try:
-            drivers = []
+            drivers: List[RiskDriverAggregate] = []
 
-            # BP-related drivers (systolic > 140 or diastolic > 90)
-            bp_high = db.query(func.count()).from_statement(
+            bmi_high = db.execute(
                 text(
-                    "SELECT 1 FROM stage1_screenings WHERE (systolic > 140 OR diastolic > 90) AND edge_risk_classification = 'escalate'"
-                )
-            ).scalar() or 0
-            if bp_high > 0:
-                drivers.append(
-                    RiskDriverAggregate(
-                        feature_name="Elevated Blood Pressure",
-                        frequency=bp_high,
-                        avg_importance=0.35,
-                    )
-                )
-
-            # BMI drivers (bmi > 30)
-            bmi_high = db.query(func.count()).from_statement(
-                text(
-                    "SELECT 1 FROM stage1_screenings WHERE bmi > 30 AND edge_risk_classification = 'escalate'"
+                    "SELECT COUNT(*) FROM stage1_screenings WHERE bmi > 30 AND edge_risk_classification = 'escalate'"
                 )
             ).scalar() or 0
             if bmi_high > 0:
                 drivers.append(
                     RiskDriverAggregate(
-                        feature_name="High BMI",
-                        frequency=bmi_high,
+                        feature_name="Elevated BMI",
+                        frequency=int(bmi_high),
                         avg_importance=0.28,
                     )
                 )
 
-            # Blood sugar drivers (blood_sugar > 110)
-            blood_sugar_high = db.query(func.count()).from_statement(
+            blood_sugar_high = db.execute(
                 text(
-                    "SELECT 1 FROM stage1_screenings WHERE blood_sugar > 110 AND edge_risk_classification = 'escalate'"
+                    "SELECT COUNT(*) FROM stage1_screenings WHERE blood_sugar > 110 AND edge_risk_classification = 'escalate'"
                 )
             ).scalar() or 0
             if blood_sugar_high > 0:
                 drivers.append(
                     RiskDriverAggregate(
                         feature_name="Elevated Blood Sugar",
-                        frequency=blood_sugar_high,
+                        frequency=int(blood_sugar_high),
                         avg_importance=0.26,
                     )
                 )
 
-            # Low hemoglobin drivers (hemoglobin < 11)
-            hemoglobin_low = db.query(func.count()).from_statement(
+            hemoglobin_low = db.execute(
                 text(
-                    "SELECT 1 FROM stage1_screenings WHERE hemoglobin < 11 AND edge_risk_classification = 'escalate'"
+                    "SELECT COUNT(*) FROM stage1_screenings WHERE hemoglobin < 11 AND edge_risk_classification = 'escalate'"
                 )
             ).scalar() or 0
             if hemoglobin_low > 0:
                 drivers.append(
                     RiskDriverAggregate(
                         feature_name="Low Hemoglobin",
-                        frequency=hemoglobin_low,
+                        frequency=int(hemoglobin_low),
                         avg_importance=0.24,
                     )
                 )
 
-            # Age/PCOS drivers
-            age_pcos_high = db.query(func.count()).from_statement(
+            age_pcos_high = db.execute(
                 text(
-                    "SELECT 1 FROM stage1_screenings WHERE (age > 35 OR pcos = TRUE) AND edge_risk_classification = 'escalate'"
+                    "SELECT COUNT(*) FROM stage1_screenings WHERE (age > 35 OR pcos = TRUE) AND edge_risk_classification = 'escalate'"
                 )
             ).scalar() or 0
             if age_pcos_high > 0:
                 drivers.append(
                     RiskDriverAggregate(
                         feature_name="Age/PCOS Factor",
-                        frequency=age_pcos_high,
+                        frequency=int(age_pcos_high),
                         avg_importance=0.22,
                     )
                 )
 
-            # Sort by frequency and return top N
             drivers.sort(key=lambda x: x.frequency, reverse=True)
             return drivers[:limit]
         except Exception as e:
@@ -323,35 +390,43 @@ class AdminService:
         Tracks the flow from Stage 1 (Community) → Stage 2 (Specialist).
         """
         try:
-            # Total stage 1 high-risk screenings (eligible for referral)
             stage1_high_risk = db.execute(
                 text("SELECT COUNT(*) FROM stage1_screenings WHERE edge_risk_classification = 'escalate'")
             ).scalar() or 0
 
-            # Stage 2 recommendations (actual referrals completed)
             stage2_completed = db.execute(
-                text("SELECT COUNT(*) FROM stage2_recommendations WHERE created_at IS NOT NULL")
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM stage1_screenings s1
+                    WHERE s1.edge_risk_classification = 'escalate'
+                      AND EXISTS (
+                          SELECT 1
+                          FROM stage2_diagnostics s2
+                          WHERE s2.stage1_screening_id = s1.id
+                      )
+                    """
+                )
             ).scalar() or 0
 
-            # Conversion rate
             conversion_rate = (
                 (stage2_completed / stage1_high_risk * 100) if stage1_high_risk > 0 else 0.0
             )
 
-            # Average time to stage 2 (from stage1 date to stage2 date)
             avg_days_to_referral = db.execute(
                 text(
                     """
-                    SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (s2r.created_at - s1.collected_at)) / 86400.0), 0.0)
+                    SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (s2.evaluated_at - s1.collected_at)) / 86400.0), 0.0)
                     FROM stage1_screenings s1
-                    JOIN stage2_recommendations s2r ON s1.id = s2r.stage1_screening_id
-                    WHERE s2r.created_at > s1.collected_at
+                    JOIN stage2_diagnostics s2 ON s2.stage1_screening_id = s1.id
+                    WHERE s1.edge_risk_classification = 'escalate'
+                      AND s2.evaluated_at IS NOT NULL
+                      AND s1.collected_at IS NOT NULL
                     """
                 )
             ).scalar() or 0.0
 
-            # Pending referrals
-            pending = max(0, stage1_high_risk - stage2_completed)
+            pending = max(0, int(stage1_high_risk) - int(stage2_completed))
 
             return {
                 "stage1_high_risk_total": int(stage1_high_risk),
@@ -432,6 +507,57 @@ class AdminService:
             return workloads
         except Exception as e:
             logger.error(f"Error fetching specialist workload: {str(e)}", exc_info=True)
+            return []
+
+    @staticmethod
+    def get_stage2_diagnostic_details(db: Session, limit: int = 10) -> List[Stage2DiagnosticDetail]:
+        """
+        Returns recent Stage 2 diagnostic rows with patient and specialist names for table display.
+        """
+        try:
+            query = text(
+                """
+                SELECT
+                    s2.id,
+                    s2.evaluated_at,
+                    COALESCE(p.full_name, 'Unknown Patient') AS patient_name,
+                    p.national_id,
+                    COALESCE(u.full_name, 'Unassigned') AS specialist_name,
+                    s2.stage1_screening_id,
+                    s2.primary_disease_checked,
+                    s2.dominant_condition,
+                    s2.overall_severity_score,
+                    s2.sflt1_plgf_ratio,
+                    s2.cervical_length_mm,
+                    s2.model_used
+                FROM stage2_diagnostics s2
+                LEFT JOIN patients p ON p.id = s2.patient_id
+                LEFT JOIN users u ON u.id = s2.specialist_id
+                ORDER BY s2.evaluated_at DESC NULLS LAST
+                LIMIT :limit
+                """
+            )
+
+            rows = db.execute(query, {"limit": limit}).fetchall()
+            return [
+                Stage2DiagnosticDetail(
+                    diagnostic_id=str(row[0]),
+                    evaluated_at=row[1].isoformat() if row[1] else None,
+                    patient_name=str(row[2]),
+                    patient_national_id=str(row[3]) if row[3] else None,
+                    specialist_name=str(row[4]),
+                    stage1_screening_id=str(row[5]) if row[5] else None,
+                    primary_disease_checked=str(row[6]) if row[6] else None,
+                    dominant_condition=str(row[7]) if row[7] else None,
+                    overall_severity_score=float(row[8]) if row[8] is not None else None,
+                    sflt1_plgf_ratio=float(row[9]) if row[9] is not None else None,
+                    cervical_length_mm=float(row[10]) if row[10] is not None else None,
+                    model_used=str(row[11]) if row[11] else None,
+                )
+                for row in rows
+            ]
+        except Exception as e:
+            logger.error(f"Error fetching stage2 diagnostic details: {str(e)}", exc_info=True)
             return []
 
     @staticmethod
