@@ -393,4 +393,3 @@ def update_profile(
 
     db.commit()
     return _profile_response_for_principal(db, current_user)
->>>>>>> b16b4fe81a7c2fcd67fdf1a67d66e8ec866af19d
