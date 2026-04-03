@@ -220,6 +220,17 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
   const [casesError, setCasesError] = useState<string | null>(null)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [userProfile, setUserProfile] = useState<any>(null)
+  const [activeTab, setActiveTab] = useState("overview")
+  const [showChat, setShowChat] = useState(false)
+  const [chatMessage, setChatMessage] = useState("")
+  const [doctorAppointments, setDoctorAppointments] = useState<any[]>([])
+  const [isLoadingDoctorSchedule, setIsLoadingDoctorSchedule] = useState(false)
+  const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<string>("SCHEDULED")
+  const [todayAppointments, setTodayAppointments] = useState<any[]>([])
+  const [isLoadingTodayAppointments, setIsLoadingTodayAppointments] = useState(false)
+  const [sidebarViewMode, setSidebarViewMode] = useState<"escalated" | "today">("escalated")
+  const [allDoctors, setAllDoctors] = useState<any[]>([])
+  const [selectedDoctorFilter, setSelectedDoctorFilter] = useState<string | null>(null)
 
   useEffect(() => {
     const profile = localStorage.getItem('bloomcare_user_profile')
@@ -227,9 +238,110 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
       setUserProfile(JSON.parse(profile))
     }
   }, [])
-  const [activeTab, setActiveTab] = useState("overview")
-  const [showChat, setShowChat] = useState(false)
-  const [chatMessage, setChatMessage] = useState("")
+
+  useEffect(() => {
+    if (activeTab === "schedule" && userProfile?.id) {
+      loadDoctorAppointments()
+    }
+  }, [activeTab, userProfile?.id, appointmentStatusFilter])
+
+  useEffect(() => {
+    // Load today's appointments and all doctors on component mount
+    loadTodayAppointments()
+    loadAllDoctors()
+    // Reload escalated cases
+    if (escalatedPatients.length === 0) {
+      loadEscalatedCases()
+    }
+  }, [])
+
+  const loadDoctorAppointments = async () => {
+    setIsLoadingDoctorSchedule(true)
+    try {
+      const token = localStorage.getItem('bloomcare_access_token')
+      const statusParam = appointmentStatusFilter ? `?status=${appointmentStatusFilter}` : ""
+      // Don't pass specialist_id - let backend use current_user.role to determine filtering
+      const response = await fetch(`${configuredApiBase}/appointments${statusParam}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setDoctorAppointments(Array.isArray(data) ? data.sort((a: any, b: any) => new Date(a.appointment_date).getTime() - new Date(b.appointment_date).getTime()) : [])
+      }
+    } catch (error) {
+      console.error("Failed to load doctor appointments:", error)
+    } finally {
+      setIsLoadingDoctorSchedule(false)
+    }
+  }
+
+  const loadTodayAppointments = async () => {
+    setIsLoadingTodayAppointments(true)
+    try {
+      const token = localStorage.getItem('bloomcare_access_token')
+      const response = await fetch(`${configuredApiBase}/appointments?status=SCHEDULED`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        // Filter to only today's appointments
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const tomorrow = new Date(today)
+        tomorrow.setDate(tomorrow.getDate() + 1)
+
+        const todayApts = Array.isArray(data) ? data.filter((apt: any) => {
+          const aptDate = new Date(apt.appointment_date)
+          aptDate.setHours(0, 0, 0, 0)
+          return aptDate.getTime() === today.getTime()
+        }).sort((a: any, b: any) => new Date(a.appointment_date).getTime() - new Date(b.appointment_date).getTime()) : []
+
+        setTodayAppointments(todayApts)
+      }
+    } catch (error) {
+      console.error("Failed to load today's appointments:", error)
+    } finally {
+      setIsLoadingTodayAppointments(false)
+    }
+  }
+
+  const loadAllDoctors = async () => {
+    try {
+      const token = localStorage.getItem('bloomcare_access_token')
+      const response = await fetch(`${configuredApiBase}/users/?role=DOCTOR&limit=500`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setAllDoctors(Array.isArray(data) ? data : [])
+      }
+    } catch (error) {
+      console.error("Failed to load doctors:", error)
+    }
+  }
+
+  const updateAppointmentStatus = async (appointmentId: string, newStatus: string) => {
+    try {
+      const token = localStorage.getItem('bloomcare_access_token')
+      const response = await fetch(`${configuredApiBase}/appointments/${appointmentId}/status`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      if (response.ok) {
+        // Reload appointments after status update
+        loadDoctorAppointments()
+      } else {
+        console.error("Failed to update appointment status:", response.statusText)
+      }
+    } catch (error) {
+      console.error("Failed to update appointment status:", error)
+    }
+  }
+
   const [specialistInput, setSpecialistInput] = useState<DifferentialRequest>({
     patient_id: "",
     stage1_screening_id: null,
@@ -526,6 +638,41 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
       p.id.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  const filteredTodayAppointments = useMemo(() => {
+    let filtered = todayAppointments
+
+    // Filter by doctor name if selected
+    if (selectedDoctorFilter) {
+      filtered = filtered.filter(
+        (apt: any) => apt.specialist_name?.toLowerCase().includes(selectedDoctorFilter.toLowerCase())
+      )
+    }
+
+    // Filter by search query (patient name or NIC)
+    if (searchQuery) {
+      filtered = filtered.filter(
+        (apt: any) =>
+          apt.patient_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          apt.patient_id?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    }
+
+    return filtered
+  }, [todayAppointments, searchQuery, selectedDoctorFilter])
+
+  const uniqueDoctorsInToday = useMemo(() => {
+    const doctors = new Map<string, any>()
+    todayAppointments.forEach((apt: any) => {
+      if (apt.specialist_id && apt.specialist_name) {
+        doctors.set(apt.specialist_id, {
+          id: apt.specialist_id,
+          name: apt.specialist_name,
+        })
+      }
+    })
+    return Array.from(doctors.values())
+  }, [todayAppointments])
+
   const activePatient = selectedPatient
 
   const pendingReviewCount = useMemo(
@@ -731,8 +878,8 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
         }
         const validationMessage = Array.isArray(detail?.detail)
           ? detail.detail
-              .map((item) => `${item?.loc ? item.loc.join(".") : "payload"}: ${item?.msg || "validation error"}`)
-              .join("; ")
+            .map((item) => `${item?.loc ? item.loc.join(".") : "payload"}: ${item?.msg || "validation error"}`)
+            .join("; ")
           : detail?.detail
         throw new Error(validationMessage || "Unable to evaluate differential diagnosis")
       }
@@ -741,16 +888,18 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
       setDifferentialResult(payload)
       const timelineResponse = await apiRequest(`/patients/${activePatient.id}/history`)
       if (timelineResponse.ok) {
-        const timelinePayload = (await timelineResponse.json()) as { diagnostics?: Array<{
-          stage2_diagnostic_id: string
-          evaluated_at: string
-          model_used?: string | null
-          primary_disease_checked?: string | null
-          overall_severity_score?: number | null
-          specialist_id?: string | null
-          stage1_screening_id?: string | null
-          condition_probabilities?: Record<string, unknown>
-        }> }
+        const timelinePayload = (await timelineResponse.json()) as {
+          diagnostics?: Array<{
+            stage2_diagnostic_id: string
+            evaluated_at: string
+            model_used?: string | null
+            primary_disease_checked?: string | null
+            overall_severity_score?: number | null
+            specialist_id?: string | null
+            stage1_screening_id?: string | null
+            condition_probabilities?: Record<string, unknown>
+          }>
+        }
         setPatientTimeline(timelinePayload.diagnostics ?? [])
       }
     } catch (error) {
@@ -825,9 +974,9 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
     <div className="min-h-screen bg-slate-50/50 flex flex-col font-sans relative overflow-hidden">
       {/* Background Decorative Elements */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        <img 
-          src="/images/mother-baby-painting.png" 
-          alt="" 
+        <img
+          src="/images/mother-baby-painting.png"
+          alt=""
           className="w-full h-full object-cover opacity-[0.03] scale-110 grayscale"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-slate-50/30 to-slate-50/10" />
@@ -914,7 +1063,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                   {getText("Settings", "සැකසුම්", "அமைப்புகள்")}
                 </button>
                 <hr className="my-2 border-slate-100" />
-                <button 
+                <button
                   onClick={onLogout}
                   className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 flex items-center gap-2 text-red-600"
                 >
@@ -929,17 +1078,30 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar - Escalated Patients */}
+        {/* Left Sidebar - Escalated Patients & Today Appointments */}
         <aside className="w-80 bg-white border-r border-slate-200 flex flex-col">
           <div className="p-6 border-b border-slate-100">
             <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2 mb-4">
-              <AlertTriangle className="w-4 h-4 text-primary" />
-              {getText("Escalated Cases", "උත්සන්න අවස්ථා", "அதிகரிக்கப்பட்ட வழக்குகள்")}
+              {sidebarViewMode === "escalated" ? (
+                <>
+                  <AlertTriangle className="w-4 h-4 text-primary" />
+                  {getText("Escalated Cases", "උත්සන්න අවස්ථා", "அதிகரிக்கப்பட்ட வழக்குகள்")}
+                </>
+              ) : (
+                <>
+                  <Calendar className="w-4 h-4 text-primary" />
+                  {getText("Today's Appointments", "අද දින ප්‍රකාශන", "இன்றைய நியமனங்கள්")}
+                </>
+              )}
             </h2>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
-                placeholder={getText("Search ID or Name...", "රෝගීන් සොයන්න...", "நோயாளிகளைத் தேடுங்கள்...")}
+                placeholder={
+                  sidebarViewMode === "escalated"
+                    ? getText("Search ID or Name...", "පෙත්තම් හෝ නම...", "ID அல்லது பெயர் தேடுங்கள்...")
+                    : getText("Search Patient or Doctor...", "රෝගීන් හෝ වෛද්‍ය සොයන්න...", "நோயாளி அல்லது மருத்துவர்களைத் தேடுங்கள்...")
+                }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 bg-slate-50 border-slate-200 h-11 rounded-xl text-sm"
@@ -947,30 +1109,83 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
             </div>
           </div>
 
-          <div className="p-3 border-b border-slate-100 flex items-center gap-2">
-            <Button variant="outline" size="sm" className="flex-1 text-xs">
-              <Filter className="w-3 h-3 mr-1" />
-              {getText("Filter", "පෙරනය", "வடிகட்டி")}
-            </Button>
-            <Button variant="outline" size="sm" className="flex-1 text-xs">
-              <Calendar className="w-3 h-3 mr-1" />
-              {getText("Today", "අද", "இன்று")}
-            </Button>
+          <div className="p-3 border-b border-slate-100">
+            {/* View Mode Toggle */}
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={() => setSidebarViewMode("escalated")}
+                className={cn(
+                  "flex-1 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all",
+                  sidebarViewMode === "escalated"
+                    ? "bg-primary text-white shadow-lg shadow-primary/30"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-150"
+                )}
+              >
+                <AlertTriangle className="w-3 h-3 inline mr-1" />
+                {getText("High Risk", "ඉහළ අවදානම", "சிக்கல்")}
+              </button>
+              <button
+                onClick={() => {
+                  setSidebarViewMode("today")
+                  loadTodayAppointments()
+                }}
+                className={cn(
+                  "flex-1 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all",
+                  sidebarViewMode === "today"
+                    ? "bg-primary text-white shadow-lg shadow-primary/30"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-150"
+                )}
+              >
+                <Calendar className="w-3 h-3 inline mr-1" />
+                {getText("Today", "අද", "இන්නද")}
+              </button>
+            </div>
+
+            {/* Doctor Filter for Today's Appointments */}
+            {sidebarViewMode === "today" && uniqueDoctorsInToday.length > 0 && (
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-2">
+                  {getText("Doctor", "වෛද්‍ය", "மருத்துவர்")}
+                </label>
+                <select
+                  value={selectedDoctorFilter || ""}
+                  onChange={(e) => setSelectedDoctorFilter(e.target.value || null)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm font-medium text-slate-700 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="">{getText("All Doctors", "සියලු වෛද්‍යවරුන්", "அனைத்து மருத்துவர்கள්")}</option>
+                  {uniqueDoctorsInToday.map((doctor) => (
+                    <option key={doctor.id} value={doctor.name}>
+                      {doctor.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-2">
-            {isLoadingCases && (
+            {sidebarViewMode === "escalated" && isLoadingCases && (
               <div className="p-6 text-center text-sm font-bold text-slate-500 uppercase tracking-widest">Loading escalated cases...</div>
             )}
-            {!isLoadingCases && casesError && (
+            {sidebarViewMode === "today" && isLoadingTodayAppointments && (
+              <div className="p-6 text-center text-sm font-bold text-slate-500 uppercase tracking-widest">Loading appointments...</div>
+            )}
+            {sidebarViewMode === "escalated" && !isLoadingCases && casesError && (
               <div className="p-6 text-center text-sm font-bold text-red-500">{casesError}</div>
             )}
-            {!isLoadingCases && !casesError && filteredPatients.length === 0 && (
+            {sidebarViewMode === "escalated" && !isLoadingCases && !casesError && filteredPatients.length === 0 && (
               <div className="p-6 text-center text-sm font-bold text-slate-500 uppercase tracking-widest">
                 {getText("No high-risk cases found", "ඉහළ අවදානම් අවස්ථා නොමැත", "அதிக ஆபத்து வழக்குகள் இல்லை")}
               </div>
             )}
-            {!isLoadingCases && !casesError && filteredPatients.map((patient) => (
+            {sidebarViewMode === "today" && !isLoadingTodayAppointments && filteredTodayAppointments.length === 0 && (
+              <div className="p-6 text-center text-sm font-bold text-slate-500 uppercase tracking-widest">
+                {getText("No appointments today", "අද දින ප්‍රකාශන නොමැත", "இன்று நியமனங்கள் இல்லை")}
+              </div>
+            )}
+
+            {/* Escalated Cases Display */}
+            {sidebarViewMode === "escalated" && !isLoadingCases && !casesError && filteredPatients.map((patient) => (
               <button
                 key={patient.id}
                 onClick={() => setSelectedPatient(patient)}
@@ -1019,14 +1234,102 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                 </p>
               </button>
             ))}
+
+            {/* Today's Appointments Display */}
+            {sidebarViewMode === "today" && !isLoadingTodayAppointments && filteredTodayAppointments.map((apt: any) => (
+              <button
+                key={apt.id}
+                onClick={() => {
+                  // Create a pseudo-patient object for display
+                  const pseudoPatient: EscalatedPatient = {
+                    id: apt.patient_id,
+                    screeningId: apt.id,
+                    name: apt.patient_name || "Unknown Patient",
+                    age: 0,
+                    gestationalWeek: null,
+                    escalatedFrom: "Appointment",
+                    escalatedTime: new Date(apt.appointment_date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                    riskScore: apt.patient_risk_score || 0,
+                    riskLevel: "high",
+                    primaryRisk: apt.patient_risk_level === "escalate" ? "High Risk" : "Routine Care",
+                    status: apt.status.toLowerCase() as "pending" | "completed",
+                    collectedAt: apt.appointment_date,
+                    vitals: {
+                      systolic: null,
+                      diastolic: null,
+                      heartRate: null,
+                      temperature: null,
+                      bloodSugar: null,
+                    },
+                  }
+                  setSelectedPatient(pseudoPatient)
+                }}
+                className={cn(
+                  "w-full p-4 rounded-xl mb-3 text-left transition-all relative overflow-hidden group",
+                  selectedPatient?.screeningId === apt.id
+                    ? "bg-white shadow-xl shadow-slate-200/50 border-2 border-primary"
+                    : "hover:bg-slate-50 border-2 border-transparent"
+                )}
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <p className="font-medium text-slate-800">{apt.patient_name}</p>
+                    <p className="text-xs text-slate-500">{apt.specialist_name}</p>
+                  </div>
+                  <Badge className={cn(
+                    "text-[10px] font-bold h-6",
+                    apt.patient_risk_level === "escalate"
+                      ? "bg-red-500/10 text-red-500 border-red-500/20"
+                      : "bg-green-500/10 text-green-500 border-green-500/20"
+                  )}>
+                    {apt.queue_number > 0 ? `Queue #${apt.queue_number}` : "Unassigned"}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-wider mb-2">
+                  <span className={cn(
+                    "px-2 py-1 rounded-md",
+                    apt.patient_risk_level === "escalate"
+                      ? "bg-red-500/10 text-red-500"
+                      : "bg-green-500/10 text-green-500"
+                  )}>
+                    {apt.patient_risk_level === "escalate" ? "🔴 High Risk" : "🟢 Routine"}
+                  </span>
+                  <span className={cn(
+                    "px-2 py-1 rounded-md",
+                    apt.status === "COMPLETED"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : apt.status === "CANCELLED"
+                        ? "bg-red-100 text-red-700"
+                        : "bg-slate-100 text-slate-600"
+                  )}>
+                    {apt.status}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  <Clock className="w-3 h-3 inline mr-1" />
+                  {new Date(apt.appointment_date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </button>
+            ))}
           </div>
 
           <div className="p-4 border-t border-slate-100 bg-slate-50">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-600">{getText("Pending Review:", "අපේක්ෂිත සමාලෝචන:", "நிலுவையில் உள்ள மதிப்பாய்வு:")}</span>
-              <span className="font-semibold text-[#F97316]">
-                {pendingReviewCount}
-              </span>
+              {sidebarViewMode === "escalated" ? (
+                <>
+                  <span className="text-slate-600">{getText("Pending Review:", "අපේක්ෂිත සමාලෝචන:", "நிலுவையில் உள்ள மதிப்பாய்வு:")}</span>
+                  <span className="font-semibold text-[#F97316]">
+                    {pendingReviewCount}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="text-slate-600">{getText("Today's Total:", "අද මුලු:", "இன்றைய மொத்தம்:")}</span>
+                  <span className="font-semibold text-primary">
+                    {filteredTodayAppointments.length} / {todayAppointments.length}
+                  </span>
+                </>
+              )}
             </div>
           </div>
         </aside>
@@ -1051,7 +1354,10 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                 {getText("History", "ඉතිහාසය", "வரலாறு")}
               </TabsTrigger>
               <TabsTrigger value="prescriptions" className="data-[state=active]:bg-primary data-[state=active]:text-white rounded-lg text-xs font-bold uppercase tracking-wider px-6">
-                {getText("Prescriptions", "ප්‍රිස්ක්‍රිප්ෂන්", "மருந்துச் சீட்டுகள்")}
+                {getText("Prescriptions", "ප්‍රිස්ක්‍රිප්ෂන්", "மருந்துச் சீட்டுகள්")}
+              </TabsTrigger>
+              <TabsTrigger value="schedule" className="data-[state=active]:bg-primary data-[state=active]:text-white rounded-lg text-xs font-bold uppercase tracking-wider px-6">
+                📅 {getText("My Schedule", "මගේ කාලසටහන", "என் அட்டவணை")}
               </TabsTrigger>
             </TabsList>
 
@@ -1121,8 +1427,8 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                           </span>
                         </div>
                         <p className="text-[8px] font-black uppercase tracking-widest text-slate-500">
-                          {activePatient?.riskLevel === "high" 
-                            ? getText("High Risk", "ඉහළ අවදානම", "அதிக ஆபத்து") 
+                          {activePatient?.riskLevel === "high"
+                            ? getText("High Risk", "ඉහළ අවදානම", "அதிக ஆபத்து")
                             : getText("Moderate Risk", "මධ්‍යම අවදානම", "மிதமான ஆபத்து")}
                         </p>
                       </div>
@@ -1514,9 +1820,9 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                             item.status === "risk-factor" && "bg-gold-100 text-gold-700"
                           )}>
                             {item.status === "abnormal" ? getText("Abnormal", "අසාමාන්‍ය", "அசாதாரணமானது") :
-                             item.status === "elevated" ? getText("Elevated", "ඉහළ", "உயர்ந்தது") :
-                             item.status === "normal" ? getText("Normal", "සාමාන්‍ය", "சாதாரணமானது") :
-                             getText("Risk Factor", "අවදානම් සාධකය", "ஆபத்து காரணி")}
+                              item.status === "elevated" ? getText("Elevated", "ඉහළ", "உயர்ந்தது") :
+                                item.status === "normal" ? getText("Normal", "සාමාන්‍ය", "சாதாரணமானது") :
+                                  getText("Risk Factor", "අවදානම් සාධකය", "ஆபத்து காரணி")}
                           </Badge>
                         </div>
                       </div>
@@ -1655,7 +1961,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                           <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: "bold", fill: "#94a3b8" }} />
                           <YAxis domain={[60, 160]} axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: "bold", fill: "#94a3b8" }} />
-                          <Tooltip 
+                          <Tooltip
                             contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)", padding: "12px", fontSize: "12px", fontWeight: "bold" }}
                           />
                           <Legend wrapperStyle={{ fontSize: "10px", fontWeight: "black", textTransform: "uppercase", letterSpacing: "0.1em", paddingTop: "20px" }} />
@@ -1912,6 +2218,113 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                 </Card>
               </div>
             </TabsContent>
+
+            <TabsContent value="schedule" className="space-y-6">
+              {/* Appointment Status Filter */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2 bg-white/50 rounded-xl px-4 py-2 border border-slate-100">
+                  <Filter className="w-4 h-4 text-slate-400" />
+                  <select
+                    value={appointmentStatusFilter}
+                    onChange={(e) => setAppointmentStatusFilter(e.target.value)}
+                    className="text-sm font-bold text-slate-700 bg-transparent border-none outline-none cursor-pointer"
+                  >
+                    <option value="">All Status</option>
+                    <option value="SCHEDULED">Scheduled</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="CONFIRMED">Confirmed</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="CANCELLED">Cancelled</option>
+                  </select>
+                </div>
+              </div>
+
+              {isLoadingDoctorSchedule ? (
+                <Card className="border-0 glass shadow-2xl shadow-slate-200/50 rounded-3xl">
+                  <CardContent className="p-8 flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="w-12 h-12 border-4 border-slate-200 border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
+                      <p className="text-sm font-bold text-slate-400">{getText("Loading appointments...", "පත්‍රිකා පූරණය වෙමින්...", "சந்திப்புகள் ஏற்றப்படுகிறது...")}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : doctorAppointments.length === 0 ? (
+                <Card className="border-0 glass shadow-2xl shadow-slate-200/50 rounded-3xl">
+                  <CardContent className="p-8 text-center">
+                    <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                    <p className="text-sm font-bold text-slate-400">{getText("No appointments scheduled", "නිර්ධారණ නොමැත", "எந்த சந்திப்புகளும் திட்டமிடப்படவில்லை")}</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  {doctorAppointments.map((apt: any) => (
+                    <Card key={apt.id} className="border-0 glass shadow-xl shadow-slate-200/50 overflow-hidden hover:shadow-2xl transition-all rounded-2xl border-l-4" style={{ borderLeftColor: apt.patient_risk_level === 'escalate' ? '#dc2626' : '#16a34a' }}>
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-3">
+                              <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">{apt.patient_name || "Patient"}</h3>
+                              {/* Patient Risk Badge */}
+                              <Badge className={cn(
+                                "text-xs font-black uppercase tracking-wider rounded-lg",
+                                apt.patient_risk_level === 'escalate' ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"
+                              )}>
+                                {apt.patient_risk_level === 'escalate' ? '🔴 High Risk' : '🟢 Routine'}
+                              </Badge>
+                              {apt.patient_risk_score && (
+                                <span className="text-xs font-bold text-slate-500">
+                                  Score: {(apt.patient_risk_score * 100).toFixed(0)}%
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600 font-bold mb-3">
+                              <div className="flex items-center gap-2">
+                                <Calendar className="w-4 h-4 text-primary" />
+                                {new Date(apt.appointment_date).toLocaleDateString()}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Clock className="w-4 h-4 text-primary" />
+                                {new Date(apt.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                              <div>{apt.appointment_type}</div>
+                            </div>
+                            {apt.notes && <p className="text-xs text-slate-600 mb-3">{apt.notes}</p>}
+                          </div>
+                          <div className="text-right space-y-3">
+                            <div>
+                              <p className="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">Queue #</p>
+                              <p className="text-sm font-black text-slate-900">{apt.queue_number || "-"}</p>
+                            </div>
+                            {/* Status Update Dropdown */}
+                            <div>
+                              <label className="text-xs font-black text-slate-400 uppercase tracking-wider mb-1 block">Status</label>
+                              <select
+                                value={apt.status}
+                                onChange={(e) => updateAppointmentStatus(apt.id, e.target.value)}
+                                className={cn(
+                                  "text-xs font-black uppercase tracking-wider rounded-lg px-2 py-1 border-0 cursor-pointer transition-all",
+                                  apt.status === "PENDING" ? "bg-amber-100 text-amber-700" :
+                                    apt.status === "CONFIRMED" ? "bg-blue-100 text-blue-700" :
+                                      apt.status === "SCHEDULED" ? "bg-emerald-100 text-emerald-700" :
+                                        apt.status === "COMPLETED" ? "bg-slate-100 text-slate-700" :
+                                          "bg-rose-100 text-rose-700"
+                                )}
+                              >
+                                <option value="PENDING">PENDING</option>
+                                <option value="CONFIRMED">CONFIRMED</option>
+                                <option value="SCHEDULED">SCHEDULED</option>
+                                <option value="COMPLETED">COMPLETED</option>
+                                <option value="CANCELLED">CANCELLED</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
           </Tabs>
         </main>
       </div>
@@ -1919,7 +2332,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
       {/* Bilingual GenAI Assistant Chat UI */}
       <div className="fixed bottom-8 right-8 z-[100]">
         {!showChat ? (
-          <Button 
+          <Button
             onClick={() => setShowChat(true)}
             className="w-16 h-16 rounded-3xl bg-slate-900 border-0 shadow-2xl shadow-slate-900/30 text-white hover:scale-110 active:scale-95 transition-all duration-300 group"
           >
@@ -1943,9 +2356,9 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                     </div>
                   </div>
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => setShowChat(false)}
                   className="w-10 h-10 rounded-xl hover:bg-slate-50"
                 >
@@ -1972,7 +2385,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
 
               <div className="flex gap-2">
                 <div className="flex-1 relative">
-                  <Input 
+                  <Input
                     placeholder={getText("Consult with AI...", "AI උපදෙස් පතන්න...", "AI ஆலோசகரை வினவவும்...")}
                     value={chatMessage}
                     onChange={(e) => setChatMessage(e.target.value)}

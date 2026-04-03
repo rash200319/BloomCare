@@ -4,7 +4,7 @@ Handles appointment scheduling, role-based access, creator tracking, and status 
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import HTTPException, status
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from backend.models.appointment import Appointment
 from backend.models.patient import Patient
-from backend.models.screening import Stage2Diagnostic
+from backend.models.screening import Stage1Screening, Stage2Diagnostic
 from backend.models.user import User, UserRole
 from backend.schemas.appointment import (
     AppointmentActionResponse,
@@ -160,7 +160,8 @@ class AppointmentService:
         if new_status == "CANCELLED":
             return
 
-        allowed_next = AppointmentService.STATUS_FLOW.get(current_status, set())
+        allowed_next = AppointmentService.STATUS_FLOW.get(
+            current_status, set())
         if new_status not in allowed_next:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -201,7 +202,8 @@ class AppointmentService:
                 )
 
         if specialist_name:
-            specialist_by_name = query.filter(User.full_name.ilike(f"%{specialist_name}%")).first()
+            specialist_by_name = query.filter(
+                User.full_name.ilike(f"%{specialist_name}%")).first()
             if specialist_by_name is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -248,20 +250,38 @@ class AppointmentService:
         creator: Optional[User] = None,
     ) -> AppointmentResponse:
         if patient is None:
-            patient = db.query(Patient).filter(Patient.id == appointment.patient_id).first()
+            patient = db.query(Patient).filter(
+                Patient.id == appointment.patient_id).first()
         if specialist is None and appointment.specialist_id:
-            specialist = db.query(User).filter(User.id == appointment.specialist_id).first()
+            specialist = db.query(User).filter(
+                User.id == appointment.specialist_id).first()
         if creator is None and appointment.created_by_id:
-            creator = db.query(User).filter(User.id == appointment.created_by_id).first()
+            creator = db.query(User).filter(
+                User.id == appointment.created_by_id).first()
+
+        # Get latest patient risk assessment from Stage1Screening
+        latest_screening = db.query(Stage1Screening).filter(
+            Stage1Screening.patient_id == appointment.patient_id
+        ).order_by(Stage1Screening.collected_at.desc()).first()
+
+        patient_risk_level = None
+        patient_risk_score = None
+        if latest_screening:
+            patient_risk_level = latest_screening.edge_risk_classification.value if latest_screening.edge_risk_classification else None
+            patient_risk_score = float(
+                latest_screening.edge_risk_score) if latest_screening.edge_risk_score else None
 
         return AppointmentResponse(
             id=appointment.id,
             patient_id=appointment.patient_id,
             patient_name=patient.full_name if patient else "Unknown",
-            specialist_id=str(appointment.specialist_id) if appointment.specialist_id else None,
+            specialist_id=str(
+                appointment.specialist_id) if appointment.specialist_id else None,
             specialist_name=specialist.full_name if specialist else None,
-            created_by_id=str(appointment.created_by_id) if appointment.created_by_id else None,
-            created_by_role=AppointmentService._normalize_role(appointment.created_by_role),
+            created_by_id=str(
+                appointment.created_by_id) if appointment.created_by_id else None,
+            created_by_role=AppointmentService._normalize_role(
+                appointment.created_by_role),
             appointment_type=appointment.appointment_type,
             appointment_date=appointment.appointment_date,
             duration_minutes=appointment.duration_minutes,
@@ -270,11 +290,14 @@ class AppointmentService:
             notes=appointment.notes,
             created_at=appointment.created_at,
             updated_at=appointment.updated_at,
+            patient_risk_level=patient_risk_level,
+            patient_risk_score=patient_risk_score,
         )
 
     @staticmethod
     def _can_view_patient_appointments(db: Session, current_user: object, patient: Patient) -> bool:
-        role = AppointmentService._normalize_role(getattr(current_user, "role", ""))
+        role = AppointmentService._normalize_role(
+            getattr(current_user, "role", ""))
 
         if role == UserRole.ADMIN.value:
             return True
@@ -304,9 +327,23 @@ class AppointmentService:
 
     @staticmethod
     def _can_manage_appointment(current_user: object, appointment: Appointment) -> bool:
-        role = AppointmentService._normalize_role(getattr(current_user, "role", ""))
+        role = AppointmentService._normalize_role(
+            getattr(current_user, "role", ""))
         if role == UserRole.ADMIN.value:
             return True
+        return str(getattr(current_user, "id", "")) == str(getattr(appointment, "created_by_id", ""))
+
+    @staticmethod
+    def _can_update_appointment_status(current_user: object, appointment: Appointment) -> bool:
+        """Allow specialists assigned to appointment or admins to update status"""
+        role = AppointmentService._normalize_role(
+            getattr(current_user, "role", ""))
+        if role == UserRole.ADMIN.value:
+            return True
+        # Allow the specialist assigned to this appointment to update status
+        if role in [UserRole.DOCTOR.value, UserRole.CLINICAL_SPECIALIST.value]:
+            return str(getattr(current_user, "id", "")) == str(getattr(appointment, "specialist_id", ""))
+        # Allow the creator to update status
         return str(getattr(current_user, "id", "")) == str(getattr(appointment, "created_by_id", ""))
 
     @staticmethod
@@ -365,63 +402,87 @@ class AppointmentService:
         appointment_in: AppointmentCreate,
         current_user: object,
     ) -> AppointmentActionResponse:
-        role = AppointmentService._normalize_role(getattr(current_user, "role", ""))
+        role = AppointmentService._normalize_role(
+            getattr(current_user, "role", ""))
         if role == UserRole.PATIENT.value:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Patients cannot create appointments",
             )
 
-        patient = AppointmentService._resolve_patient(db, appointment_in.patient_id)
+        patient = AppointmentService._resolve_patient(
+            db, appointment_in.patient_id)
         specialist = AppointmentService._resolve_specialist(
             db,
             appointment_in.specialist_id,
             appointment_in.specialist_name,
         )
 
-        appointment_type = AppointmentService._normalize_type(appointment_in.appointment_type)
+        appointment_type = AppointmentService._normalize_type(
+            appointment_in.appointment_type)
         if appointment_type is None:
-            appointment_type = AppointmentService._default_appointment_type(role)
+            appointment_type = AppointmentService._default_appointment_type(
+                role)
 
         AppointmentService._validate_role_for_type(role, appointment_type)
 
-        now = datetime.utcnow().replace(tzinfo=appointment_in.appointment_date.tzinfo)
-        if appointment_in.appointment_date < now:
+        # Ensure appointment_date is timezone-aware (UTC) for comparison with database records
+        appointment_date = appointment_in.appointment_date
+        if appointment_date.tzinfo is None:
+            appointment_date = appointment_date.replace(tzinfo=timezone.utc)
+
+        now = datetime.now(timezone.utc)
+        if appointment_date < now:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Appointment date must be in the future",
             )
 
-        double_booking_check = db.execute(
-            text(
-                """
-                SELECT check_double_booking(:specialist_id, :appointment_date, :duration) AS is_booked
-                """
-            ),
-            {
-                "specialist_id": str(specialist.id),
-                "appointment_date": appointment_in.appointment_date,
-                "duration": appointment_in.duration_minutes,
-            },
-        ).scalar()
+        # Check for double booking by fetching appointments in a time window
+        new_appointment_end = appointment_date + \
+            timedelta(minutes=appointment_in.duration_minutes)
 
-        if double_booking_check:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="This time slot is already booked for the specialist",
+        existing_appointments = db.query(Appointment).filter(
+            and_(
+                Appointment.specialist_id == specialist.id,
+                Appointment.status != "CANCELLED",
             )
+        ).all()
 
-        queue_number = db.execute(
-            text(
-                """
-                SELECT get_next_queue_number(:specialist_id, :appointment_date) AS next_queue
-                """
-            ),
-            {
-                "specialist_id": str(specialist.id),
-                "appointment_date": appointment_in.appointment_date,
-            },
-        ).scalar()
+        # Check for overlaps in Python
+        for existing in existing_appointments:
+            # Ensure existing appointment date is timezone-aware (SQLite returns naive datetimes)
+            existing_apt_date = existing.appointment_date
+            if existing_apt_date.tzinfo is None:
+                existing_apt_date = existing_apt_date.replace(
+                    tzinfo=timezone.utc)
+
+            existing_end = existing_apt_date + \
+                timedelta(minutes=existing.duration_minutes)
+            # Check if new appointment overlaps with existing: new_start < existing_end AND new_end > existing_start
+            if appointment_date < existing_end and new_appointment_end > existing_apt_date:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This time slot is already booked for the specialist",
+                )
+
+        # Get next queue number for the day
+        # Create timezone-aware start and end of day
+        appointment_day = appointment_date.date()
+        day_start = datetime.combine(
+            appointment_day, datetime.min.time()).replace(tzinfo=timezone.utc)
+        day_end = datetime.combine(
+            appointment_day, datetime.max.time()).replace(tzinfo=timezone.utc)
+
+        queue_count = db.query(func.count(Appointment.id)).filter(
+            and_(
+                Appointment.specialist_id == specialist.id,
+                Appointment.appointment_date >= day_start,
+                Appointment.appointment_date < day_end,
+                Appointment.status != "CANCELLED",
+            )
+        ).scalar() or 0
+        queue_number = queue_count + 1
 
         appointment = Appointment(
             id=str(__import__("uuid").uuid4()),
@@ -430,7 +491,7 @@ class AppointmentService:
             created_by_id=getattr(current_user, "id", None),
             created_by_role=role,
             appointment_type=appointment_type,
-            appointment_date=appointment_in.appointment_date,
+            appointment_date=appointment_date,
             duration_minutes=appointment_in.duration_minutes,
             queue_number=queue_number,
             status="PENDING",
@@ -442,7 +503,136 @@ class AppointmentService:
         db.refresh(appointment)
 
         return AppointmentActionResponse(
-            appointment=AppointmentService._serialize_appointment(db, appointment, patient=patient, specialist=specialist),
+            appointment=AppointmentService._serialize_appointment(
+                db, appointment, patient=patient, specialist=specialist),
+            message="Appointment created successfully",
+        )
+
+    @staticmethod
+    def create_appointment_by_nic(
+        db: Session,
+        patient_nic: str,
+        patient_full_name: str,
+        specialist_name: str,
+        appointment_date: datetime,
+        appointment_type: str = "PRENATAL_CHECKUP",
+        notes: Optional[str] = None,
+        duration_minutes: int = 30,
+    ) -> AppointmentActionResponse:
+        """Create appointment using patient NIC instead of patient_id"""
+
+        # Resolve patient by national_id
+        patient = db.query(Patient).filter(
+            Patient.national_id == patient_nic).first()
+        if not patient:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Patient with NIC '{patient_nic}' not found",
+            )
+
+        # Verify patient full name matches
+        if patient.full_name.lower() != patient_full_name.lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Patient name mismatch. Expected '{patient.full_name}', got '{patient_full_name}'",
+            )
+
+        # Resolve specialist by full_name
+        specialist = db.query(User).filter(
+            User.full_name == specialist_name,
+            User.role.in_([UserRole.DOCTOR, UserRole.CLINICAL_SPECIALIST]),
+        ).first()
+        if not specialist:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Specialist '{specialist_name}' not found",
+            )
+
+        # Normalize appointment type
+        normalized_type = AppointmentService._normalize_type(appointment_type)
+        if normalized_type is None:
+            normalized_type = "PRENATAL_CHECKUP"
+
+        # Ensure appointment_date is timezone-aware (UTC) for comparison
+        apt_date = appointment_date
+        if apt_date.tzinfo is None:
+            apt_date = apt_date.replace(tzinfo=timezone.utc)
+
+        # Validate appointment date is in future
+        now = datetime.now(timezone.utc)
+        if apt_date < now:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Appointment date must be in the future",
+            )
+
+        # Check for double booking using SQLite-compatible query
+        appointment_date_str = apt_date.isoformat()
+        appointment_end = apt_date + timedelta(minutes=duration_minutes)
+        appointment_end_str = appointment_end.isoformat()
+
+        overlapping = db.execute(
+            text(
+                """
+                SELECT COUNT(*) FROM appointments
+                WHERE specialist_id = :specialist_id
+                AND status NOT IN ('CANCELLED', 'COMPLETED')
+                AND appointment_date < :end_time
+                AND datetime(appointment_date, '+' || duration_minutes || ' minutes') > :start_time
+                """
+            ),
+            {
+                "specialist_id": str(specialist.id),
+                "start_time": appointment_date_str,
+                "end_time": appointment_end_str,
+            },
+        ).scalar()
+
+        if overlapping and overlapping > 0:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This time slot is already booked for the specialist",
+            )
+
+        # Get queue number for the day (SQLite-compatible)
+        queue_number = db.execute(
+            text(
+                """
+                SELECT COALESCE(MAX(queue_number), 0) + 1
+                FROM appointments
+                WHERE specialist_id = :specialist_id
+                AND DATE(appointment_date) = DATE(:appointment_date)
+                AND status NOT IN ('CANCELLED', 'COMPLETED')
+                """
+            ),
+            {
+                "specialist_id": str(specialist.id),
+                "appointment_date": appointment_date_str,
+            },
+        ).scalar() or 1
+
+        # Create appointment
+        appointment = Appointment(
+            id=str(__import__("uuid").uuid4()),
+            patient_id=patient.id,
+            specialist_id=specialist.id,
+            created_by_id=None,  # System-created
+            created_by_role="SYSTEM",
+            appointment_type=normalized_type,
+            appointment_date=apt_date,
+            duration_minutes=duration_minutes,
+            queue_number=queue_number,
+            status="PENDING",
+            notes=notes,
+        )
+
+        db.add(appointment)
+        db.commit()
+        db.refresh(appointment)
+
+        return AppointmentActionResponse(
+            appointment=AppointmentService._serialize_appointment(
+                db, appointment, patient=patient, specialist=specialist),
             message="Appointment created successfully",
         )
 
@@ -453,7 +643,8 @@ class AppointmentService:
         appointment_in: AppointmentUpdate,
         current_user: object,
     ) -> AppointmentActionResponse:
-        appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        appointment = db.query(Appointment).filter(
+            Appointment.id == appointment_id).first()
         if not appointment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -467,29 +658,40 @@ class AppointmentService:
             )
 
         if appointment_in.status is not None:
-            requested_status = AppointmentService._normalize_status(appointment_in.status)
-            AppointmentService._ensure_allowed_status_transition(appointment.status, requested_status)
+            requested_status = AppointmentService._normalize_status(
+                appointment_in.status)
+            AppointmentService._ensure_allowed_status_transition(
+                appointment.status, requested_status)
             appointment.status = requested_status
 
         if appointment_in.appointment_date is not None:
-            if appointment_in.appointment_date < datetime.utcnow().replace(tzinfo=appointment_in.appointment_date.tzinfo):
+            # Ensure appointment_date is timezone-aware (UTC) for comparison
+            update_appointment_date = appointment_in.appointment_date
+            if update_appointment_date.tzinfo is None:
+                update_appointment_date = update_appointment_date.replace(
+                    tzinfo=timezone.utc)
+
+            now = datetime.now(timezone.utc)
+            if update_appointment_date < now:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Appointment date must be in the future",
                 )
-            appointment.appointment_date = appointment_in.appointment_date
+            appointment.appointment_date = update_appointment_date
 
         if appointment_in.duration_minutes is not None:
             appointment.duration_minutes = appointment_in.duration_minutes
 
         if appointment_in.appointment_type is not None:
-            normalized_type = AppointmentService._normalize_type(appointment_in.appointment_type)
+            normalized_type = AppointmentService._normalize_type(
+                appointment_in.appointment_type)
             if normalized_type not in AppointmentService.ALL_APPOINTMENT_TYPES:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Unsupported appointment type '{appointment_in.appointment_type}'",
                 )
-            AppointmentService._validate_role_for_type(getattr(current_user, "role", ""), normalized_type)
+            AppointmentService._validate_role_for_type(
+                getattr(current_user, "role", ""), normalized_type)
             appointment.appointment_type = normalized_type
 
         if appointment_in.notes is not None:
@@ -499,7 +701,8 @@ class AppointmentService:
         db.refresh(appointment)
 
         return AppointmentActionResponse(
-            appointment=AppointmentService._serialize_appointment(db, appointment),
+            appointment=AppointmentService._serialize_appointment(
+                db, appointment),
             message="Appointment updated successfully",
         )
 
@@ -509,7 +712,8 @@ class AppointmentService:
         appointment_id: str,
         current_user: object,
     ) -> AppointmentActionResponse:
-        appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        appointment = db.query(Appointment).filter(
+            Appointment.id == appointment_id).first()
         if not appointment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -527,7 +731,8 @@ class AppointmentService:
         db.refresh(appointment)
 
         return AppointmentActionResponse(
-            appointment=AppointmentService._serialize_appointment(db, appointment),
+            appointment=AppointmentService._serialize_appointment(
+                db, appointment),
             message="Appointment cancelled successfully",
         )
 
@@ -550,7 +755,8 @@ class AppointmentService:
         )
 
         # Legacy booking always maps to a standard prenatal appointment.
-        appointment = AppointmentService.create_appointment(db, payload, current_user=_LegacySystemUser())
+        appointment = AppointmentService.create_appointment(
+            db, payload, current_user=_LegacySystemUser())
         return appointment.appointment
 
     @staticmethod
@@ -583,7 +789,8 @@ class AppointmentService:
         if date:
             try:
                 filter_date = datetime.strptime(date, "%Y-%m-%d").date()
-                query = query.filter(func.date(Appointment.appointment_date) == filter_date)
+                query = query.filter(
+                    func.date(Appointment.appointment_date) == filter_date)
             except ValueError as exc:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -629,7 +836,7 @@ class AppointmentService:
             )
 
         availability_list = []
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for day_offset in range(days_ahead):
             current_date = now.date() + timedelta(days=day_offset)
@@ -642,6 +849,7 @@ class AppointmentService:
                 hour=AppointmentService.WORKING_START_HOUR,
                 minute=0,
                 second=0,
+                tzinfo=timezone.utc,
             )
             end_time = current_time.replace(
                 hour=AppointmentService.WORKING_END_HOUR,
@@ -652,25 +860,35 @@ class AppointmentService:
             appointments_on_date = db.query(Appointment).filter(
                 and_(
                     Appointment.specialist_id == specialist.id,
-                    Appointment.appointment_date >= datetime.combine(current_date, datetime.min.time()),
-                    Appointment.appointment_date < datetime.combine(current_date, datetime.max.time()),
+                    Appointment.appointment_date >= datetime.combine(
+                        current_date, datetime.min.time()).replace(tzinfo=timezone.utc),
+                    Appointment.appointment_date < datetime.combine(
+                        current_date, datetime.max.time()).replace(tzinfo=timezone.utc),
                     Appointment.status != "CANCELLED",
                 )
             ).all()
 
             while current_time < end_time:
-                slot_end = current_time + timedelta(minutes=AppointmentService.SLOT_DURATION_MINUTES)
+                slot_end = current_time + \
+                    timedelta(minutes=AppointmentService.SLOT_DURATION_MINUTES)
 
                 booked = None
                 for appointment in appointments_on_date:
-                    appt_end = appointment.appointment_date + timedelta(minutes=appointment.duration_minutes)
-                    if appointment.appointment_date <= current_time and appt_end > current_time:
+                    # Ensure appointment date is timezone-aware (SQLite returns naive datetimes)
+                    appt_date = appointment.appointment_date
+                    if appt_date.tzinfo is None:
+                        appt_date = appt_date.replace(tzinfo=timezone.utc)
+
+                    appt_end = appt_date + \
+                        timedelta(minutes=appointment.duration_minutes)
+                    if appt_date <= current_time and appt_end > current_time:
                         booked = appointment
                         break
 
                 patient_name = None
                 if booked:
-                    patient = db.query(Patient).filter(Patient.id == booked.patient_id).first()
+                    patient = db.query(Patient).filter(
+                        Patient.id == booked.patient_id).first()
                     patient_name = patient.full_name if patient else "Unknown"
 
                 slots.append(
@@ -691,7 +909,8 @@ class AppointmentService:
                     specialization=specialist.specialization or "General",
                     date=current_date.strftime("%Y-%m-%d"),
                     available_slots=slots,
-                    total_available=sum(1 for slot in slots if slot.is_available),
+                    total_available=sum(
+                        1 for slot in slots if slot.is_available),
                 )
             )
 
@@ -712,12 +931,15 @@ class AppointmentService:
                 detail="Not authorized to view this patient's appointments",
             )
 
-        query = db.query(Appointment).filter(Appointment.patient_id == patient.id)
+        query = db.query(Appointment).filter(
+            Appointment.patient_id == patient.id)
 
         if status:
-            query = query.filter(Appointment.status == AppointmentService._normalize_status(status))
+            query = query.filter(Appointment.status ==
+                                 AppointmentService._normalize_status(status))
 
-        appointments = query.order_by(Appointment.appointment_date.desc()).all()
+        appointments = query.order_by(
+            Appointment.appointment_date.desc()).all()
 
         return [
             AppointmentService._serialize_appointment(db, apt, patient=patient)
@@ -730,14 +952,16 @@ class AppointmentService:
         appointment_id: str,
         current_user: Optional[object] = None,
     ) -> AppointmentResponse:
-        appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        appointment = db.query(Appointment).filter(
+            Appointment.id == appointment_id).first()
         if not appointment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Appointment '{appointment_id}' not found",
             )
 
-        patient = AppointmentService._resolve_patient(db, appointment.patient_id)
+        patient = AppointmentService._resolve_patient(
+            db, appointment.patient_id)
 
         if current_user is not None and not AppointmentService._can_view_patient_appointments(db, current_user, patient):
             if not AppointmentService._can_manage_appointment(current_user, appointment):

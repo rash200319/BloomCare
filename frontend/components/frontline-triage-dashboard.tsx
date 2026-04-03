@@ -2,19 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react"
 import {
-  Search,Plus,User as UserIcon,Globe,ChevronDown,Heart,Thermometer,Activity,Scale,AlertTriangle,CheckCircle,
-  ArrowRight,Phone,Baby,Settings,LogOut,ChevronLeft,Calendar,Clock,LayoutDashboard,ClipboardList,History,
-  ShieldCheck,Stethoscope,Loader2,Microscope,Droplets,Dna,Users,Filter,ArrowUpDown,ExternalLink,Eye,ChevronRight,
-  MoreVertical,MapPin,Printer,} from "lucide-react"
+  Search, Plus, User as UserIcon, Globe, ChevronDown, Heart, Thermometer, Activity, Scale, AlertTriangle, CheckCircle,
+  ArrowRight, Phone, Baby, Settings, LogOut, ChevronLeft, Calendar, Clock, LayoutDashboard, ClipboardList, History,
+  ShieldCheck, Stethoscope, Loader2, Microscope, Droplets, Dna, Users, Filter, ArrowUpDown, ExternalLink, Eye, ChevronRight,
+  MoreVertical, MapPin, Printer,
+} from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {Select,SelectContent,SelectItem,SelectTrigger,SelectValue,} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, } from "@/components/ui/select"
 import {
-  Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription,DialogFooter,} from "@/components/ui/dialog"
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import AppointmentScheduling from "./appointment-scheduling"
 
@@ -264,7 +266,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
   const [registrationError, setRegistrationError] = useState<string | null>(null)
   const [registrationMessage, setRegistrationMessage] = useState<string | null>(null)
   const [isRegisteringPatient, setIsRegisteringPatient] = useState(false)
-  const [activeTab, setActiveTab] = useState<"triage" | "registry" | "history">("triage")
+  const [activeTab, setActiveTab] = useState<"triage" | "registry" | "history" | "appointments">("triage")
   const [historyFilter, setHistoryFilter] = useState("all")
   const [selectedReport, setSelectedReport] = useState<HistoryEntry | null>(null)
 
@@ -513,8 +515,8 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
         }
         const validationMessage = Array.isArray(detail?.detail)
           ? detail.detail
-              .map((item) => `${item?.loc ? item.loc.join(".") : "payload"}: ${item?.msg || "validation error"}`)
-              .join("; ")
+            .map((item) => `${item?.loc ? item.loc.join(".") : "payload"}: ${item?.msg || "validation error"}`)
+            .join("; ")
           : detail?.detail
         throw new Error(validationMessage || "Unable to register patient")
       }
@@ -597,7 +599,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
       (vitals.exercise <= 1 ? 0.03 : vitals.exercise >= 4 ? -0.01 : 0) +
       (vitals.mental_health >= 7 ? 0.05 : vitals.mental_health <= 3 ? -0.01 : 0)
     const riskScore = Math.min(1, Math.max(0, rawRisk + lifestyleAdjustment))
-    
+
     // Multi-tier Risk Logic
     let risk_level: "low" | "moderate" | "high" = "low"
     if (riskScore >= 0.7 || vitals.systolic >= 140 || vitals.diastolic >= 90 || vitals.heart_rate > 100) {
@@ -615,20 +617,20 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
 
     const mapAlert = map >= 95 ? "MAP high" : map >= 70 ? "MAP normal" : "MAP low"
 
-    const recommendations = risk_level === "high" 
+    const recommendations = risk_level === "high"
       ? [
-          "Urgent: Repeat BP within 15 minutes",
-          "Recheck heart rate and evaluate tachycardia symptoms",
-          "Immediate clinical review by the doctor on duty",
-          "Capture advanced biomarkers for differential diagnosis",
-        ]
+        "Urgent: Repeat BP within 15 minutes",
+        "Recheck heart rate and evaluate tachycardia symptoms",
+        "Immediate clinical review by the doctor on duty",
+        "Capture advanced biomarkers for differential diagnosis",
+      ]
       : risk_level === "moderate"
-      ? [
+        ? [
           "Monitor BP every 4 hours",
           "Prepare for Stage 2 Diagnostic entry",
           "Schedule doctor review within 48 hours",
         ]
-      : [
+        : [
           "Continue routine maternal monitoring",
           "Schedule next screening in 1-2 weeks",
           "Maintain healthy lifestyle as per guideline",
@@ -776,8 +778,8 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
     const triggerRows =
       triggers.length > 0
         ? triggers
-            .map(
-              (trigger) => `
+          .map(
+            (trigger) => `
                 <tr>
                   <td>${trigger.metric}</td>
                   <td>${trigger.value}</td>
@@ -786,8 +788,8 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                   <td>${trigger.reason}</td>
                 </tr>
               `
-            )
-            .join("")
+          )
+          .join("")
         : `
           <tr>
             <td colspan="5">No single critical trigger identified; referral based on combined model risk pattern.</td>
@@ -1061,7 +1063,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
         bp_status: (offlineResult.bp_status || "Normal").trim() || "Normal",
         observation: (offlineResult.observation || "Offline model estimate").trim() || "Offline model estimate",
       }
-      
+
       const syncResponse = await apiRequest("/submit-screening", {
         method: "POST",
         body: JSON.stringify(payload),
@@ -1074,12 +1076,12 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
 
         const validationMessage = Array.isArray(detail?.detail)
           ? detail.detail
-              .map((item) => {
-                const fieldPath = item?.loc ? item.loc.join(".") : "payload"
-                const msg = item?.msg || "validation error"
-                return `${fieldPath}: ${msg}`
-              })
-              .join("; ")
+            .map((item) => {
+              const fieldPath = item?.loc ? item.loc.join(".") : "payload"
+              const msg = item?.msg || "validation error"
+              return `${fieldPath}: ${msg}`
+            })
+            .join("; ")
           : detail?.detail
 
         throw new Error(validationMessage || "Unable to save stage 1 screening")
@@ -1122,14 +1124,14 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
     <div className="min-h-screen bg-slate-50/50 flex flex-col font-sans selection:bg-primary/20 relative overflow-x-hidden">
       {/* Background Decorative Elements */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        <img 
-          src="/images/mother-baby-shadow.png" 
-          alt="" 
+        <img
+          src="/images/mother-baby-shadow.png"
+          alt=""
           className="w-full h-full object-cover opacity-5 scale-110"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-slate-50/20 via-slate-50/40 to-slate-50/10" />
       </div>
-      
+
       <div className="fixed top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
       <div className="fixed bottom-0 left-0 w-[500px] h-[500px] bg-accent/5 rounded-full blur-[120px] pointer-events-none" />
 
@@ -1147,13 +1149,13 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
               </p>
             </div>
           </div>
-          
+
           <div className="h-8 w-px bg-slate-100 hidden sm:block" />
-          
+
           <div className="hidden lg:flex items-center gap-1 bg-slate-100/50 p-1 rounded-xl border border-slate-100">
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               className={cn(
                 "h-8 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all",
                 activeTab === "triage" ? "bg-white shadow-sm text-primary" : "text-slate-400 hover:text-slate-600"
@@ -1163,9 +1165,9 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
               <LayoutDashboard className="w-3.5 h-3.5 mr-2" />
               {getText("Triage", "පෙරීම", "ட்ரைஜ்")}
             </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               className={cn(
                 "h-8 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all",
                 activeTab === "registry" ? "bg-white shadow-sm text-primary" : "text-slate-400 hover:text-slate-600"
@@ -1175,9 +1177,9 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
               <ClipboardList className="w-3.5 h-3.5 mr-2" />
               {getText("Registry", "ලියාපදිංචිය", "பதிவுப்புத்தகம்")}
             </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               className={cn(
                 "h-8 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all",
                 activeTab === "history" ? "bg-white shadow-sm text-primary" : "text-slate-400 hover:text-slate-600"
@@ -1187,6 +1189,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
               <History className="w-3.5 h-3.5 mr-2" />
               {getText("History", "ඉතිහාසය", "வரலாறு")}
             </Button>
+
           </div>
         </div>
 
@@ -1218,8 +1221,8 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                     }}
                     className={cn(
                       "w-full px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest transition-colors",
-                      selectedLanguage === lang.code 
-                        ? "bg-primary text-white" 
+                      selectedLanguage === lang.code
+                        ? "bg-primary text-white"
                         : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                     )}
                   >
@@ -1256,7 +1259,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                   <Settings className="w-4 h-4 text-slate-400" />
                   Profile Settings
                 </button>
-                <button 
+                <button
                   onClick={onLogout}
                   className="w-full px-5 py-3 text-left text-[10px] font-black uppercase tracking-widest text-primary hover:bg-rose-50 flex items-center gap-3"
                 >
@@ -1374,8 +1377,8 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                     <div
                       className={cn(
                         "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                        patient.status === "assessed" 
-                          ? "bg-emerald-50 text-emerald-500" 
+                        patient.status === "assessed"
+                          ? "bg-emerald-50 text-emerald-500"
                           : "bg-slate-50 text-slate-400"
                       )}
                     >
@@ -1407,8 +1410,8 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{getText("Assessed Today", "අද ඇගයූ", "இன்று மதிப்பிடப்பட்டது")}</p>
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-32 bg-slate-100 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-emerald-500 transition-all duration-1000" 
+                    <div
+                      className="h-full bg-emerald-500 transition-all duration-1000"
                       style={{ width: `${patients.length > 0 ? (assessedTodayCount / patients.length) * 100 : 0}%` }}
                     />
                   </div>
@@ -1458,7 +1461,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                       <div className="flex items-center gap-3">
                         <div className="relative group min-w-0 md:min-w-[300px] flex-1">
                           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-primary transition-colors" />
-                          <Input 
+                          <Input
                             placeholder={getText("Search patients...", "රෝගීන් සොයන්න...", "நோயாளிகளைத் தேடுங்கள்...")}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -1518,8 +1521,8 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                                 <div className={cn(
                                   "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest w-fit border",
                                   p.risk === "Low" ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
-                                  p.risk === "Moderate" ? "bg-amber-50 text-amber-600 border-amber-100" :
-                                  "bg-rose-50 text-rose-600 border-rose-100"
+                                    p.risk === "Moderate" ? "bg-amber-50 text-amber-600 border-amber-100" :
+                                      "bg-rose-50 text-rose-600 border-rose-100"
                                 )}>
                                   {getText(p.risk, p.risk === "Low" ? "අඩු" : p.risk === "Moderate" ? "මධ්‍යම" : "ඉහළ", p.risk === "Low" ? "குறைந்த" : p.risk === "Moderate" ? "மிதமானது" : "அதிக")}
                                 </div>
@@ -1574,14 +1577,14 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                           <div className={cn(
                             "md:w-3 px-1",
                             entry.risk === "Low" ? "bg-emerald-500" :
-                            entry.risk === "Moderate" ? "bg-amber-500" : "bg-rose-500"
+                              entry.risk === "Moderate" ? "bg-amber-500" : "bg-rose-500"
                           )} />
                           <div className="flex-1 p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
                             <div className="flex items-center gap-5">
                               <div className={cn(
                                 "w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:rotate-6",
                                 entry.risk === "Low" ? "bg-emerald-50 text-emerald-500 shadow-emerald-200/50" :
-                                entry.risk === "Moderate" ? "bg-amber-50 text-amber-500 shadow-amber-200/50" : "bg-rose-50 text-rose-500 shadow-rose-200/50"
+                                  entry.risk === "Moderate" ? "bg-amber-50 text-amber-500 shadow-amber-200/50" : "bg-rose-50 text-rose-500 shadow-rose-200/50"
                               )}>
                                 {entry.risk === "High" ? <AlertTriangle className="w-7 h-7" /> : <Activity className="w-7 h-7" />}
                               </div>
@@ -1620,13 +1623,13 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                               <div className={cn(
                                 "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md",
                                 entry.risk === "Low" ? "bg-emerald-500 text-white shadow-emerald-200/50" :
-                                entry.risk === "Moderate" ? "bg-amber-500 text-white shadow-amber-200/50" : "bg-rose-500 text-white shadow-rose-200/50"
+                                  entry.risk === "Moderate" ? "bg-amber-500 text-white shadow-amber-200/50" : "bg-rose-500 text-white shadow-rose-200/50"
                               )}>
                                 {getText(entry.risk + " Risk", entry.risk === "Low" ? "අඩු අවදානම" : entry.risk === "Moderate" ? "මධ්‍යම අවදානම" : "ඉහළ අවදානම", entry.risk === "Low" ? "குறைந்த ஆபத்து" : entry.risk === "Moderate" ? "மிதமான ஆபத்து" : "அதிக ஆபத்து")}
                               </div>
-                              <Button 
+                              <Button
                                 onClick={() => setSelectedReport(entry)}
-                                variant="ghost" 
+                                variant="ghost"
                                 className="h-8 pr-1 text-[9px] font-black uppercase tracking-[0.2em] text-primary hover:bg-primary/5 rounded-lg group/btn"
                               >
                                 {getText("View Full Report", "සම්පූර්ණ වාර්තාව බලන්න", "முழு அறிக்கையைப் பார்க்கவும்")}
@@ -1733,7 +1736,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                                 setNewPatientForm((prev) => ({ ...prev, age: "" }))
                                 return
                               }
-                              setNewPatientForm((prev) => ({ ...prev, age: String(Math.min(120, Math.max(0, parsed)))}))
+                              setNewPatientForm((prev) => ({ ...prev, age: String(Math.min(120, Math.max(0, parsed))) }))
                             }}
                             placeholder="0-120"
                             className="h-11 bg-white border-slate-200 rounded-xl text-xs font-bold"
@@ -1869,683 +1872,672 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                         <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
                           {getText("Blood Pressure (mmHg)", "රුධිර පීඩනය (mmHg)", "இரத்த அழுத்தம் (mmHg)")}
                         </Label>
-                    <div className="flex items-center gap-4">
-                      <div className="flex-1 relative group">
-                        <Heart className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-rose-300 group-focus-within:text-primary transition-colors" />
+                        <div className="flex items-center gap-4">
+                          <div className="flex-1 relative group">
+                            <Heart className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-rose-300 group-focus-within:text-primary transition-colors" />
+                            <Input
+                              type="number"
+                              placeholder="Sys"
+                              value={formData.systolic}
+                              onChange={(e) => setFormData({ ...formData, systolic: e.target.value })}
+                              className="h-12 pl-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
+                            />
+                          </div>
+                          <span className="text-slate-200 font-black">/</span>
+                          <div className="flex-1 relative group">
+                            <Heart className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-rose-200 group-focus-within:text-primary transition-colors" />
+                            <Input
+                              type="number"
+                              placeholder="Dia"
+                              value={formData.diastolic}
+                              onChange={(e) => setFormData({ ...formData, diastolic: e.target.value })}
+                              className="h-12 pl-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* BMI */}
+                      <div className="space-y-3">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                          {getText("BMI Index", "BMI දර්ශකය", "பிஎம்ஐ குறியீடு")}
+                        </Label>
+                        <div className="relative group">
+                          <Scale className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-300 group-focus-within:text-primary transition-colors" />
+                          <Input
+                            type="number"
+                            step="0.1"
+                            value={formData.bmi}
+                            onChange={(e) => setFormData({ ...formData, bmi: e.target.value })}
+                            className="h-12 pl-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Heart Rate */}
+                      <div className="space-y-3">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                          {getText("Heart Rate (bpm)", "හෘද ස්පන්දන වේගය (bpm)", "இதயத் துடிப்பு (bpm)")}
+                        </Label>
+                        <div className="relative group">
+                          <Activity className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-pink-300 group-focus-within:text-primary transition-colors" />
+                          <Input
+                            type="number"
+                            value={formData.heartRate}
+                            onChange={(e) => setFormData({ ...formData, heartRate: e.target.value })}
+                            className="h-12 pl-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Temperature */}
+                      <div className="space-y-3">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                          {getText("Temperature (°C)", "උෂ්ණත්වය (°C)", "வெப்பநிலை (°C)")}
+                        </Label>
+                        <div className="relative group">
+                          <Thermometer className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-orange-300 group-focus-within:text-primary transition-colors" />
+                          <Input
+                            type="number"
+                            step="0.1"
+                            value={formData.temperature}
+                            onChange={(e) => setFormData({ ...formData, temperature: e.target.value })}
+                            className="h-12 pl-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Blood Sugar */}
+                      <div className="space-y-3">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                          {getText("Blood Sugar (mg/dL)", "රුධිර සීනි (mg/dL)", "இரத்த சர்க்கரை (mg/dL)")}
+                        </Label>
                         <Input
                           type="number"
-                          placeholder="Sys"
-                          value={formData.systolic}
-                          onChange={(e) => setFormData({ ...formData, systolic: e.target.value })}
-                          className="h-12 pl-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
+                          value={formData.bs}
+                          onChange={(e) => setFormData({ ...formData, bs: e.target.value })}
+                          className="h-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
                         />
                       </div>
-                      <span className="text-slate-200 font-black">/</span>
-                      <div className="flex-1 relative group">
-                        <Heart className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-rose-200 group-focus-within:text-primary transition-colors" />
+
+                      {/* Hemoglobin */}
+                      <div className="space-y-3">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                          {getText("Hemoglobin (g/dL)", "හිමොග්ලොබින් (g/dL)", "ஹீமோகுளோபின் (g/dL)")}
+                        </Label>
                         <Input
                           type="number"
-                          placeholder="Dia"
-                          value={formData.diastolic}
-                          onChange={(e) => setFormData({ ...formData, diastolic: e.target.value })}
-                          className="h-12 pl-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
+                          step="0.1"
+                          value={formData.hemoglobin}
+                          onChange={(e) => setFormData({ ...formData, hemoglobin: e.target.value })}
+                          className="h-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
                         />
                       </div>
+
+                      {/* Mental Health */}
+                      <div className="space-y-3">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                          {getText("Mental Health (1-10)", "මානසික සෞඛ්‍යය (1-10)", "மன ஆரோக்கியம் (1-10)")}
+                        </Label>
+                        <Input
+                          type="number"
+                          step="1"
+                          min="1"
+                          max="10"
+                          value={formData.mentalHealth}
+                          onChange={(e) => setFormData({ ...formData, mentalHealth: e.target.value })}
+                          className="h-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
+                        />
+                      </div>
+
+                      {/* Sleep Pattern */}
+                      <div className="space-y-3">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                          {getText("Sleep Pattern (hours)", "නින්දේ රටාව (පැය)", "தூக்க முறை (நேரம்)")}
+                        </Label>
+                        <Input
+                          type="number"
+                          step="0.5"
+                          value={formData.sleepPattern}
+                          onChange={(e) => setFormData({ ...formData, sleepPattern: e.target.value })}
+                          className="h-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
+                        />
+                      </div>
+
+                      {/* Exercise */}
+                      <div className="space-y-3">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                          {getText("Exercise Frequency (0-7)", "ව්‍යායාම සංඛ්‍යාතය (0-7)", "உடற்பயிற்சி அதிர்வெண் (0-7)")}
+                        </Label>
+                        <Input
+                          type="number"
+                          step="1"
+                          min="0"
+                          max="7"
+                          value={formData.exercise}
+                          onChange={(e) => setFormData({ ...formData, exercise: e.target.value })}
+                          className="h-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
+                        />
+                      </div>
+
+                      {/* Education */}
+                      <div className="space-y-3">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                          {getText("Education Level (1-5)", "අධ්‍යාපන මට්ටම (1-5)", "கல்வி நிலை (1-5)")}
+                        </Label>
+                        <Input
+                          type="number"
+                          step="1"
+                          min="1"
+                          max="5"
+                          value={formData.education}
+                          onChange={(e) => setFormData({ ...formData, education: e.target.value })}
+                          className="h-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
+                        />
+                      </div>
+
+                      {/* Binary Clinical History */}
+                      <div className="md:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-6">
+                        <div className="space-y-3">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{getText("PCOS (Yes/No)", "PCOS (ඔව්/නැත)", "பிசிஓஎஸ் (ஆம்/இல்லை)")}</Label>
+                          <select
+                            value={formData.pcos}
+                            onChange={(e) => setFormData({ ...formData, pcos: e.target.value })}
+                            className="h-12 w-full bg-slate-50 border border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700 px-4"
+                          >
+                            <option value="">{getText("Unknown", "නොදනී", "தெரியாது")}</option>
+                            <option value="0">{getText("No", "නැත", "இல்லை")}</option>
+                            <option value="1">{getText("Yes", "ඔව්", "ஆம்")}</option>
+                          </select>
+                        </div>
+                        <div className="space-y-3">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{getText("Previous Complications", "පෙර සංකූලතා", "முந்தைய சிக்கல்கள்")}</Label>
+                          <select
+                            value={formData.previousComplications}
+                            onChange={(e) => setFormData({ ...formData, previousComplications: e.target.value })}
+                            className="h-12 w-full bg-slate-50 border border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700 px-4"
+                          >
+                            <option value="">{getText("Unknown", "නොදනී", "தெரியாது")}</option>
+                            <option value="0">{getText("No", "නැත", "இல்லை")}</option>
+                            <option value="1">{getText("Yes", "ඔව්", "ஆம்")}</option>
+                          </select>
+                        </div>
+                        <div className="space-y-3">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{getText("Preexisting Diabetes", "පවතින දියවැඩියාව", "ஏற்கனவே இருக்கும் நீரிழிவு")}</Label>
+                          <select
+                            value={formData.preexistingDiabetes}
+                            onChange={(e) => setFormData({ ...formData, preexistingDiabetes: e.target.value })}
+                            className="h-12 w-full bg-slate-50 border border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700 px-4"
+                          >
+                            <option value="">{getText("Unknown", "නොදනී", "தெரியாது")}</option>
+                            <option value="0">{getText("No", "නැත", "இல்லை")}</option>
+                            <option value="1">{getText("Yes", "ඔව්", "ஆம்")}</option>
+                          </select>
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* BMI */}
-                  <div className="space-y-3">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
-                      {getText("BMI Index", "BMI දර්ශකය", "பிஎம்ஐ குறியீடு")}
-                    </Label>
-                    <div className="relative group">
-                      <Scale className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-300 group-focus-within:text-primary transition-colors" />
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={formData.bmi}
-                        onChange={(e) => setFormData({ ...formData, bmi: e.target.value })}
-                        className="h-12 pl-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
-                      />
+                    <div className="mt-8 rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">{getText("Mean Arterial Pressure (MAP)", "මධ්‍යම ධමනි පීඩනය (MAP)", "சராசரி தமனி அழுத்தம் (MAP)")}</p>
+                      <p className="text-sm font-black text-slate-800">
+                        {computedMap !== null ? `${computedMap.toFixed(1)} mmHg` : getText("Waiting for blood pressure values", "රුධිර පීඩන අගයන් සඳහා රැඳී සිටිනවා", "இரத்த அழுத்த மதிப்புகளுக்காக காத்திருக்கிறது")}
+                      </p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mt-2">
+                        MAP = (Systolic_BP + (2 x Diastolic)) / 3
+                      </p>
                     </div>
-                  </div>
 
-                  {/* Heart Rate */}
-                  <div className="space-y-3">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
-                      {getText("Heart Rate (bpm)", "හෘද ස්පන්දන වේගය (bpm)", "இதயத் துடிப்பு (bpm)")}
-                    </Label>
-                    <div className="relative group">
-                      <Activity className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-pink-300 group-focus-within:text-primary transition-colors" />
-                      <Input
-                        type="number"
-                        value={formData.heartRate}
-                        onChange={(e) => setFormData({ ...formData, heartRate: e.target.value })}
-                        className="h-12 pl-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Temperature */}
-                  <div className="space-y-3">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
-                      {getText("Temperature (°C)", "උෂ්ණත්වය (°C)", "வெப்பநிலை (°C)")}
-                    </Label>
-                    <div className="relative group">
-                      <Thermometer className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-orange-300 group-focus-within:text-primary transition-colors" />
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={formData.temperature}
-                        onChange={(e) => setFormData({ ...formData, temperature: e.target.value })}
-                        className="h-12 pl-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Blood Sugar */}
-                  <div className="space-y-3">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
-                      {getText("Blood Sugar (mg/dL)", "රුධිර සීනි (mg/dL)", "இரத்த சர்க்கரை (mg/dL)")}
-                    </Label>
-                    <Input
-                      type="number"
-                      value={formData.bs}
-                      onChange={(e) => setFormData({ ...formData, bs: e.target.value })}
-                      className="h-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
-                    />
-                  </div>
-
-                  {/* Hemoglobin */}
-                  <div className="space-y-3">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
-                      {getText("Hemoglobin (g/dL)", "හිමොග්ලොබින් (g/dL)", "ஹீமோகுளோபின் (g/dL)")}
-                    </Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={formData.hemoglobin}
-                      onChange={(e) => setFormData({ ...formData, hemoglobin: e.target.value })}
-                      className="h-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
-                    />
-                  </div>
-
-                  {/* Mental Health */}
-                  <div className="space-y-3">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
-                      {getText("Mental Health (1-10)", "මානසික සෞඛ්‍යය (1-10)", "மன ஆரோக்கியம் (1-10)")}
-                    </Label>
-                    <Input
-                      type="number"
-                      step="1"
-                      min="1"
-                      max="10"
-                      value={formData.mentalHealth}
-                      onChange={(e) => setFormData({ ...formData, mentalHealth: e.target.value })}
-                      className="h-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
-                    />
-                  </div>
-
-                  {/* Sleep Pattern */}
-                  <div className="space-y-3">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
-                      {getText("Sleep Pattern (hours)", "නින්දේ රටාව (පැය)", "தூக்க முறை (நேரம்)")}
-                    </Label>
-                    <Input
-                      type="number"
-                      step="0.5"
-                      value={formData.sleepPattern}
-                      onChange={(e) => setFormData({ ...formData, sleepPattern: e.target.value })}
-                      className="h-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
-                    />
-                  </div>
-
-                  {/* Exercise */}
-                  <div className="space-y-3">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
-                      {getText("Exercise Frequency (0-7)", "ව්‍යායාම සංඛ්‍යාතය (0-7)", "உடற்பயிற்சி அதிர்வெண் (0-7)")}
-                    </Label>
-                    <Input
-                      type="number"
-                      step="1"
-                      min="0"
-                      max="7"
-                      value={formData.exercise}
-                      onChange={(e) => setFormData({ ...formData, exercise: e.target.value })}
-                      className="h-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
-                    />
-                  </div>
-
-                  {/* Education */}
-                  <div className="space-y-3">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
-                      {getText("Education Level (1-5)", "අධ්‍යාපන මට්ටම (1-5)", "கல்வி நிலை (1-5)")}
-                    </Label>
-                    <Input
-                      type="number"
-                      step="1"
-                      min="1"
-                      max="5"
-                      value={formData.education}
-                      onChange={(e) => setFormData({ ...formData, education: e.target.value })}
-                      className="h-12 bg-slate-50 border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700"
-                    />
-                  </div>
-
-                  {/* Binary Clinical History */}
-                  <div className="md:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-6">
-                    <div className="space-y-3">
-                      <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{getText("PCOS (Yes/No)", "PCOS (ඔව්/නැත)", "பிசிஓஎஸ் (ஆம்/இல்லை)")}</Label>
-                      <select
-                        value={formData.pcos}
-                        onChange={(e) => setFormData({ ...formData, pcos: e.target.value })}
-                        className="h-12 w-full bg-slate-50 border border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700 px-4"
+                    <div className="mt-8 sm:mt-10 flex justify-end">
+                      <Button
+                        onClick={handleCalculateRisk}
+                        disabled={isLoading || !formData.patientName || !NIC_REGEX.test(screeningNationalId.trim())}
+                        className="bg-bloom-gradient hover:opacity-90 text-white font-black px-10 h-16 rounded-2xl shadow-xl shadow-primary/30 text-xs uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-[0.98] border-0 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <option value="">{getText("Unknown", "නොදනී", "தெரியாது")}</option>
-                        <option value="0">{getText("No", "නැත", "இல்லை")}</option>
-                        <option value="1">{getText("Yes", "ඔව්", "ஆம்")}</option>
-                      </select>
+                        {isLoading ? (
+                          <>
+                            <Loader2 className="w-5 h-5 mr-3 animate-spin" />
+                            {getText("Analyzing...", "විශ්ලේෂණය වෙමින්...", "பகுப்பாய்வு செய்கிறது...")}
+                          </>
+                        ) : (
+                          <>
+                            <ShieldCheck className="w-5 h-5 mr-3" />
+                            {getText("Analyze Risk Level", "අවදානම් මට්ටම විශ්ලේෂණය කරන්න", "ஆபத்து அளவை பகுப்பாய்வு செய்யவும்")}
+                          </>
+                        )}
+                      </Button>
                     </div>
-                    <div className="space-y-3">
-                      <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{getText("Previous Complications", "පෙර සංකූලතා", "முந்தைய சிக்கல்கள்")}</Label>
-                      <select
-                        value={formData.previousComplications}
-                        onChange={(e) => setFormData({ ...formData, previousComplications: e.target.value })}
-                        className="h-12 w-full bg-slate-50 border border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700 px-4"
-                      >
-                        <option value="">{getText("Unknown", "නොදනී", "தெரியாது")}</option>
-                        <option value="0">{getText("No", "නැත", "இல்லை")}</option>
-                        <option value="1">{getText("Yes", "ඔව්", "ஆம்")}</option>
-                      </select>
-                    </div>
-                    <div className="space-y-3">
-                      <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">{getText("Preexisting Diabetes", "පවතින දියවැඩියාව", "ஏற்கனவே இருக்கும் நீரிழிவு")}</Label>
-                      <select
-                        value={formData.preexistingDiabetes}
-                        onChange={(e) => setFormData({ ...formData, preexistingDiabetes: e.target.value })}
-                        className="h-12 w-full bg-slate-50 border border-slate-100 focus:bg-white rounded-xl font-bold text-slate-700 px-4"
-                      >
-                        <option value="">{getText("Unknown", "නොදනී", "தெரியாது")}</option>
-                        <option value="0">{getText("No", "නැත", "இல்லை")}</option>
-                        <option value="1">{getText("Yes", "ඔව්", "ஆம்")}</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
+                    {!NIC_REGEX.test(screeningNationalId.trim()) && (
+                      <p className="mt-3 text-right text-[10px] font-black uppercase tracking-widest text-amber-700">
+                        {getText(
+                          "Enter a valid registered national ID before screening.",
+                          "පරීක්ෂණයට පෙර වලංගු ලියාපදිංචි ජාතික හැඳුනුම්පතක් ඇතුළත් කරන්න.",
+                          "திரையிடலுக்கு முன் சரியான பதிவுசெய்யப்பட்ட தேசிய அடையாளத்தை உள்ளிடவும்."
+                        )}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
 
-                <div className="mt-8 rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">{getText("Mean Arterial Pressure (MAP)", "මධ්‍යම ධමනි පීඩනය (MAP)", "சராசரி தமனி அழுத்தம் (MAP)")}</p>
-                  <p className="text-sm font-black text-slate-800">
-                    {computedMap !== null ? `${computedMap.toFixed(1)} mmHg` : getText("Waiting for blood pressure values", "රුධිර පීඩන අගයන් සඳහා රැඳී සිටිනවා", "இரத்த அழுத்த மதிப்புகளுக்காக காத்திருக்கிறது")}
-                  </p>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mt-2">
-                    MAP = (Systolic_BP + (2 x Diastolic)) / 3
-                  </p>
-                </div>
+                {/* Bottom Half - Result Area */}
+                <Card className="border-0 glass shadow-2xl shadow-slate-200/50 overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100 rounded-[32px]">
+                  <div className="h-2 w-full bg-slate-100" />
+                  <CardHeader className="pb-6 pt-6 sm:pt-8 px-5 sm:px-10">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center">
+                          <Stethoscope className="w-6 h-6 text-slate-400" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-xl font-black text-slate-900 uppercase tracking-tight">
+                            {getText("Risk Assessment Summary", "අවදානම් තක්සේරු සාරාංශය", "ஆபத்து மதிப்பீட்டு சுருக்கம்")}
+                          </CardTitle>
+                          <CardDescription className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            {getText("AI-Based Predictive Analysis", "AI මත පදනම් වූ අනාවැකි විශ්ලේෂණය", "AI-அடிப்படையிலான முன்கணிப்பு பகுப்பாய்வு")}
+                          </CardDescription>
+                        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-5 sm:px-10 pb-6 sm:pb-10">
+                    {apiError ? (
+                      <div className="py-20 text-center bg-red-50/50 rounded-3xl border border-red-200">
+                        <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm">
+                          <AlertTriangle className="w-10 h-10 text-red-400" />
+                        </div>
+                        <p className="text-sm font-bold text-red-600 mb-2">{getText("Connection Error", "සම්බන්ධතා දෝෂයකි", "இணைப்பு பிழை")}</p>
+                        <p className="text-[10px] font-black text-red-400 uppercase tracking-[0.2em] max-w-xs mx-auto">
+                          {apiError}
+                        </p>
+                      </div>
+                    ) : !showResult ? (
+                      <div className="py-20 text-center bg-slate-50/50 rounded-3xl border border-dashed border-slate-200">
+                        <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm">
+                          <Activity className="w-10 h-10 text-slate-200 animate-pulse" />
+                        </div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] max-w-xs mx-auto">
+                          {getText("Complete patient vitals and click Analyze", "රෝගී දත්ත සම්පූර්ණ කර අවදානම විශ්ලේෂණය කරන්න", "நோயாளியின் முக்கியத் தரவை முடித்து, பகுப்பாய்வு செய்யவும்")}
+                        </p>
+                      </div>
+                    ) : riskData?.risk_level === "low" ? (
+                      /* State 1: Low Risk */
+                      <div className="bg-emerald-50/50 border border-emerald-100 rounded-3xl p-8 relative overflow-hidden group">
+                        <div className="absolute right-[-20px] top-[-20px] w-40 h-40 bg-emerald-500/5 rounded-full blur-3xl" />
+                        <div className="flex items-start gap-8 relative z-10">
+                          <div className="w-16 h-16 bg-emerald-500 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-xl shadow-emerald-200">
+                            <CheckCircle className="w-8 h-8 text-white" />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tight">
+                              {getText("Routine Care Recommended", "සාමාන්‍ය සත්කාර නිර්දේශිතයි", "வழக்கமான பராமரிப்பு பரிந்துரைக்கப்படுகிறது")}
+                            </h3>
+                            <p className="text-sm font-bold text-slate-500 leading-relaxed mb-8 max-w-2xl">
+                              {getText(
+                                "No significant risk factors identified. BloomCare AI confirms patient stability. Maintain standard maternal care protocols and monitor in next routine checkup.",
+                                "සැලකිය යුතු අවදානම් සාධක හඳුනාගෙන නොමැත. බ්ලූම්කෙයාර් AI රෝගියාගේ ස්ථාවරත්වය තහවුරු කරයි. සම්මත මාතෘ සත්කාර ප්‍රොටෝකෝල පවත්වා ගෙන යන්න.",
+                                "குறிப்பிடத்தக்க ஆபத்து காரணிகள் எதுவும் அடையாளம் காணப்படவில்லை. ப்ளூம்கேர் AI நோயாளியின் நிலைத்தன்மையை உறுதிப்படுத்துகிறது. நிலையான தாய்வழி பராமரிப்பு நெறிமுறைகளைப் பராமரிக்கவும்."
+                              )}
+                            </p>
 
-                <div className="mt-8 sm:mt-10 flex justify-end">
-                  <Button
-                    onClick={handleCalculateRisk}
-                    disabled={isLoading || !formData.patientName || !NIC_REGEX.test(screeningNationalId.trim())}
-                    className="bg-bloom-gradient hover:opacity-90 text-white font-black px-10 h-16 rounded-2xl shadow-xl shadow-primary/30 text-xs uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-[0.98] border-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="w-5 h-5 mr-3 animate-spin" />
-                        {getText("Analyzing...", "විශ්ලේෂණය වෙමින්...", "பகுப்பாய்வு செய்கிறது...")}
-                      </>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                              <div className="bg-white/60 p-5 rounded-2xl border border-white">
+                                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">{getText("Risk Score", "අවදානම් ලකුණු", "ஆபத்து மதிப்பெண்")}</p>
+                                <p className="text-2xl font-black text-slate-900">{riskData?.risk_score.toFixed(2)}</p>
+                              </div>
+                              <div className="bg-white/60 p-5 rounded-2xl border border-white">
+                                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">{getText("BP Status", "රුධිර පීඩන තත්ත්වය", "இரத்த அழுத்த நிலை")}</p>
+                                <p className="text-2xl font-black text-slate-900">{riskData?.bp_status}</p>
+                              </div>
+                              <div className="bg-white/60 p-5 rounded-2xl border border-white">
+                                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">{getText("Observation", "නිරීක්ෂණය", "பரிசோதனை")}</p>
+                                <p className="text-2xl font-black text-slate-900">{riskData?.observation}</p>
+                              </div>
+                            </div>
+
+                            {riskData?.recommendations && riskData.recommendations.length > 0 && (
+                              <div className="mt-6">
+                                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-3">{getText("Recommendations", "නිර්දේශ", "பரிந்துரைகள்")}</p>
+                                <div className="space-y-2">
+                                  {riskData.recommendations.map((rec, index) => (
+                                    <div key={index} className="flex items-center gap-3">
+                                      <div className="w-2 h-2 bg-emerald-400 rounded-full" />
+                                      <p className="text-sm font-bold text-slate-600">{rec}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     ) : (
-                      <>
-                        <ShieldCheck className="w-5 h-5 mr-3" />
-                        {getText("Analyze Risk Level", "අවදානම් මට්ටම විශ්ලේෂණය කරන්න", "ஆபத்து அளவை பகுப்பாய்வு செய்யவும்")}
-                      </>
-                    )}
-                  </Button>
-                </div>
-                {!NIC_REGEX.test(screeningNationalId.trim()) && (
-                  <p className="mt-3 text-right text-[10px] font-black uppercase tracking-widest text-amber-700">
-                    {getText(
-                      "Enter a valid registered national ID before screening.",
-                      "පරීක්ෂණයට පෙර වලංගු ලියාපදිංචි ජාතික හැඳුනුම්පතක් ඇතුළත් කරන්න.",
-                      "திரையிடலுக்கு முன் சரியான பதிவுசெய்யப்பட்ட தேசிய அடையாளத்தை உள்ளிடவும்."
-                    )}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+                      /* State 2: High or Moderate Risk */
+                      <div className={cn(
+                        "border-2 rounded-3xl p-8 relative overflow-hidden group transition-all duration-500",
+                        riskData?.risk_level === "high"
+                          ? "bg-red-50/50 border-red-500/20"
+                          : "bg-amber-50/50 border-amber-500/20"
+                      )}>
+                        <div className={cn(
+                          "absolute right-[-20px] top-[-20px] w-40 h-40 rounded-full blur-3xl",
+                          riskData?.risk_level === "high" ? "bg-red-500/10" : "bg-amber-500/10"
+                        )} />
+                        <div className="flex items-start gap-8 relative z-10">
+                          <div className={cn(
+                            "w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-xl transition-all",
+                            riskData?.risk_level === "high"
+                              ? "bg-red-500 shadow-red-200 animate-pulse"
+                              : "bg-amber-500 shadow-amber-200"
+                          )}>
+                            {riskData?.risk_level === "high"
+                              ? <AlertTriangle className="w-8 h-8 text-white" />
+                              : <Activity className="w-8 h-8 text-white" />
+                            }
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tight">
+                              {riskData?.risk_level === "high"
+                                ? getText("Critical Anomaly Detected", "විවේචනාත්මක අසාමාන්‍යතාවයක් හඳුනාගෙන ඇත", "சிக்கலான ஒழுங்கின்மை கண்டறியப்பட்டது")
+                                : getText("Moderate Risk Identified", "මධ්‍යම අවදානමක් හඳුනාගෙන ඇත", "மிதமான ஆபத்து அடையாளம் காணப்பட்டது")
+                              }
+                            </h3>
+                            <p className="text-sm font-bold text-slate-500 leading-relaxed mb-6 max-w-2xl">
+                              {riskData?.risk_level === "high"
+                                ? getText(
+                                  "Indicators exceed safety thresholds. High risk of gestational complications. Immediate clinical intervention and doctor review are required.",
+                                  "දර්ශක ආරක්ෂිත සීමාවන් ඉක්මවා යයි. ගර්භණී සංකූලතා ඇතිවීමේ වැඩි අවදානමක් ඇත. ක්ෂණික සායනික මැදිහත්වීමක් සහ විශේෂඥ සමාලෝචනයක් අවශ්‍ය වේ.",
+                                  "குறியீடுகள் பாதுகாப்பு வரம்புகளை மீறுகின்றன. கர்ப்பகால சிக்கல்களின் அதிக ஆபத்து உள்ளது. உடனடி மருத்துவ தலையீடு மற்றும் நிபுணர் மதிப்பாய்வு தேவை."
+                                )
+                                : getText(
+                                  "Moderate risk markers identified. Patient requires close monitoring and Stage 2 biomarker screening to prevent escalation.",
+                                  "මධ්‍යම මට්ටමේ අවදානම් සලකුණු හඳුනාගෙන ඇත. තත්ත්වය නරක අතට හැරීම වැළැක්වීම සඳහා රෝගියා සමීපව නිරීක්ෂණය කිරීම සහ අදියර 2 ජෛව සලකුණු පරීක්ෂාව අවශ්‍ය වේ.",
+                                  "மிதமான ஆபத்து குறிகாட்டிகள் அடையாளம் காணப்பட்டுள்ளன. நிலைமை மோசமடைவதைத் தடுக்க நோயாளிக்கு நெருக்கமான கண்காணிப்பு மற்றும் நிலை 2 உயிரியல் குறிப்பு திரையிடல் தேவை."
+                                )
+                              }
+                            </p>
 
-            {/* Bottom Half - Result Area */}
-            <Card className="border-0 glass shadow-2xl shadow-slate-200/50 overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100 rounded-[32px]">
-              <div className="h-2 w-full bg-slate-100" />
-              <CardHeader className="pb-6 pt-6 sm:pt-8 px-5 sm:px-10">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+                            <div className="flex flex-wrap gap-2 mb-8">
+                              {riskData?.recommendations?.slice(0, 3).map((rec, index) => (
+                                <span key={index} className="text-[9px] font-black uppercase tracking-widest px-3 py-1 bg-highlight text-white rounded-full">
+                                  {rec.length > 20 ? rec.substring(0, 20) + '...' : rec}
+                                </span>
+                              ))}
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-10">
+                              <div className="bg-white/80 p-5 rounded-2xl border border-red-500/10 shadow-sm">
+                                <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">{getText("Risk Score", "අවදානම් ලකුණු", "ஆபத்து மதிப்பெண்")}</p>
+                                <p className="text-2xl font-black text-slate-900">{riskData?.risk_score.toFixed(2)}</p>
+                              </div>
+                              <div className={cn(
+                                "bg-white/80 p-5 rounded-2xl border shadow-sm",
+                                riskData?.risk_level === "high" ? "border-red-500/10" : "border-amber-500/10"
+                              )}>
+                                <p className={cn(
+                                  "text-[10px] font-black uppercase tracking-widest mb-1",
+                                  riskData?.risk_level === "high" ? "text-red-500" : "text-amber-500"
+                                )}>{getText("Priority", "ප්‍රමුඛතාවය", "முன்னுரிமை")}</p>
+                                <p className={cn(
+                                  "text-2xl font-black capitalize",
+                                  riskData?.risk_level === "high" ? "text-red-500" : "text-amber-500"
+                                )}>
+                                  {riskData?.risk_level === "high"
+                                    ? getText("URGENT", "හදිසි", "அவசரம்")
+                                    : getText("CAUTION", "අවවාදයයි", "எச்சரிக்கை")}
+                                </p>
+                              </div>
+                              <div className={cn(
+                                "bg-white/80 p-5 rounded-2xl border shadow-sm",
+                                riskData?.risk_level === "high" ? "border-red-500/10" : "border-amber-500/10"
+                              )}>
+                                <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">{getText("Referral", "යොමු කිරීම", "பரிந்துரை")}</p>
+                                <p className="text-2xl font-black text-slate-900">{getText("Stage 2", "අදියර 2", "நிலை 2")}</p>
+                              </div>
+                            </div>
+
+                            {riskData?.recommendations && riskData.recommendations.length > 0 && (
+                              <div className="mb-8">
+                                <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-3">{getText("Clinical Recommendations", "සායනික නිර්දේශ", "மருத்துவ பரிந்துரைகள்")}</p>
+                                <div className="space-y-2">
+                                  {riskData.recommendations.map((rec, index) => (
+                                    <div key={index} className="flex items-center gap-3">
+                                      <div className="w-2 h-2 bg-red-400 rounded-full" />
+                                      <p className="text-sm font-bold text-slate-600">{rec}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {false && showStage2Form && (
+                              <div className="bg-white rounded-[28px] p-6 sm:p-8 border border-red-100 shadow-inner animate-in slide-in-from-top-4 duration-500">
+                                <div className="flex items-center gap-4 mb-8">
+                                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                                    <Dna className="w-5 h-5 text-primary" />
+                                  </div>
+                                  <div>
+                                    <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight">{getText("Advanced Diagnostics (Stage 2)", "උසස් රෝග විනිශ්චය (අදියර 2)", "மேம்பட்ட நோயறிதல் (நிலை 2)")}</h4>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{getText("Laboratory Biomarkers & Clinical Imaging", "රසායනාගාර ජෛව සලකුණු සහ සායනික නිරූපණය", "ஆய்வக உயிரியல் குறிப்பான்கள் மற்றும் மருத்துவ இமேஜிங்")}</p>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+                                  {/* Critical Biomarkers */}
+                                  <div className="space-y-6">
+                                    <p className="text-[10px] font-black text-primary uppercase tracking-widest border-l-2 border-primary pl-3">{getText("Critical Biomarkers", "තීරණාත්මක ජෛව සලකුණු", "முக்கிய உயிரியல் குறிப்பான்கள்")}</p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                      <div className="space-y-2">
+                                        <Label className="text-[9px] font-black uppercase text-slate-500">{getText("sFlt-1/PlGF Ratio", "sFlt-1/PlGF අනුපාතය", "sFlt-1/PlGF விகிதம்")}</Label>
+                                        <Input value={formData.sfltRatio} onChange={(e) => setFormData({ ...formData, sfltRatio: e.target.value })} className="h-11 bg-slate-50 rounded-xl" placeholder="e.g. 38.5" />
+                                      </div>
+                                      <div className="space-y-2">
+                                        <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Serum Creatinine", "සීරම් ක්‍රියැටිනින්", "சீரம் கிரியேட்டினின்")}</Label>
+                                        <Input value={formData.serumCreatinine} onChange={(e) => setFormData({ ...formData, serumCreatinine: e.target.value })} className="h-11 bg-slate-50 rounded-xl" placeholder="mg/dL" />
+                                      </div>
+                                      <div className="space-y-2">
+                                        <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Platelet Count", "ප්ලේට්ලට් ගණන", "இரத்த தட்டுக்களின் எண்ணிக்கை")}</Label>
+                                        <Input value={formData.plateletCount} onChange={(e) => setFormData({ ...formData, plateletCount: e.target.value })} className="h-11 bg-slate-50 rounded-xl" placeholder="x10³/µL" />
+                                      </div>
+                                      <div className="space-y-2">
+                                        <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Triglycerides", "ට්‍රයිග්ලිසරයිඩ්", "ட்ரைகிளிசரைடுகள்")}</Label>
+                                        <Input value={formData.serumTriglycerides} onChange={(e) => setFormData({ ...formData, serumTriglycerides: e.target.value })} className="h-11 bg-slate-50 rounded-xl" placeholder="mg/dL" />
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Endocrine & Blood */}
+                                  <div className="space-y-6">
+                                    <p className="text-[10px] font-black text-accent uppercase tracking-widest border-l-2 border-accent pl-3">{getText("Endocrine & Blood", "අන්තරාසර්ග සහ රුධිරය", "நாளமில்லா மற்றும் இரத்தம்")}</p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                      <div className="space-y-2">
+                                        <Label className="text-[9px] font-black uppercase text-slate-500">{getText("TSH Level", "TSH මට්ටම", "TSH அளவு")}</Label>
+                                        <Input value={formData.tsh} onChange={(e) => setFormData({ ...formData, tsh: e.target.value })} className="h-11 bg-slate-50 rounded-xl" placeholder="µIU/mL" />
+                                      </div>
+                                      <div className="space-y-2">
+                                        <Label className="text-[9px] font-black uppercase text-slate-500">{getText("PCV (%)", "PCV (%)", "PCV (%)")}</Label>
+                                        <Input value={formData.pcv} onChange={(e) => setFormData({ ...formData, pcv: e.target.value })} className="h-11 bg-slate-50 rounded-xl" placeholder="Percentage" />
+                                      </div>
+                                      <div className="space-y-2">
+                                        <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Soluble Endoglin", "ද්‍රාව්‍ය එන්ඩොග්ලින්", "கரையக்கூடிய எண்டோக்ளின்")}</Label>
+                                        <Input value={formData.seng} onChange={(e) => setFormData({ ...formData, seng: e.target.value })} className="h-11 bg-slate-50 rounded-xl" placeholder="ng/mL" />
+                                      </div>
+                                      <div className="space-y-2">
+                                        <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Cystatin C", "සිස්ටැටින් සී", "சிஸ்டாடின் சி")}</Label>
+                                        <Input value={formData.cystatinC} onChange={(e) => setFormData({ ...formData, cystatinC: e.target.value })} className="h-11 bg-slate-50 rounded-xl" placeholder="mg/L" />
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Clinical Imaging */}
+                                  <div className="space-y-6">
+                                    <p className="text-[10px] font-black text-[#F97316] uppercase tracking-widest border-l-2 border-[#F97316] pl-3">{getText("Clinical Imaging", "සායනික නිරූපණය", "மருத்துவ இமேஜிங்")}</p>
+                                    <div className="space-y-2">
+                                      <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Uterine Artery Doppler (sp_art)", "ගර්භාෂ ධමනි ඩොප්ලර්", "கருப்பை தமனி டாப்ளர்")}</Label>
+                                      <Input value={formData.doppler} onChange={(e) => setFormData({ ...formData, doppler: e.target.value })} className="h-11 bg-slate-50 rounded-xl" placeholder="Resistance Index / Waveform Details" />
+                                    </div>
+                                  </div>
+
+                                  {/* Expanded History */}
+                                  <div className="space-y-6">
+                                    <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest border-l-2 border-slate-900 pl-3">{getText("Expanded History", "පුළුල් කරන ලද ඉතිහාසය", "விரிவாக்கப்பட்ட வரலாறு")}</p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                      <div className="space-y-2">
+                                        <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Gestational Age", "ගැබ් කාලය", "கர்ப்ப காலம்")}</Label>
+                                        <Input value={formData.gestationalAge} onChange={(e) => setFormData({ ...formData, gestationalAge: e.target.value })} className="h-11 bg-slate-50 rounded-xl" placeholder="Weeks" />
+                                      </div>
+                                      <div className="space-y-2">
+                                        <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Family HTN", "පවුලේ අධික රුධිර පීඩනය", "குடும்ப உயர் இரத்த அழுத்தம்")}</Label>
+                                        <select value={formData.famHtn} onChange={(e) => setFormData({ ...formData, famHtn: e.target.value })} className="h-11 w-full bg-slate-50 rounded-xl px-3 text-xs font-bold text-slate-700">
+                                          <option value="">{getText("Select", "තෝරන්න", "தேர்ந்தெடு")}</option>
+                                          <option value="0">{getText("No", "නැත", "இல்லை")}</option>
+                                          <option value="1">{getText("Yes", "ඔව්", "ஆம்")}</option>
+                                        </select>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <Button className="w-full bg-bloom-gradient h-14 rounded-2xl shadow-xl shadow-primary/20 text-white font-black text-xs uppercase tracking-widest hover:opacity-90 transition-all border-0">
+                                  <ShieldCheck className="w-5 h-5 mr-3" />
+                                  {getText("Complete Stage 2 Escalation", "අදියර 2 යොමු කිරීම පූර්ණ කරන්න", "நிலை 2 பரிந்துரையை பூர்த்தி செய்க")}
+                                </Button>
+                              </div>
+                            )}
+
+                            <div className="flex flex-row gap-4 w-full">
+                              <Button
+                                onClick={() => {
+                                  if (!selectedPatient) {
+                                    setStatusMessage(getText("Select a patient first to create an appointment.", "නියමනය වෙන්කර ගැනීමට පළමුව රෝගියෙකු තෝරන්න.", "நியமனம் உருவாக்க முதலில் நோயாளியைத் தேர்ந்தெடுக్కவும්."))
+                                    return
+                                  }
+                                  setShowAppointmentBooking(true)
+                                }}
+                                className="flex-1 bg-bloom-gradient hover:opacity-90 text-white font-black h-16 rounded-2xl shadow-xl shadow-primary/30 text-xs uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-[0.98] border-0"
+                              >
+                                <Plus className="w-5 h-5 mr-3" />
+                                {getText("Create Appointment", "පත්‍ර ගිණුම සාදන්න", "சந்திப្பு உருവாக్కుఙ్ఆ")}
+                              </Button>
+                              <Button onClick={handlePrintReferralCard} className="flex-1 bg-bloom-gradient hover:opacity-90 text-white font-black h-16 rounded-2xl shadow-xl shadow-primary/30 text-xs uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-[0.98] border-0">
+                                <Printer className="w-5 h-5 mr-3" />
+                                {getText("Print Referral Card", "යොමු කාඩ්පත මුද්‍රණය කරන්න", "பரிந்துரை அட்டையை அச்சிடுக")}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </div>
+        </main>
+
+        {/* Full Report Dialog */}
+        <Dialog open={!!selectedReport} onOpenChange={(open) => !open && setSelectedReport(null)}>
+          <DialogContent className="max-w-2xl bg-white rounded-[32px] border-0 shadow-2xl p-0 overflow-hidden">
+            <div className="h-2 w-full bg-bloom-gradient" />
+            <div className="p-8 sm:p-10">
+              <DialogHeader className="mb-8">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center">
-                      <Stethoscope className="w-6 h-6 text-slate-400" />
+                    <div className={cn(
+                      "w-12 h-12 rounded-2xl flex items-center justify-center",
+                      selectedReport?.risk === "Low" ? "bg-emerald-50 text-emerald-500" :
+                        selectedReport?.risk === "Moderate" ? "bg-amber-50 text-amber-500" : "bg-rose-50 text-rose-500"
+                    )}>
+                      <ClipboardList className="w-6 h-6" />
                     </div>
                     <div>
-                      <CardTitle className="text-xl font-black text-slate-900 uppercase tracking-tight">
-                        {getText("Risk Assessment Summary", "අවදානම් තක්සේරු සාරාංශය", "ஆபத்து மதிப்பீட்டு சுருக்கம்")}
-                      </CardTitle>
-                      <CardDescription className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                        {getText("AI-Based Predictive Analysis", "AI මත පදනම් වූ අනාවැකි විශ්ලේෂණය", "AI-அடிப்படையிலான முன்கணிப்பு பகுப்பாய்வு")}
-                      </CardDescription>
+                      <DialogTitle className="text-xl font-black text-slate-900 uppercase tracking-tight">
+                        {getText("Clinical Screening Report", "සායනික පරීක්ෂණ වාර්තාව", "மருத்துவ பரிசோதனை அறிக்கை")}
+                      </DialogTitle>
+                      <DialogDescription className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        {getText("Patient Reference ID", "රෝගී යොමු අංකය", "நோயாளி குறிப்பு ஐடி")}: {selectedReport?.id}
+                      </DialogDescription>
                     </div>
                   </div>
+                  <div className={cn(
+                    "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border",
+                    selectedReport?.risk === "Low" ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                      selectedReport?.risk === "Moderate" ? "bg-amber-50 text-amber-600 border-amber-100" : "bg-rose-50 text-rose-600 border-rose-100"
+                  )}>
+                    {selectedReport?.risk && getText(selectedReport.risk + " Risk", selectedReport.risk === "Low" ? "අඩු අවදානම" : selectedReport.risk === "Moderate" ? "මධ්‍යම අවදානම" : "ඉහළ අවදානම", selectedReport.risk === "Low" ? "குறைந்த ஆபத்து" : selectedReport.risk === "Moderate" ? "மிதமான ஆபத்து" : "அதிக ஆபத்து")}
+                  </div>
                 </div>
-              </CardHeader>
-              <CardContent className="px-5 sm:px-10 pb-6 sm:pb-10">
-                {apiError ? (
-                  <div className="py-20 text-center bg-red-50/50 rounded-3xl border border-red-200">
-                    <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm">
-                      <AlertTriangle className="w-10 h-10 text-red-400" />
+              </DialogHeader>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+                <div className="space-y-6">
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{getText("Patient Details", "රෝගියාගේ විස්තර", "நோயாளி விவரங்கள்")}</p>
+                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                      <p className="text-base font-black text-slate-900 mb-1">{selectedReport?.patient}</p>
+                      <div className="flex items-center gap-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                        <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> {selectedReport?.date}</span>
+                        <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {selectedReport?.time}</span>
+                      </div>
                     </div>
-                    <p className="text-sm font-bold text-red-600 mb-2">{getText("Connection Error", "සම්බන්ධතා දෝෂයකි", "இணைப்பு பிழை")}</p>
-                    <p className="text-[10px] font-black text-red-400 uppercase tracking-[0.2em] max-w-xs mx-auto">
-                      {apiError}
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{getText("Clinical Summary", "සායනික සාරාංශය", "மருத்துவ சுருக்கம்")}</p>
+                    <p className="text-xs font-bold text-slate-600 leading-relaxed">
+                      {getText(
+                        "This automated report displays vitals captured during the triage screening session. All values reflect the patient state as recorded on " + selectedReport?.date + ".",
+                        "මෙම ස්වයංක්‍රීය වාර්තාව පරීක්ෂණ සැසිය තුළ ලබාගත් රෝගී දත්ත ප්‍රදර්ශනය කරයි. " + selectedReport?.date + " දින වාර්තා වූ රෝගියාගේ තත්ත්වය සියලු අගයන්ගෙන් පිළිඹිබු වේ.",
+                        "இந்த தானியங்கி அறிக்கை திரையிடலின் போது எடுக்கப்பட்ட முக்கிய தரவுகளைக் காட்டுகிறது. அனைத்து மதிப்புகளும் " + selectedReport?.date + " அன்று பதிவுசெய்யப்பட்ட நோயாளியின் நிலையை பிரதிபலிக்கின்றன."
+                      )}
                     </p>
                   </div>
-                ) : !showResult ? (
-                  <div className="py-20 text-center bg-slate-50/50 rounded-3xl border border-dashed border-slate-200">
-                    <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm">
-                      <Activity className="w-10 h-10 text-slate-200 animate-pulse" />
-                    </div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] max-w-xs mx-auto">
-                      {getText("Complete patient vitals and click Analyze", "රෝගී දත්ත සම්පූර්ණ කර අවදානම විශ්ලේෂණය කරන්න", "நோயாளியின் முக்கியத் தரவை முடித்து, பகுப்பாய்வு செய்யவும்")}
-                    </p>
-                  </div>
-                ) : riskData?.risk_level === "low" ? (
-                  /* State 1: Low Risk */
-                  <div className="bg-emerald-50/50 border border-emerald-100 rounded-3xl p-8 relative overflow-hidden group">
-                    <div className="absolute right-[-20px] top-[-20px] w-40 h-40 bg-emerald-500/5 rounded-full blur-3xl" />
-                    <div className="flex items-start gap-8 relative z-10">
-                      <div className="w-16 h-16 bg-emerald-500 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-xl shadow-emerald-200">
-                        <CheckCircle className="w-8 h-8 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tight">
-                          {getText("Routine Care Recommended", "සාමාන්‍ය සත්කාර නිර්දේශිතයි", "வழக்கமான பராமரிப்பு பரிந்துரைக்கப்படுகிறது")}
-                        </h3>
-                        <p className="text-sm font-bold text-slate-500 leading-relaxed mb-8 max-w-2xl">
-                          {getText(
-                            "No significant risk factors identified. BloomCare AI confirms patient stability. Maintain standard maternal care protocols and monitor in next routine checkup.",
-                            "සැලකිය යුතු අවදානම් සාධක හඳුනාගෙන නොමැත. බ්ලූම්කෙයාර් AI රෝගියාගේ ස්ථාවරත්වය තහවුරු කරයි. සම්මත මාතෘ සත්කාර ප්‍රොටෝකෝල පවත්වා ගෙන යන්න.",
-                            "குறிப்பிடத்தக்க ஆபத்து காரணிகள் எதுவும் அடையாளம் காணப்படவில்லை. ப்ளூம்கேர் AI நோயாளியின் நிலைத்தன்மையை உறுதிப்படுத்துகிறது. நிலையான தாய்வழி பராமரிப்பு நெறிமுறைகளைப் பராமரிக்கவும்."
-                          )}
-                        </p>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                          <div className="bg-white/60 p-5 rounded-2xl border border-white">
-                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">{getText("Risk Score", "අවදානම් ලකුණු", "ஆபத்து மதிப்பெண்")}</p>
-                            <p className="text-2xl font-black text-slate-900">{riskData?.risk_score.toFixed(2)}</p>
-                          </div>
-                          <div className="bg-white/60 p-5 rounded-2xl border border-white">
-                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">{getText("BP Status", "රුධිර පීඩන තත්ත්වය", "இரத்த அழுத்த நிலை")}</p>
-                            <p className="text-2xl font-black text-slate-900">{riskData?.bp_status}</p>
-                          </div>
-                          <div className="bg-white/60 p-5 rounded-2xl border border-white">
-                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">{getText("Observation", "නිරීක්ෂණය", "பரிசோதனை")}</p>
-                            <p className="text-2xl font-black text-slate-900">{riskData?.observation}</p>
-                          </div>
-                        </div>
-
-                        {riskData?.recommendations && riskData.recommendations.length > 0 && (
-                          <div className="mt-6">
-                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-3">{getText("Recommendations", "නිර්දේශ", "பரிந்துரைகள்")}</p>
-                            <div className="space-y-2">
-                              {riskData.recommendations.map((rec, index) => (
-                                <div key={index} className="flex items-center gap-3">
-                                  <div className="w-2 h-2 bg-emerald-400 rounded-full" />
-                                  <p className="text-sm font-bold text-slate-600">{rec}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  /* State 2: High or Moderate Risk */
-                  <div className={cn(
-                    "border-2 rounded-3xl p-8 relative overflow-hidden group transition-all duration-500",
-                    riskData?.risk_level === "high" 
-                      ? "bg-red-50/50 border-red-500/20" 
-                      : "bg-amber-50/50 border-amber-500/20"
-                  )}>
-                    <div className={cn(
-                      "absolute right-[-20px] top-[-20px] w-40 h-40 rounded-full blur-3xl",
-                      riskData?.risk_level === "high" ? "bg-red-500/10" : "bg-amber-500/10"
-                    )} />
-                    <div className="flex items-start gap-8 relative z-10">
-                      <div className={cn(
-                        "w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-xl transition-all",
-                        riskData?.risk_level === "high" 
-                          ? "bg-red-500 shadow-red-200 animate-pulse" 
-                          : "bg-amber-500 shadow-amber-200"
-                      )}>
-                        {riskData?.risk_level === "high" 
-                          ? <AlertTriangle className="w-8 h-8 text-white" />
-                          : <Activity className="w-8 h-8 text-white" />
-                        }
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tight">
-                          {riskData?.risk_level === "high" 
-                            ? getText("Critical Anomaly Detected", "විවේචනාත්මක අසාමාන්‍යතාවයක් හඳුනාගෙන ඇත", "சிக்கலான ஒழுங்கின்மை கண்டறியப்பட்டது")
-                            : getText("Moderate Risk Identified", "මධ්‍යම අවදානමක් හඳුනාගෙන ඇත", "மிதமான ஆபத்து அடையாளம் காணப்பட்டது")
-                          }
-                        </h3>
-                        <p className="text-sm font-bold text-slate-500 leading-relaxed mb-6 max-w-2xl">
-                          {riskData?.risk_level === "high"
-                            ? getText(
-                                "Indicators exceed safety thresholds. High risk of gestational complications. Immediate clinical intervention and doctor review are required.",
-                                "දර්ශක ආරක්ෂිත සීමාවන් ඉක්මවා යයි. ගර්භණී සංකූලතා ඇතිවීමේ වැඩි අවදානමක් ඇත. ක්ෂණික සායනික මැදිහත්වීමක් සහ විශේෂඥ සමාලෝචනයක් අවශ්‍ය වේ.",
-                                "குறியீடுகள் பாதுகாப்பு வரம்புகளை மீறுகின்றன. கர்ப்பகால சிக்கல்களின் அதிக ஆபத்து உள்ளது. உடனடி மருத்துவ தலையீடு மற்றும் நிபுணர் மதிப்பாய்வு தேவை."
-                              )
-                            : getText(
-                                "Moderate risk markers identified. Patient requires close monitoring and Stage 2 biomarker screening to prevent escalation.",
-                                "මධ්‍යම මට්ටමේ අවදානම් සලකුණු හඳුනාගෙන ඇත. තත්ත්වය නරක අතට හැරීම වැළැක්වීම සඳහා රෝගියා සමීපව නිරීක්ෂණය කිරීම සහ අදියර 2 ජෛව සලකුණු පරීක්ෂාව අවශ්‍ය වේ.",
-                                "மிதமான ஆபத்து குறிகாட்டிகள் அடையாளம் காணப்பட்டுள்ளன. நிலைமை மோசமடைவதைத் தடுக்க நோயாளிக்கு நெருக்கமான கண்காணிப்பு மற்றும் நிலை 2 உயிரியல் குறிப்பு திரையிடல் தேவை."
-                              )
-                          }
-                        </p>
-                        
-                        <div className="flex flex-wrap gap-2 mb-8">
-                          {riskData?.recommendations?.slice(0, 3).map((rec, index) => (
-                            <span key={index} className="text-[9px] font-black uppercase tracking-widest px-3 py-1 bg-highlight text-white rounded-full">
-                              {rec.length > 20 ? rec.substring(0, 20) + '...' : rec}
-                            </span>
-                          ))}
-                        </div>
-                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-10">
-                          <div className="bg-white/80 p-5 rounded-2xl border border-red-500/10 shadow-sm">
-                            <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">{getText("Risk Score", "අවදානම් ලකුණු", "ஆபத்து மதிப்பெண்")}</p>
-                            <p className="text-2xl font-black text-slate-900">{riskData?.risk_score.toFixed(2)}</p>
-                          </div>
-                          <div className={cn(
-                            "bg-white/80 p-5 rounded-2xl border shadow-sm",
-                            riskData?.risk_level === "high" ? "border-red-500/10" : "border-amber-500/10"
-                          )}>
-                            <p className={cn(
-                              "text-[10px] font-black uppercase tracking-widest mb-1",
-                              riskData?.risk_level === "high" ? "text-red-500" : "text-amber-500"
-                            )}>{getText("Priority", "ප්‍රමුඛතාවය", "முன்னுரிமை")}</p>
-                            <p className={cn(
-                              "text-2xl font-black capitalize",
-                              riskData?.risk_level === "high" ? "text-red-500" : "text-amber-500"
-                            )}>
-                              {riskData?.risk_level === "high" 
-                                ? getText("URGENT", "හදිසි", "அவசரம்") 
-                                : getText("CAUTION", "අවවාදයයි", "எச்சரிக்கை")}
-                            </p>
-                          </div>
-                          <div className={cn(
-                            "bg-white/80 p-5 rounded-2xl border shadow-sm",
-                            riskData?.risk_level === "high" ? "border-red-500/10" : "border-amber-500/10"
-                          )}>
-                            <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">{getText("Referral", "යොමු කිරීම", "பரிந்துரை")}</p>
-                            <p className="text-2xl font-black text-slate-900">{getText("Stage 2", "අදියර 2", "நிலை 2")}</p>
-                          </div>
-                        </div>
-
-                        {riskData?.recommendations && riskData.recommendations.length > 0 && (
-                          <div className="mb-8">
-                            <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-3">{getText("Clinical Recommendations", "සායනික නිර්දේශ", "மருத்துவ பரிந்துரைகள்")}</p>
-                            <div className="space-y-2">
-                              {riskData.recommendations.map((rec, index) => (
-                                <div key={index} className="flex items-center gap-3">
-                                  <div className="w-2 h-2 bg-red-400 rounded-full" />
-                                  <p className="text-sm font-bold text-slate-600">{rec}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="flex flex-col sm:flex-row gap-4 mb-10">
-                          <Button 
-                            onClick={() => {
-                              if (!selectedPatient) {
-                                setStatusMessage(getText("Select a patient first to book an appointment.", "නියමනය වෙන්කර ගැනීමට පළමුව රෝගියෙකු තෝරන්න.", "நியமனம் பதிவு செய்ய முதலில் நோயாளியைத் தேர்ந்தெடுக்கவும்."))
-                                return
-                              }
-                              setShowAppointmentBooking(true)
-                            }}
-                            variant="outline"
-                            className="border-slate-300 text-slate-600 flex-1 h-14 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50"
-                          >
-                            <Microscope className="w-4 h-4 mr-2" />
-                            {getText("Appointment Details", "නියමන විස්තර", "நியமன விவரங்கள்")}
-                          </Button>
-                          <Button variant="outline" className="flex-1 border-primary/20 font-black h-14 rounded-2xl text-primary text-xs uppercase tracking-widest hover:bg-primary/5">
-                            <Phone className="w-4 h-4 mr-2" />
-                            {getText("Urgent Appointment", "හදිසි නියමනය", "அவசர நியமனம்")}
-                          </Button>
-                        </div>
-
-                        {false && showStage2Form && (
-                          <div className="bg-white rounded-[28px] p-6 sm:p-8 border border-red-100 shadow-inner animate-in slide-in-from-top-4 duration-500">
-                             <div className="flex items-center gap-4 mb-8">
-                                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                                   <Dna className="w-5 h-5 text-primary" />
-                                </div>
-                                <div>
-                                   <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight">{getText("Advanced Diagnostics (Stage 2)", "උසස් රෝග විනිශ්චය (අදියර 2)", "மேம்பட்ட நோயறிதல் (நிலை 2)")}</h4>
-                                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{getText("Laboratory Biomarkers & Clinical Imaging", "රසායනාගාර ජෛව සලකුණු සහ සායනික නිරූපණය", "ஆய்வக உயிரியல் குறிப்பான்கள் மற்றும் மருத்துவ இமேஜிங்")}</p>
-                                </div>
-                             </div>
-
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
-                                {/* Critical Biomarkers */}
-                                <div className="space-y-6">
-                                   <p className="text-[10px] font-black text-primary uppercase tracking-widest border-l-2 border-primary pl-3">{getText("Critical Biomarkers", "තීරණාත්මක ජෛව සලකුණු", "முக்கிய உயிரியல் குறிப்பான்கள்")}</p>
-                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                      <div className="space-y-2">
-                                         <Label className="text-[9px] font-black uppercase text-slate-500">{getText("sFlt-1/PlGF Ratio", "sFlt-1/PlGF අනුපාතය", "sFlt-1/PlGF விகிதம்")}</Label>
-                                         <Input value={formData.sfltRatio} onChange={(e) => setFormData({...formData, sfltRatio: e.target.value})} className="h-11 bg-slate-50 rounded-xl" placeholder="e.g. 38.5" />
-                                      </div>
-                                      <div className="space-y-2">
-                                         <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Serum Creatinine", "සීරම් ක්‍රියැටිනින්", "சீரம் கிரியேட்டினின்")}</Label>
-                                         <Input value={formData.serumCreatinine} onChange={(e) => setFormData({...formData, serumCreatinine: e.target.value})} className="h-11 bg-slate-50 rounded-xl" placeholder="mg/dL" />
-                                      </div>
-                                      <div className="space-y-2">
-                                         <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Platelet Count", "ප්ලේට්ලට් ගණන", "இரத்த தட்டுக்களின் எண்ணிக்கை")}</Label>
-                                         <Input value={formData.plateletCount} onChange={(e) => setFormData({...formData, plateletCount: e.target.value})} className="h-11 bg-slate-50 rounded-xl" placeholder="x10³/µL" />
-                                      </div>
-                                      <div className="space-y-2">
-                                         <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Triglycerides", "ට්‍රයිග්ලිසරයිඩ්", "ட்ரைகிளிசரைடுகள்")}</Label>
-                                         <Input value={formData.serumTriglycerides} onChange={(e) => setFormData({...formData, serumTriglycerides: e.target.value})} className="h-11 bg-slate-50 rounded-xl" placeholder="mg/dL" />
-                                      </div>
-                                   </div>
-                                </div>
-
-                                {/* Endocrine & Blood */}
-                                <div className="space-y-6">
-                                   <p className="text-[10px] font-black text-accent uppercase tracking-widest border-l-2 border-accent pl-3">{getText("Endocrine & Blood", "අන්තරාසර්ග සහ රුධිරය", "நாளமில்லா மற்றும் இரத்தம்")}</p>
-                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                      <div className="space-y-2">
-                                         <Label className="text-[9px] font-black uppercase text-slate-500">{getText("TSH Level", "TSH මට්ටම", "TSH அளவு")}</Label>
-                                         <Input value={formData.tsh} onChange={(e) => setFormData({...formData, tsh: e.target.value})} className="h-11 bg-slate-50 rounded-xl" placeholder="µIU/mL" />
-                                      </div>
-                                      <div className="space-y-2">
-                                         <Label className="text-[9px] font-black uppercase text-slate-500">{getText("PCV (%)", "PCV (%)", "PCV (%)")}</Label>
-                                         <Input value={formData.pcv} onChange={(e) => setFormData({...formData, pcv: e.target.value})} className="h-11 bg-slate-50 rounded-xl" placeholder="Percentage" />
-                                      </div>
-                                      <div className="space-y-2">
-                                         <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Soluble Endoglin", "ද්‍රාව්‍ය එන්ඩොග්ලින්", "கரையக்கூடிய எண்டோக்ளின்")}</Label>
-                                         <Input value={formData.seng} onChange={(e) => setFormData({...formData, seng: e.target.value})} className="h-11 bg-slate-50 rounded-xl" placeholder="ng/mL" />
-                                      </div>
-                                      <div className="space-y-2">
-                                         <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Cystatin C", "සිස්ටැටින් සී", "சிஸ்டாடின் சி")}</Label>
-                                         <Input value={formData.cystatinC} onChange={(e) => setFormData({...formData, cystatinC: e.target.value})} className="h-11 bg-slate-50 rounded-xl" placeholder="mg/L" />
-                                      </div>
-                                   </div>
-                                </div>
-
-                                {/* Clinical Imaging */}
-                                <div className="space-y-6">
-                                   <p className="text-[10px] font-black text-[#F97316] uppercase tracking-widest border-l-2 border-[#F97316] pl-3">{getText("Clinical Imaging", "සායනික නිරූපණය", "மருத்துவ இமேஜிங்")}</p>
-                                   <div className="space-y-2">
-                                      <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Uterine Artery Doppler (sp_art)", "ගර්භාෂ ධමනි ඩොප්ලර්", "கருப்பை தமனி டாப்ளர்")}</Label>
-                                      <Input value={formData.doppler} onChange={(e) => setFormData({...formData, doppler: e.target.value})} className="h-11 bg-slate-50 rounded-xl" placeholder="Resistance Index / Waveform Details" />
-                                   </div>
-                                </div>
-
-                                {/* Expanded History */}
-                                <div className="space-y-6">
-                                   <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest border-l-2 border-slate-900 pl-3">{getText("Expanded History", "පුළුල් කරන ලද ඉතිහාසය", "விரிவாக்கப்பட்ட வரலாறு")}</p>
-                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                      <div className="space-y-2">
-                                         <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Gestational Age", "ගැබ් කාලය", "கர்ப்ப காலம்")}</Label>
-                                         <Input value={formData.gestationalAge} onChange={(e) => setFormData({...formData, gestationalAge: e.target.value})} className="h-11 bg-slate-50 rounded-xl" placeholder="Weeks" />
-                                      </div>
-                                      <div className="space-y-2">
-                                         <Label className="text-[9px] font-black uppercase text-slate-500">{getText("Family HTN", "පවුලේ අධික රුධිර පීඩනය", "குடும்ப உயர் இரத்த அழுத்தம்")}</Label>
-                                         <select value={formData.famHtn} onChange={(e) => setFormData({...formData, famHtn: e.target.value})} className="h-11 w-full bg-slate-50 rounded-xl px-3 text-xs font-bold text-slate-700">
-                                            <option value="">{getText("Select", "තෝරන්න", "தேர்ந்தெடு")}</option>
-                                            <option value="0">{getText("No", "නැත", "இல்லை")}</option>
-                                            <option value="1">{getText("Yes", "ඔව්", "ஆம்")}</option>
-                                         </select>
-                                      </div>
-                                   </div>
-                                </div>
-                             </div>
-
-                             <Button className="w-full bg-bloom-gradient h-14 rounded-2xl shadow-xl shadow-primary/20 text-white font-black text-xs uppercase tracking-widest hover:opacity-90 transition-all border-0">
-                                <ShieldCheck className="w-5 h-5 mr-3" />
-                                {getText("Complete Stage 2 Escalation", "අදියර 2 යොමු කිරීම පූර්ණ කරන්න", "நிலை 2 பரிந்துரையை பூர்த்தி செய்க")}
-                             </Button>
-                          </div>
-                        )}
-
-                        <div className="flex flex-col sm:flex-row gap-4">
-                          <Button className="flex-1 bg-bloom-gradient hover:opacity-90 text-white font-black h-16 rounded-2xl shadow-xl shadow-primary/30 text-xs uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-[0.98] border-0">
-                            <Phone className="w-4 h-4 mr-3" />
-                            {getText("Save Appointment Details", "නියමන විස්තර සුරකින්න", "நியமன விவரங்களைச் சேமிக்கவும்")}
-                          </Button>
-                          <Button variant="outline" onClick={handlePrintReferralCard} className="flex-1 border-primary/20 font-black h-16 rounded-2xl text-primary text-xs uppercase tracking-[0.2em] hover:bg-primary/5">
-                            {getText("Print Appointment Card", "නියමන කාඩ්පත මුද්‍රණය කරන්න", "நியமன அட்டையை அச்சிடுக")}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </>
-        )}
-      </div>
-    </main>
-    
-      {/* Full Report Dialog */}
-      <Dialog open={!!selectedReport} onOpenChange={(open) => !open && setSelectedReport(null)}>
-        <DialogContent className="max-w-2xl bg-white rounded-[32px] border-0 shadow-2xl p-0 overflow-hidden">
-          <div className="h-2 w-full bg-bloom-gradient" />
-          <div className="p-8 sm:p-10">
-            <DialogHeader className="mb-8">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className={cn(
-                    "w-12 h-12 rounded-2xl flex items-center justify-center",
-                    selectedReport?.risk === "Low" ? "bg-emerald-50 text-emerald-500" :
-                    selectedReport?.risk === "Moderate" ? "bg-amber-50 text-amber-500" : "bg-rose-50 text-rose-500"
-                  )}>
-                    <ClipboardList className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <DialogTitle className="text-xl font-black text-slate-900 uppercase tracking-tight">
-                      {getText("Clinical Screening Report", "සායනික පරීක්ෂණ වාර්තාව", "மருத்துவ பரிசோதனை அறிக்கை")}
-                    </DialogTitle>
-                    <DialogDescription className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                      {getText("Patient Reference ID", "රෝගී යොමු අංකය", "நோயாளி குறிப்பு ஐடி")}: {selectedReport?.id}
-                    </DialogDescription>
-                  </div>
-                </div>
-                <div className={cn(
-                  "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border",
-                  selectedReport?.risk === "Low" ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
-                  selectedReport?.risk === "Moderate" ? "bg-amber-50 text-amber-600 border-amber-100" : "bg-rose-50 text-rose-600 border-rose-100"
-                )}>
-                  {selectedReport?.risk && getText(selectedReport.risk + " Risk", selectedReport.risk === "Low" ? "අඩු අවදානම" : selectedReport.risk === "Moderate" ? "මධ්‍යම අවදානම" : "ඉහළ අවදානම", selectedReport.risk === "Low" ? "குறைந்த ஆபத்து" : selectedReport.risk === "Moderate" ? "மிதமான ஆபத்து" : "அதிக ஆபத்து")}
-                </div>
-              </div>
-            </DialogHeader>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
-              <div className="space-y-6">
-                <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{getText("Patient Details", "රෝගියාගේ විස්තර", "நோயாளி விவரங்கள்")}</p>
-                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                    <p className="text-base font-black text-slate-900 mb-1">{selectedReport?.patient}</p>
-                    <div className="flex items-center gap-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                      <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> {selectedReport?.date}</span>
-                      <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {selectedReport?.time}</span>
-                    </div>
-                  </div>
                 </div>
 
-                <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{getText("Clinical Summary", "සායනික සාරාංශය", "மருத்துவ சுருக்கம்")}</p>
-                  <p className="text-xs font-bold text-slate-600 leading-relaxed">
-                    {getText(
-                      "This automated report displays vitals captured during the triage screening session. All values reflect the patient state as recorded on " + selectedReport?.date + ".",
-                      "මෙම ස්වයංක්‍රීය වාර්තාව පරීක්ෂණ සැසිය තුළ ලබාගත් රෝගී දත්ත ප්‍රදර්ශනය කරයි. " + selectedReport?.date + " දින වාර්තා වූ රෝගියාගේ තත්ත්වය සියලු අගයන්ගෙන් පිළිඹිබු වේ.",
-                      "இந்த தானியங்கி அறிக்கை திரையிடலின் போது எடுக்கப்பட்ட முக்கிய தரவுகளைக் காட்டுகிறது. அனைத்து மதிப்புகளும் " + selectedReport?.date + " அன்று பதிவுசெய்யப்பட்ட நோயாளியின் நிலையை பிரதிபலிக்கின்றன."
-                    )}
-                  </p>
+                <div className="bg-slate-900 rounded-[28px] p-6 text-white relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-primary/20 rounded-full blur-3xl" />
+                  <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-6 relative z-10">{getText("Vitals Dashboard", "ජීව දත්ත උපකරණ පුවරුව", "முக்கியத் தரவு டாஷ்போர்டு")}</p>
+                  <div className="grid grid-cols-2 gap-y-6 relative z-10">
+                    <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{getText("BP", "රුධිර පීඩනය", "இரத்த அழுத்தம்")}</p>
+                      <p className="text-base font-black">{selectedReport?.vitals.bp} <span className="text-[10px] text-slate-500">mmHg</span></p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{getText("Pulse", "නාඩි", "நாடித்துடிப்பு")}</p>
+                      <p className="text-base font-black">{selectedReport?.vitals.hr} <span className="text-[10px] text-slate-500">bpm</span></p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{getText("Temp", "උෂ්ණත්වය", "வெப்பநிலை")}</p>
+                      <p className="text-base font-black">{selectedReport?.vitals.temp} <span className="text-[10px] text-slate-500">°C</span></p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{getText("Sugar", "සීනි", "சர்க்கரை")}</p>
+                      <p className="text-base font-black">{selectedReport?.vitals.sugar} <span className="text-[10px] text-slate-500">mg/dL</span></p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="bg-slate-900 rounded-[28px] p-6 text-white relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-primary/20 rounded-full blur-3xl" />
-                <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-6 relative z-10">{getText("Vitals Dashboard", "ජීව දත්ත උපකරණ පුවරුව", "முக்கியத் தரவு டாஷ்போர்டு")}</p>
-                <div className="grid grid-cols-2 gap-y-6 relative z-10">
-                  <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{getText("BP", "රුධිර පීඩනය", "இரத்த அழுத்தம்")}</p>
-                    <p className="text-base font-black">{selectedReport?.vitals.bp} <span className="text-[10px] text-slate-500">mmHg</span></p>
-                  </div>
-                  <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{getText("Pulse", "නාඩි", "நாடித்துடிப்பு")}</p>
-                    <p className="text-base font-black">{selectedReport?.vitals.hr} <span className="text-[10px] text-slate-500">bpm</span></p>
-                  </div>
-                  <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{getText("Temp", "උෂ්ණත්වය", "வெப்பநிலை")}</p>
-                    <p className="text-base font-black">{selectedReport?.vitals.temp} <span className="text-[10px] text-slate-500">°C</span></p>
-                  </div>
-                  <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{getText("Sugar", "සීනි", "சர்க்கரை")}</p>
-                    <p className="text-base font-black">{selectedReport?.vitals.sugar} <span className="text-[10px] text-slate-500">mg/dL</span></p>
-                  </div>
-                </div>
-              </div>
+              <DialogFooter className="flex flex-col sm:flex-row gap-4">
+                <Button
+                  variant="outline"
+                  className="flex-1 border-slate-200 h-14 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50"
+                  onClick={() => window.print()}
+                >
+                  <Printer className="w-4 h-4 mr-3" />
+                  {getText("Print Report", "වාර්තාව මුද්‍රණය කරන්න", "அறிக்கையை அச்சிடுக")}
+                </Button>
+                <Button
+                  className="flex-1 bg-bloom-gradient h-14 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white border-0 shadow-lg shadow-primary/25"
+                  onClick={() => setSelectedReport(null)}
+                >
+                  {getText("Close", "වසා දමන්න", "மூடு")}
+                </Button>
+              </DialogFooter>
             </div>
-
-            <DialogFooter className="flex flex-col sm:flex-row gap-4">
-              <Button 
-                variant="outline" 
-                className="flex-1 border-slate-200 h-14 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50"
-                onClick={() => window.print()}
-              >
-                <Printer className="w-4 h-4 mr-3" />
-                {getText("Print Report", "වාර්තාව මුද්‍රණය කරන්න", "அறிக்கையை அச்சிடுக")}
-              </Button>
-              <Button 
-                className="flex-1 bg-bloom-gradient h-14 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white border-0 shadow-lg shadow-primary/25"
-                onClick={() => setSelectedReport(null)}
-              >
-                {getText("Close", "වසා දමන්න", "மூடு")}
-              </Button>
-            </DialogFooter>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
       </div>
       {/* Mobile Bottom Navigation */}
       <div className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-[400px] bg-white/80 backdrop-blur-2xl border border-slate-100 p-2 rounded-[24px] shadow-2xl z-[60] flex items-center justify-around translate-y-0 animate-in slide-in-from-bottom-8 duration-700">
-        <button 
+        <button
           onClick={() => setActiveTab("triage")}
           className={cn(
             "flex flex-col items-center gap-1.5 px-6 py-3 rounded-2xl transition-all",
@@ -2555,7 +2547,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
           <LayoutDashboard className="w-5 h-5" />
           <span className="text-[8px] font-black uppercase tracking-widest">{getText("Triage", "පෙරීම", "ட்ரைஜ்")}</span>
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab("registry")}
           className={cn(
             "flex flex-col items-center gap-1.5 px-6 py-3 rounded-2xl transition-all",
@@ -2565,7 +2557,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
           <ClipboardList className="w-5 h-5" />
           <span className="text-[8px] font-black uppercase tracking-widest">{getText("Registry", "ලියාපදිංචිය", "பதிவு")}</span>
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab("history")}
           className={cn(
             "flex flex-col items-center gap-1.5 px-6 py-3 rounded-2xl transition-all",

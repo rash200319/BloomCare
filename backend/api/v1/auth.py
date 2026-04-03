@@ -13,6 +13,11 @@ from backend.schemas.auth import (
     FirstLoginStaffSetupRequest,
     LoginResponse,
     ChangePasswordRequest,
+    PatientPasswordResetRequest,
+    PatientPasswordResetOTPVerify,
+    StaffPasswordResetRequest,
+    StaffPasswordResetOTPVerify,
+    PasswordResetResponse,
 )
 from backend.models.user import User as DBUser
 from backend.services.staff_patient_service import AuthService
@@ -32,7 +37,8 @@ def login_patient(
     credentials: PatientLoginRequest,
     db: Session = Depends(get_db)
 ) -> Any:
-    user = AuthService.authenticate_patient(db, credentials.national_id, credentials.password)
+    user = AuthService.authenticate_patient(
+        db, credentials.national_id, credentials.password)
 
     if not getattr(user, "is_active", True):
         raise HTTPException(
@@ -63,7 +69,8 @@ def login_staff(
     credentials: StaffLoginRequest,
     db: Session = Depends(get_db)
 ) -> Any:
-    user = AuthService.authenticate_staff(db, credentials.email, credentials.password)
+    user = AuthService.authenticate_staff(
+        db, credentials.email, credentials.password)
 
     if not user.is_active:
         raise HTTPException(
@@ -147,3 +154,113 @@ def change_password(
     Sets is_first_login to False after successful change.
     """
     return AuthService.change_password(db, current_user.id, change_pwd.old_password, change_pwd.new_password)
+
+
+# ============== PASSWORD RESET ENDPOINTS ==============
+
+@router.post(
+    "/forgot-password/patient/request",
+    response_model=PasswordResetResponse,
+    summary="Request Password Reset for Patient",
+    description="Request OTP for patient password reset using national ID"
+)
+def request_patient_password_reset(
+    payload: PatientPasswordResetRequest,
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Request password reset OTP for patient.
+
+    - **national_id**: Patient's national ID
+
+    Returns masked phone number where OTP will be sent.
+    """
+    return AuthService.request_patient_password_reset(db, payload.national_id)
+
+
+@router.post(
+    "/forgot-password/patient/verify-otp",
+    response_model=PasswordResetResponse,
+    summary="Verify OTP and Reset Patient Password",
+    description="Verify OTP code and set new password for patient"
+)
+def verify_and_reset_patient_password(
+    payload: PatientPasswordResetOTPVerify,
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Verify OTP and reset patient password.
+
+    - **national_id**: Patient's national ID
+    - **otp_code**: 6-digit OTP code (sent via SMS)
+    - **new_password**: New password (must meet strength requirements)
+    - **confirm_password**: Confirm new password
+
+    Password must have:
+    - Minimum 8 characters
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one digit
+    - At least one special character (!@#$%^&*)
+    """
+    return AuthService.verify_and_reset_patient_password(
+        db,
+        payload.national_id,
+        payload.otp_code,
+        payload.new_password,
+        payload.confirm_password
+    )
+
+
+@router.post(
+    "/forgot-password/staff/request",
+    response_model=PasswordResetResponse,
+    summary="Request Password Reset for Staff",
+    description="Request OTP for staff password reset using email"
+)
+def request_staff_password_reset(
+    payload: StaffPasswordResetRequest,
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Request password reset OTP for staff.
+
+    - **email**: Staff member's email
+
+    Returns masked email where OTP will be sent.
+    """
+    return AuthService.request_staff_password_reset(db, payload.email)
+
+
+@router.post(
+    "/forgot-password/staff/verify-otp",
+    response_model=PasswordResetResponse,
+    summary="Verify OTP and Reset Staff Password",
+    description="Verify OTP code and set new password for staff"
+)
+def verify_and_reset_staff_password(
+    payload: StaffPasswordResetOTPVerify,
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Verify OTP and reset staff password.
+
+    - **email**: Staff member's email
+    - **otp_code**: 6-digit OTP code (sent via email)
+    - **new_password**: New password (must meet strength requirements)
+    - **confirm_password**: Confirm new password
+
+    Password must have:
+    - Minimum 8 characters
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one digit
+    - At least one special character (!@#$%^&*)
+    """
+    return AuthService.verify_and_reset_staff_password(
+        db,
+        payload.email,
+        payload.otp_code,
+        payload.new_password,
+        payload.confirm_password
+    )

@@ -1,4 +1,17 @@
 -- BloomCare PostgreSQL Schema
+-- 
+-- RECENT CHANGES (April 2026):
+-- 1. Added OTP Records table (otp_records) for password reset and two-factor authentication
+-- 2. Updated appointments.status constraint to include 'SCHEDULED' status for auto-escalation
+-- 3. Enhanced trigger_auto_escalate() function to set appointment status to 'SCHEDULED'
+--
+-- FEATURES:
+-- - Two-stage maternal risk screening (Stage 1: Edge/Mobile, Stage 2: Server ML)
+-- - OTP-based password reset for patients and staff
+-- - Automatic appointment escalation for high-risk cases
+-- - Patient longitudinal tracking with screening reports
+-- - Medical prescriptions management
+-- - Device sync logging for offline-first mobile app
 
 CREATE SCHEMA IF NOT EXISTS "BloomCare";
 SET search_path TO "BloomCare";
@@ -52,6 +65,44 @@ CREATE TABLE IF NOT EXISTS patients (
 ALTER TABLE patients
 ADD COLUMN IF NOT EXISTS age INT;
 
+-- OTP RECORDS (One-Time Password for password reset and authentication)
+CREATE TABLE IF NOT EXISTS otp_records (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    
+    -- User References (patient or staff - one will be set, other will be NULL)
+    patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
+    staff_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    
+    -- OTP Data
+    otp_code VARCHAR(6) NOT NULL,
+    otp_hash VARCHAR(255) NOT NULL,
+    otp_type VARCHAR(50) NOT NULL CHECK (otp_type IN ('PASSWORD_RESET', 'FIRST_LOGIN', 'LOGIN_VERIFICATION', 'ACCOUNT_VERIFICATION')),
+    destination VARCHAR(255) NOT NULL,  -- Phone number or email
+    
+    -- Verification Status
+    is_verified BOOLEAN DEFAULT FALSE,
+    attempts INTEGER DEFAULT 0,
+    max_attempts INTEGER DEFAULT 5,
+    
+    -- Timestamps
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMPTZ NOT NULL,
+    verified_at TIMESTAMPTZ,
+    
+    -- Request Metadata
+    ip_address VARCHAR(50),
+    user_agent VARCHAR(512)
+);
+
+-- OTP Indexes
+CREATE INDEX IF NOT EXISTS idx_otp_records_patient_id ON otp_records(patient_id);
+CREATE INDEX IF NOT EXISTS idx_otp_records_staff_id ON otp_records(staff_id);
+CREATE INDEX IF NOT EXISTS idx_otp_records_otp_code ON otp_records(otp_code);
+CREATE INDEX IF NOT EXISTS idx_otp_records_otp_type ON otp_records(otp_type);
+CREATE INDEX IF NOT EXISTS idx_otp_records_is_verified ON otp_records(is_verified);
+CREATE INDEX IF NOT EXISTS idx_otp_records_expires_at ON otp_records(expires_at);
+CREATE INDEX IF NOT EXISTS idx_otp_records_created_at ON otp_records(created_at);
+
 -- LONGITUDINAL SCREENING REPORTS
 CREATE TABLE IF NOT EXISTS screening_reports (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -82,9 +133,9 @@ CREATE TABLE IF NOT EXISTS stage1_screenings (
     pcos BOOLEAN,
     previous_complications BOOLEAN,
     preexisting_diabetes BOOLEAN,
-    mental_health FLOAT,
-    sleep_pattern FLOAT,
-    exercise FLOAT,
+    mental_health INTEGER,
+    sleep_pattern INTEGER,
+    exercise INTEGER,
     education INTEGER,
 
     edge_risk_classification risk_tier,
@@ -185,22 +236,44 @@ CREATE TABLE IF NOT EXISTS patient_reports (
     expires_at TIMESTAMPTZ
 );
 
--- APPOINTMENTS
+-- APPOINTMENTS (Optimized for simplified booking workflow with predefined time slots)
+-- Status Workflow: SCHEDULED (auto-created) → COMPLETED (doctor) or CANCELLED (patient/staff)
+-- PENDING and CONFIRMED retained for future extensibility but not used in current workflow
 CREATE TABLE IF NOT EXISTS appointments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
+    patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
     specialist_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    created_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_by_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     created_by_role VARCHAR(50) NOT NULL DEFAULT 'FRONTLINE_STAFF',
     appointment_type VARCHAR(100) NOT NULL DEFAULT 'PRENATAL_CHECKUP',
     appointment_date TIMESTAMPTZ NOT NULL,
     duration_minutes INT NOT NULL DEFAULT 30,
-    queue_number INT,
-    status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+    queue_number INT NOT NULL DEFAULT 0,
+    
+    -- Status Workflow: SCHEDULED → COMPLETED | CANCELLED
+    -- PENDING/CONFIRMED retained for future use
+    status VARCHAR(50) NOT NULL DEFAULT 'SCHEDULED',
+    
+    -- Status change audit trail
+    completed_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    completed_at TIMESTAMPTZ,
+    cancelled_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    cancelled_at TIMESTAMPTZ,
+    
+    -- Notes and metadata
     notes TEXT,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT chk_appointment_status CHECK (status IN ('PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED')),
+    reason_for_cancellation VARCHAR(255),
+    
+    -- Timestamps with automatic updates via trigger
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Status validation: only allow defined states
+    CONSTRAINT chk_appointment_status CHECK (
+        status IN ('PENDING', 'CONFIRMED', 'SCHEDULED', 'COMPLETED', 'CANCELLED')
+    ),
+    
+    -- Appointment type validation
     CONSTRAINT chk_appointment_type CHECK (appointment_type IN (
         'PRENATAL_CHECKUP',
         'ULTRASOUND_SCAN',
@@ -210,7 +283,32 @@ CREATE TABLE IF NOT EXISTS appointments (
         'BLOOD_TEST',
         'HIGH_RISK_FOLLOW_UP',
         'MEDICAL_INTERVENTION'
-    ))
+    )),
+    
+    -- Queue number must be non-negative
+    CONSTRAINT chk_queue_number CHECK (queue_number >= 0),
+    
+    -- Prevent double-booking: each specialist can have only one appointment per time slot
+    -- UNIQUE constraint treats appointment_date as atomic slot identifier
+    UNIQUE(specialist_id, appointment_date),
+    
+    -- Daily queue uniqueness: prevent duplicate queue numbers per doctor per day
+    -- Uses expression index on (specialist_id, DATE(appointment_date), queue_number)
+    CONSTRAINT chk_queue_per_specialist_per_day UNIQUE (
+        specialist_id, 
+        DATE(appointment_date), 
+        queue_number
+    ),
+    
+    -- Ensure completed and cancelled appointments have timestamp and actor recorded
+    CONSTRAINT chk_completed_appointment_audit CHECK (
+        (status = 'COMPLETED' AND completed_by_id IS NOT NULL AND completed_at IS NOT NULL)
+        OR status != 'COMPLETED'
+    ),
+    CONSTRAINT chk_cancelled_appointment_audit CHECK (
+        (status = 'CANCELLED' AND cancelled_by_id IS NOT NULL AND cancelled_at IS NOT NULL)
+        OR status != 'CANCELLED'
+    )
 );
 
 -- NEW CHANGES: PRESCRIPTIONS
@@ -255,6 +353,12 @@ CREATE INDEX IF NOT EXISTS idx_stage2_patient_date ON stage2_diagnostics(patient
 CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(appointment_date);
 CREATE INDEX IF NOT EXISTS idx_appointments_patient ON appointments(patient_id);
 CREATE INDEX IF NOT EXISTS idx_appointments_creator ON appointments(created_by_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_specialist ON appointments(specialist_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status);
+CREATE INDEX IF NOT EXISTS idx_appointments_specialist_date ON appointments(specialist_id, appointment_date);
+CREATE INDEX IF NOT EXISTS idx_appointments_specialist_day_queue ON appointments(specialist_id, DATE(appointment_date), queue_number);
+CREATE INDEX IF NOT EXISTS idx_appointments_completed ON appointments(completed_at) WHERE status = 'COMPLETED';
+CREATE INDEX IF NOT EXISTS idx_appointments_cancelled ON appointments(cancelled_at) WHERE status = 'CANCELLED';
 
 -- VIEW: High Risk Patients
 CREATE OR REPLACE VIEW high_risk_patients_view AS
@@ -288,37 +392,108 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- TRIGGER FUNCTION
+-- TRIGGER FUNCTION: Auto-escalate high-risk patient screening to scheduled appointment
+-- When Stage 1 screening marks a patient as 'escalate', automatically create SCHEDULED appointment
 CREATE OR REPLACE FUNCTION trigger_auto_escalate()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.edge_risk_classification = 'escalate' THEN
-        INSERT INTO appointments (patient_id, appointment_date, status, notes)
+        INSERT INTO appointments (
+            patient_id,
+            specialist_id,
+            created_by_id,
+            created_by_role,
+            appointment_type,
+            appointment_date,
+            status,
+            notes,
+            queue_number
+        )
         VALUES (
             NEW.patient_id,
+            NULL,  -- No specialist assigned initially; will be assigned from doctor dashboard
+            NEW.worker_id,  -- Frontline staff who conducted screening
+            'FRONTLINE_STAFF',
+            'HIGH_RISK_FOLLOW_UP',
             CURRENT_TIMESTAMP + INTERVAL '1 day',
             'SCHEDULED',
-            'AUTO-ESCALATED: urgent review required'
+            'AUTO-ESCALATED: Patient marked as high-risk (escalate classification) - requires urgent review',
+            0  -- Queue number will be generated/updated by backend
         );
     END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- TRIGGER
+-- TRIGGER FUNCTION: Automatically update appointment updated_at timestamp on modification
+-- Uses the generic touch_updated_at() function defined above
+-- No need to redefine it here
+
+-- TRIGGER FUNCTION: Validate appointment status transitions
+-- Ensures only SCHEDULED → COMPLETED or CANCELLED transitions are allowed
+CREATE OR REPLACE FUNCTION validate_appointment_status_transition()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Allow status changes only for valid transitions
+    IF OLD.status = 'SCHEDULED' THEN
+        -- From SCHEDULED, can go to COMPLETED or CANCELLED
+        IF NEW.status NOT IN ('SCHEDULED', 'COMPLETED', 'CANCELLED') THEN
+            RAISE EXCEPTION 'Invalid status transition: % → %', OLD.status, NEW.status;
+        END IF;
+    ELSIF OLD.status IN ('COMPLETED', 'CANCELLED') THEN
+        -- Cannot transition from terminal states
+        RAISE EXCEPTION 'Cannot modify % appointment (status: %)', OLD.status, OLD.status;
+    END IF;
+    
+    -- Auto-set completed_at and completed_by context when status changes to COMPLETED
+    IF NEW.status = 'COMPLETED' AND OLD.status != 'COMPLETED' THEN
+        IF NEW.completed_at IS NULL THEN
+            NEW.completed_at = CURRENT_TIMESTAMP;
+        END IF;
+    END IF;
+    
+    -- Auto-set cancelled_at when status changes to CANCELLED
+    IF NEW.status = 'CANCELLED' AND OLD.status != 'CANCELLED' THEN
+        IF NEW.cancelled_at IS NULL THEN
+            NEW.cancelled_at = CURRENT_TIMESTAMP;
+        END IF;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- TRIGGERS: Apply to appointments table
+-- Trigger 1: Auto-escalate high-risk screening to appointments
 DROP TRIGGER IF EXISTS trg_stage1_escalation ON stage1_screenings;
 CREATE TRIGGER trg_stage1_escalation
 AFTER INSERT ON stage1_screenings
 FOR EACH ROW
 EXECUTE FUNCTION trigger_auto_escalate();
 
--- TRIGGERS: updated_at
+-- Trigger 2: Update appointments.updated_at on modification
+DROP TRIGGER IF EXISTS trg_appointments_touch_updated_at ON appointments;
+CREATE TRIGGER trg_appointments_touch_updated_at
+BEFORE UPDATE ON appointments
+FOR EACH ROW
+EXECUTE FUNCTION touch_updated_at();
+
+-- Trigger 3: Validate appointment status transitions (SCHEDULED → COMPLETED/CANCELLED)
+DROP TRIGGER IF EXISTS trg_appointments_validate_status_transition ON appointments;
+CREATE TRIGGER trg_appointments_validate_status_transition
+BEFORE UPDATE ON appointments
+FOR EACH ROW
+EXECUTE FUNCTION validate_appointment_status_transition();
+
+-- TRIGGERS: Apply to other tables
+-- Trigger 4: Update patients.updated_at on modification
 DROP TRIGGER IF EXISTS trg_patients_touch_updated_at ON patients;
 CREATE TRIGGER trg_patients_touch_updated_at
 BEFORE UPDATE ON patients
 FOR EACH ROW
 EXECUTE FUNCTION touch_updated_at();
 
+-- Trigger 5: Update stage1_screenings.updated_at on modification
 DROP TRIGGER IF EXISTS trg_stage1_touch_updated_at ON stage1_screenings;
 CREATE TRIGGER trg_stage1_touch_updated_at
 BEFORE UPDATE ON stage1_screenings

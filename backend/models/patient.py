@@ -13,6 +13,7 @@ class Patient(Base):
     age = Column(Integer, nullable=True)
     due_date = Column(Date, nullable=True)
     contact_number = Column(String(50), nullable=True)
+    is_active = Column(Boolean, default=True)
     hashed_password = Column(String(255), nullable=False)
     emergency_contact = Column(String(50), nullable=True)
     blood_group = Column(String(10), nullable=True)

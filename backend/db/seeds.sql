@@ -28,8 +28,8 @@ DO UPDATE SET
 -- 2) PATIENTS
 -- -----------------------------------------------------------------------------
 INSERT INTO patients (
-    id, national_id, full_name, age, date_of_birth, contact_number, emergency_contact,
-    blood_group, assigned_worker_id, registered_at, updated_at
+    id, national_id, full_name, age, contact_number, emergency_contact,
+    blood_group, assigned_worker_id, hashed_password, registered_at, updated_at
 )
 VALUES
     (
@@ -37,11 +37,11 @@ VALUES
         'NIC-900000001V',
         'Nimalka Fernando',
         28,
-        DATE '1998-06-10',
         '0771234501',
         '0771234502',
         'O+',
         '22222222-2222-2222-2222-222222222222',
+        crypt('rash2003', gen_salt('bf')),
         NOW() - INTERVAL '20 days',
         NOW()
     ),
@@ -50,11 +50,11 @@ VALUES
         'NIC-900000002V',
         'Sanduni Perera',
         31,
-        DATE '1995-03-21',
         '0771234601',
         '0771234602',
         'A+',
         '22222222-2222-2222-2222-222222222222',
+        crypt('rash2003', gen_salt('bf')),
         NOW() - INTERVAL '15 days',
         NOW()
     )
@@ -63,11 +63,11 @@ DO UPDATE SET
     national_id = EXCLUDED.national_id,
     full_name = EXCLUDED.full_name,
     age = EXCLUDED.age,
-    date_of_birth = EXCLUDED.date_of_birth,
     contact_number = EXCLUDED.contact_number,
     emergency_contact = EXCLUDED.emergency_contact,
     blood_group = EXCLUDED.blood_group,
     assigned_worker_id = EXCLUDED.assigned_worker_id,
+    hashed_password = EXCLUDED.hashed_password,
     updated_at = EXCLUDED.updated_at;
 
 -- -----------------------------------------------------------------------------

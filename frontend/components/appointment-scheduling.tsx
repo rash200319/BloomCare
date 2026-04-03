@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Globe,
   LogOut,
+  Trash2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -100,6 +101,8 @@ export default function AppointmentScheduling({
   const [specialists, setSpecialists] = useState<Specialist[]>([])
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [availableTimeSlots, setAvailableTimeSlots] = useState<TimeSlot[]>([])
+  const [appointmentToDelete, setAppointmentToDelete] = useState<string | null>(null)
+  const [isDeletingAppointment, setIsDeletingAppointment] = useState(false)
 
   const [selectedSpecialization, setSelectedSpecialization] = useState<string | null>(null)
   const [selectedSpecialist, setSelectedSpecialist] = useState<Specialist | null>(null)
@@ -229,11 +232,23 @@ export default function AppointmentScheduling({
         // Convert availability response to time slots
         if (Array.isArray(data)) {
           const slots: TimeSlot[] = data.flatMap((daySlot: any) =>
-            (daySlot.available_slots || []).map((slot: any) => ({
-              time: slot,
-              available: true,
-              label: slot,
-            }))
+            (daySlot.available_slots || []).map((slot: any) => {
+              // Extract time from slot - handle ISO datetime format
+              let timeStr = typeof slot === 'string' ? slot : (slot.start_time || slot.time || '')
+
+              // If it's a full ISO datetime (contains T), extract just the time part
+              if (timeStr && timeStr.includes('T')) {
+                const parts = timeStr.split('T')
+                timeStr = parts[1].split('.')[0] || parts[1] // Get HH:MM:SS, remove milliseconds
+              }
+
+              const isAvailable = typeof slot === 'string' ? true : (slot.is_available !== false)
+              return {
+                time: timeStr,
+                available: isAvailable,
+                label: timeStr,
+              }
+            })
           )
           setAvailableTimeSlots(slots)
         }
@@ -275,25 +290,44 @@ export default function AppointmentScheduling({
     try {
       setIsLoading(true)
       setError(null)
+
+      // Time slot is now in HH:MM:SS format from the API
+      const timeStr = String(selectedTimeSlot).trim()
+      if (!timeStr || !timeStr.includes(':')) {
+        throw new Error("Invalid time slot selected")
+      }
+
+      // Create ISO 8601 datetime - combine date and time
+      const dateStr = String(selectedDate).trim()
+      const appointmentDateTime = new Date(`${dateStr}T${timeStr}Z`)
+
+      // Validate the date is correct
+      if (isNaN(appointmentDateTime.getTime())) {
+        throw new Error("Invalid date or time value")
+      }
+
+      const isoDateTime = appointmentDateTime.toISOString()
+
       const response = await apiRequest("/appointments/", {
         method: "POST",
         body: JSON.stringify({
           patient_id: patientId,
           specialist_name: selectedSpecialist.full_name,
-          appointment_date: `${selectedDate}T${selectedTimeSlot}:00`,
+          appointment_date: isoDateTime,
           duration_minutes: 30,
           notes: notes || null,
         }),
       })
 
       if (!response.ok) {
-        throw new Error(`Failed to book appointment: ${response.statusText}`)
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.detail || `Failed to book appointment: ${response.statusText}`)
       }
 
       const data = await response.json()
       setAppointments([...appointments, data])
       setSuccessMessage("Appointment booked successfully!")
-      
+
       // Reset form
       setTimeout(() => {
         setActiveStep("specialization")
@@ -308,6 +342,46 @@ export default function AppointmentScheduling({
       setError(err instanceof Error ? err.message : "Failed to book appointment")
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleCancelAppointment = async (appointmentId: string) => {
+    if (viewerRole === "patient") {
+      setError("Patients cannot cancel appointments. Please contact frontline staff.")
+      return
+    }
+
+    if (!window.confirm(getText(
+      "Are you sure you want to cancel this appointment?",
+      "ඔබ විශ්වාසද මෙම නියුතුව අවලංගු කිරීමට?",
+      "இந்த நியமனத்தை ரத்து செய்ய நீங்கள் உறுதியா?"
+    ))) {
+      return
+    }
+
+    try {
+      setIsDeletingAppointment(true)
+      setError(null)
+      const response = await apiRequest(`/appointments/${appointmentId}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to cancel appointment: ${response.statusText}`)
+      }
+
+      setAppointments(appointments.filter((apt) => apt.id !== appointmentId))
+      setAppointmentToDelete(null)
+      setSuccessMessage(getText(
+        "Appointment cancelled successfully!",
+        "නියුතුව සාර්ථකව අවලංගු කරන ලදී!",
+        "நியமனம் வெற்றிகரமாக ரத்து செய்யப்பட்டது!"
+      ))
+      setTimeout(() => setSuccessMessage(null), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to cancel appointment")
+    } finally {
+      setIsDeletingAppointment(false)
     }
   }
 
@@ -351,9 +425,9 @@ export default function AppointmentScheduling({
                 </Button>
                 {showLanguageDropdown && (
                   <div className="absolute right-0 mt-2 w-32 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                    {languages.map((lang) => (
+                    {languages.map((lang, index) => (
                       <button
-                        key={lang.code}
+                        key={`lang-${lang.code}-${index}`}
                         onClick={() => {
                           setSelectedLanguage(lang.code as Language)
                           setShowLanguageDropdown(false)
@@ -431,9 +505,9 @@ export default function AppointmentScheduling({
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {specializations.map((spec) => (
+                  {specializations.map((spec, index) => (
                     <button
-                      key={spec.specialization}
+                      key={`spec-${spec.specialization}-${index}`}
                       onClick={() => {
                         setSelectedSpecialization(spec.specialization)
                         setActiveStep("specialist")
@@ -490,9 +564,9 @@ export default function AppointmentScheduling({
                         {getText("No specialists found", "විශේෂඥයා නොමැත", "நிபுணர்கள் পাওয়া যায়নি")}
                       </p>
                     ) : (
-                      filteredSpecialists.map((specialist) => (
+                      filteredSpecialists.map((specialist, index) => (
                         <button
-                          key={specialist.user_id}
+                          key={`specialist-${specialist.user_id}-${index}`}
                           onClick={() => {
                             setSelectedSpecialist(specialist)
                             setActiveStep("date")
@@ -555,9 +629,9 @@ export default function AppointmentScheduling({
                               {getText("No slots available", "ස්ලට්ටු නැත", "இடங்கள் கிடைக்கவில்லை")}
                             </p>
                           ) : (
-                            availableTimeSlots.map((slot) => (
+                            availableTimeSlots.map((slot, index) => (
                               <button
-                                key={slot.time}
+                                key={`slot-${slot.time}-${index}`}
                                 onClick={() => setSelectedTimeSlot(slot.time)}
                                 disabled={!slot.available}
                                 className={cn(
@@ -663,8 +737,20 @@ export default function AppointmentScheduling({
                 ) : (
                   <div className="space-y-3">
                     {appointments.map((apt) => (
-                      <div key={apt.id} className="p-3 border border-gray-200 rounded-lg">
-                        <p className="font-medium text-gray-900 text-sm">{apt.specialist_name}</p>
+                      <div key={apt.id} className="p-3 border border-gray-200 rounded-lg hover:border-red-200 hover:bg-red-50/30 transition-all">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <p className="font-medium text-gray-900 text-sm flex-1">{apt.specialist_name}</p>
+                          {viewerRole !== "patient" && (apt.status === "PENDING" || apt.status === "CONFIRMED") && (
+                            <button
+                              onClick={() => handleCancelAppointment(apt.id)}
+                              disabled={isDeletingAppointment && appointmentToDelete === apt.id}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-100 p-1.5 rounded transition-all disabled:opacity-50"
+                              title={getText("Cancel Appointment", "නියුතුව අවලංගු කරන්න", "நியமனத்தை ரத்து செய்யவும்")}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                         <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
                           <Calendar className="w-3 h-3" />
                           {new Date(apt.appointment_date).toLocaleDateString()}

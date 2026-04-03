@@ -9,6 +9,7 @@ from backend.models.patient import Patient
 from backend.models.user import User, UserRole
 from backend.schemas.appointment import (
     AppointmentCreate,
+    AppointmentCreateByNIC,
     AppointmentResponse,
     AppointmentUpdate,
     AvailabilityResponse,
@@ -52,10 +53,60 @@ def get_specialists_by_specialization(
 )
 def get_specialist_availability(
     specialist_name: str,
-    days_ahead: int = Query(14, ge=1, le=30, description="Number of days to check (1-30)"),
+    days_ahead: int = Query(
+        14, ge=1, le=30, description="Number of days to check (1-30)"),
     db: Session = Depends(get_db),
 ) -> Any:
     return AppointmentService.get_specialist_availability(db, specialist_name, days_ahead)
+
+
+@router.post(
+    "/by-nic",
+    response_model=AppointmentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create Appointment by Patient NIC",
+    description="Create appointment using patient national ID, full name, specialist name, date, type, and notes",
+)
+def create_appointment_by_nic(
+    appointment_in: AppointmentCreateByNIC,
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Create a new appointment using patient NIC instead of patient_id.
+
+    **Required Fields:**
+    - **patient_nic**: Patient's national ID (e.g., "NIC-900000001V")
+    - **patient_full_name**: Patient's full name (verified against NIC)
+    - **specialist_name**: Specialist's full name (e.g., "Dr. John Smith")
+    - **appointment_date**: Appointment date and time (ISO 8601 format)
+    - **appointment_type**: Type of appointment (PRENATAL_CHECKUP, ULTRASOUND_SCAN, etc)
+    - **notes**: Additional appointment notes (optional)
+    - **duration_minutes**: Appointment duration in minutes (default: 30)
+
+    **Example Request:**
+    ```json
+    {
+        "patient_nic": "NIC-900000001V",
+        "patient_full_name": "Nimalka Fernando",
+        "specialist_name": "Dr. Sarah Johnson",
+        "appointment_date": "2026-04-15T10:30:00",
+        "appointment_type": "PRENATAL_CHECKUP",
+        "notes": "Patient reports ongoing headaches",
+        "duration_minutes": 30
+    }
+    ```
+    """
+    result = AppointmentService.create_appointment_by_nic(
+        db,
+        appointment_in.patient_nic,
+        appointment_in.patient_full_name,
+        appointment_in.specialist_name,
+        appointment_in.appointment_date,
+        appointment_in.appointment_type,
+        appointment_in.notes,
+        appointment_in.duration_minutes,
+    )
+    return result.appointment
 
 
 @router.post(
@@ -70,7 +121,8 @@ def book_appointment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    result = AppointmentService.create_appointment(db, appointment_in, current_user)
+    result = AppointmentService.create_appointment(
+        db, appointment_in, current_user)
     return result.appointment
 
 
@@ -86,8 +138,56 @@ def update_appointment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    result = AppointmentService.update_appointment(db, appointment_id, appointment_in, current_user)
+    result = AppointmentService.update_appointment(
+        db, appointment_id, appointment_in, current_user)
     return result.appointment
+
+
+@router.patch(
+    "/{appointment_id}/status",
+    response_model=AppointmentResponse,
+    summary="Update Appointment Status",
+    description="Update appointment status - specialists can update their own assignments",
+)
+def update_appointment_status(
+    appointment_id: str,
+    status_update: AppointmentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """
+    Update only the status of an appointment.
+    Specialists can update appointments assigned to them.
+    """
+    appointment = db.query(Appointment).filter(
+        Appointment.id == appointment_id).first()
+    if not appointment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Appointment '{appointment_id}' not found",
+        )
+
+    if not AppointmentService._can_update_appointment_status(current_user, appointment):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the assigned specialist or creator can update this appointment status",
+        )
+
+    if not status_update.status:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Status must be provided",
+        )
+
+    requested_status = AppointmentService._normalize_status(
+        status_update.status)
+    AppointmentService._ensure_allowed_status_transition(
+        appointment.status, requested_status)
+    appointment.status = requested_status
+    db.commit()
+    db.refresh(appointment)
+
+    return AppointmentService._serialize_appointment(db, appointment)
 
 
 @router.delete(
@@ -101,7 +201,8 @@ def delete_appointment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    result = AppointmentService.cancel_appointment(db, appointment_id, current_user)
+    result = AppointmentService.cancel_appointment(
+        db, appointment_id, current_user)
     return result.appointment
 
 
@@ -137,7 +238,8 @@ def get_appointments_by_patient(
 )
 def get_appointments_by_specialist(
     specialist_name: str,
-    date: Optional[str] = Query(None, description="Filter by date (YYYY-MM-DD format)"),
+    date: Optional[str] = Query(
+        None, description="Filter by date (YYYY-MM-DD format)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
@@ -167,20 +269,71 @@ def get_appointment(
 @router.get(
     "/",
     response_model=List[AppointmentResponse],
-    summary="List All Appointments",
-    description="Retrieve appointments with optional filters",
+    summary="List Appointments",
+    description="Retrieve appointments with optional filters. Specialists see only HIGH/MODERATE risk patients, admins see all",
 )
 def list_appointments(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    specialist_id: Optional[str] = Query(
+        None, description="Filter by specialist ID"),
+    status: Optional[str] = Query(
+        None, description="Filter by status (PENDING, CONFIRMED, SCHEDULED, COMPLETED, CANCELLED)"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
 ) -> Any:
-    if current_user.role != UserRole.ADMIN:
+    from sqlalchemy import and_, or_
+    from backend.models.screening import Stage1Screening
+
+    query = db.query(Appointment)
+
+    # If specialist is requesting, they can only see HIGH/MODERATE RISK appointments
+    # (either assigned to them or unassigned high-risk cases)
+    if current_user.role in [UserRole.DOCTOR, UserRole.CLINICAL_SPECIALIST]:
+        # Subquery to get patient IDs with high/moderate risk (escalate classification)
+        high_risk_patients = db.query(Stage1Screening.patient_id).filter(
+            Stage1Screening.edge_risk_classification == 'escalate',
+            Stage1Screening.patient_id.isnot(None)
+        ).distinct()
+
+        # Show appointments where:
+        # 1. Patient is high-risk AND (specialist_id is current user OR specialist_id is NULL)
+        query = query.filter(
+            and_(
+                Appointment.patient_id.in_(high_risk_patients),
+                or_(
+                    Appointment.specialist_id == current_user.id,
+                    Appointment.specialist_id == None  # noqa: E712
+                )
+            )
+        )
+    # If specialist_id is provided in query params, use it (for backwards compatibility)
+    elif specialist_id:
+        high_risk_patients = db.query(Stage1Screening.patient_id).filter(
+            Stage1Screening.edge_risk_classification == 'escalate',
+            Stage1Screening.patient_id.isnot(None)
+        ).distinct()
+        query = query.filter(
+            and_(
+                Appointment.patient_id.in_(high_risk_patients),
+                or_(
+                    Appointment.specialist_id == specialist_id,
+                    Appointment.specialist_id == None  # noqa: E712
+                )
+            )
+        )
+    # Otherwise only admins can view all without filtering
+    elif current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins can view all appointments",
+            detail="Not authorized to view appointments",
         )
 
-    appointments = db.query(Appointment).offset(skip).limit(limit).all()
+    # Filter by status if provided
+    if status:
+        query = query.filter(Appointment.status == status.upper())
+
+    # Sort by appointment date
+    appointments = query.order_by(
+        Appointment.appointment_date).offset(skip).limit(limit).all()
     return [AppointmentService._serialize_appointment(db, apt) for apt in appointments]
