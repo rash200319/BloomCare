@@ -213,7 +213,18 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
 
         if (!setupResponse.ok) {
           const err = await setupResponse.json().catch(() => ({}))
-          throw new Error(err?.detail || "Password setup failed")
+          const detail = String(err?.detail || "Password setup failed")
+          if (detail.toLowerCase().includes("password already set")) {
+            setIsFirstLoginMode(false)
+            setConfirmPassword("")
+            setErrorMessage(getText(
+              "Password already set. Please sign in.",
+              "à¶¸à·”à¶»à¶´à¶¯à¶º à¶¯à¶±à·Š æ¶§à¶­à·Š à·ƒà¶šà·ƒà· æ¶­. à¶´à·”à¶»à¶±à¶º à·€à¶±à·Šà¶±.",
+              "à®•à®Ÿà®µà¯à®šà¯à®šà¯Šà®²à¯ ஏற்கனவே அமைக்கப்பட்டுள்ளது. தயவுசெய்து உள்நுழைக."
+            ))
+            return
+          }
+          throw new Error(detail)
         }
 
         setIsFirstLoginMode(false)

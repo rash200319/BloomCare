@@ -87,6 +87,8 @@ interface TrendPoint {
   severity_avg: number
 }
 
+type StaffRoleOption = "FRONTLINE_STAFF" | "CLINICAL_SPECIALIST"
+
 const getApiBaseCandidates = (): string[] => {
   const candidates: (string | undefined)[] = [
     process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, ""),
@@ -127,6 +129,13 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [caseTrends, setCaseTrends] = useState<TrendPoint[]>([])
   const [stage2Diagnostics, setStage2Diagnostics] = useState<Stage2DiagnosticRow[]>([])
   const [analyticsError, setAnalyticsError] = useState<string | null>(null)
+  const [staffRole, setStaffRole] = useState<StaffRoleOption>("FRONTLINE_STAFF")
+  const [staffName, setStaffName] = useState("")
+  const [staffEmail, setStaffEmail] = useState("")
+  const [staffPhone, setStaffPhone] = useState("")
+  const [staffSpecialization, setStaffSpecialization] = useState("")
+  const [staffSubmitting, setStaffSubmitting] = useState(false)
+  const [staffMessage, setStaffMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   useEffect(() => {
     const profile = localStorage.getItem('bloomcare_user_profile')
@@ -237,6 +246,91 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
       alert("Failed to export PDF. Please try again.")
     } finally {
       setIsExporting(false)
+    }
+  }
+
+  const handleCreateStaff = async () => {
+    setStaffMessage(null)
+
+    const trimmedName = staffName.trim()
+    const trimmedEmail = staffEmail.trim().toLowerCase()
+    const trimmedPhone = staffPhone.trim()
+    const trimmedSpecialization = staffSpecialization.trim()
+
+    if (!trimmedName || !trimmedEmail) {
+      setStaffMessage({ type: "error", text: "Full name and email are required." })
+      return
+    }
+
+    if (staffRole === "CLINICAL_SPECIALIST" && !trimmedSpecialization) {
+      setStaffMessage({ type: "error", text: "Specialization is required for obstetricians." })
+      return
+    }
+
+    const accessToken = typeof window !== "undefined" ? window.localStorage.getItem("bloomcare_access_token") : null
+    if (!accessToken) {
+      setStaffMessage({ type: "error", text: "Admin session expired. Please log in again." })
+      return
+    }
+
+    const bases = getApiBaseCandidates()
+    const payload = {
+      full_name: trimmedName,
+      email: trimmedEmail,
+      phone_number: trimmedPhone || null,
+      role: staffRole,
+      specialization: staffRole === "CLINICAL_SPECIALIST" ? trimmedSpecialization : null,
+    }
+
+    try {
+      setStaffSubmitting(true)
+
+      let lastError: unknown = null
+      let created = false
+
+      for (const base of bases) {
+        try {
+          const response = await fetch(`${base}/staff-management/create-staff`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify(payload),
+          })
+
+          if (!response.ok) {
+            const errJson = await response.json().catch(() => null)
+            throw new Error(errJson?.detail || `Create staff failed (${response.status})`)
+          }
+
+          await response.json()
+          created = true
+          break
+        } catch (error) {
+          lastError = error
+        }
+      }
+
+      if (!created) {
+        throw lastError instanceof Error ? lastError : new Error("Unable to create staff account.")
+      }
+
+      setStaffMessage({
+        type: "success",
+        text: "Staff account created. Ask the user to complete First-Time Login to set their password.",
+      })
+      setStaffName("")
+      setStaffEmail("")
+      setStaffPhone("")
+      setStaffSpecialization("")
+    } catch (error) {
+      setStaffMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Unable to create staff account.",
+      })
+    } finally {
+      setStaffSubmitting(false)
     }
   }
 
@@ -466,6 +560,10 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
               <Activity className="w-4 h-4 mr-2" />
               {getText("Live Feed", "සජීවී පුවත්", "நிகழ்நேர ஊட்டம்")}
             </TabsTrigger>
+            <TabsTrigger value="registration" className="h-10 px-6 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-[10px] font-black uppercase tracking-widest transition-all">
+              <Users className="w-4 h-4 mr-2" />
+              {getText("Staff Registration", "à·ƒà·šà·€à· à¶…à¶¯à·”à¶±à·Š", "à®¸à¯‡à®µà®•à®°à¯ à®ªà®¤à®¿à®µà¯")}
+            </TabsTrigger>
           </TabsList>
 
           {/* Overview Tab content */}
@@ -609,6 +707,91 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                       )}
                     </tbody>
                   </table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="registration" className="space-y-8 animate-in fade-in duration-500">
+            <Card className="border-0 glass shadow-2xl shadow-slate-200/50 overflow-hidden">
+              <CardHeader className="border-b border-slate-50/50 pb-6">
+                <CardTitle className="text-sm font-black text-slate-800 uppercase tracking-widest">
+                  {getText("Register Staff", "à·ƒà·šà·€à· à¶…à¶¯à·”à¶±à·Š", "à®¸à¯‡à®µà®•à®°à¯ à®ªà®¤à®¿à®µà¯")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-8 space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Full Name</label>
+                    <input
+                      className="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      placeholder="Full name"
+                      value={staffName}
+                      onChange={(event) => setStaffName(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Email</label>
+                    <input
+                      className="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      placeholder="name@example.com"
+                      value={staffEmail}
+                      onChange={(event) => setStaffEmail(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Phone (Optional)</label>
+                    <input
+                      className="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      placeholder="07XXXXXXXX"
+                      value={staffPhone}
+                      onChange={(event) => setStaffPhone(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Role</label>
+                    <select
+                      className="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      value={staffRole}
+                      onChange={(event) => setStaffRole(event.target.value as StaffRoleOption)}
+                    >
+                      <option value="FRONTLINE_STAFF">Frontline Staff</option>
+                      <option value="CLINICAL_SPECIALIST">Obstetrician</option>
+                    </select>
+                  </div>
+                  {staffRole === "CLINICAL_SPECIALIST" && (
+                    <div className="space-y-2 lg:col-span-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Specialization</label>
+                      <input
+                        className="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        placeholder="Maternal-Fetal Medicine, Obstetrics, etc."
+                        value={staffSpecialization}
+                        onChange={(event) => setStaffSpecialization(event.target.value)}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {staffMessage && (
+                  <div
+                    className={cn(
+                      "rounded-xl px-4 py-3 text-sm font-semibold",
+                      staffMessage.type === "success"
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                        : "bg-rose-50 text-rose-700 border border-rose-100"
+                    )}
+                  >
+                    {staffMessage.text}
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    onClick={handleCreateStaff}
+                    disabled={staffSubmitting}
+                    className="rounded-xl text-[10px] font-black uppercase tracking-widest px-6"
+                  >
+                    {staffSubmitting ? "Creating..." : "Create Staff Account"}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
