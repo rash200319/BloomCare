@@ -15,6 +15,7 @@ from backend.schemas.patient import (
 )
 from backend.models.patient import Patient as DBPatient
 from backend.models.screening import Stage1Screening, Stage2Diagnostic
+from backend.models.longitudinal import ScreeningReport
 from backend.models.user import User
 import uuid
 
@@ -36,6 +37,96 @@ def _as_str_or_none(value: Any) -> str | None:
 def _generate_internal_password(length: int = 16) -> str:
     characters = string.ascii_letters + string.digits + "!@#$%^&*"
     return "".join(secrets.choice(characters) for _ in range(length))
+
+
+@router.get("/me/latest-screenings")
+def get_my_latest_screenings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Return latest records from stage2_diagnostics, stage1_screenings, and
+    screening_reports for the authenticated patient.
+    """
+    role = _role_name(current_user)
+    if role != "PATIENT":
+        raise HTTPException(status_code=403, detail="Only patients can access this endpoint")
+
+    patient_id = str(current_user.id)
+    patient = db.query(DBPatient).filter(cast(DBPatient.id, String) == patient_id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    latest_stage2 = (
+        db.query(Stage2Diagnostic)
+        .filter(cast(Stage2Diagnostic.patient_id, String) == patient_id)
+        .order_by(Stage2Diagnostic.evaluated_at.desc())
+        .first()
+    )
+
+    latest_stage1 = (
+        db.query(Stage1Screening)
+        .filter(cast(Stage1Screening.patient_id, String) == patient_id)
+        .order_by(Stage1Screening.collected_at.desc(), Stage1Screening.updated_at.desc())
+        .first()
+    )
+
+    latest_report = (
+        db.query(ScreeningReport)
+        .filter(cast(ScreeningReport.patient_id, String) == patient_id)
+        .order_by(ScreeningReport.screened_at.desc())
+        .first()
+    )
+
+    return {
+        "patient_id": patient_id,
+        "latest_stage2": (
+            {
+                "id": _as_str(latest_stage2.id),
+                "evaluated_at": latest_stage2.evaluated_at,
+                "primary_disease_checked": latest_stage2.primary_disease_checked,
+                "dominant_condition": latest_stage2.dominant_condition,
+                "overall_severity_score": (
+                    float(latest_stage2.overall_severity_score)
+                    if latest_stage2.overall_severity_score is not None
+                    else None
+                ),
+                "explainability_data": latest_stage2.explainability_data or {},
+                "condition_probabilities": latest_stage2.condition_probabilities or {},
+                "stage1_screening_id": _as_str_or_none(latest_stage2.stage1_screening_id),
+            }
+            if latest_stage2
+            else None
+        ),
+        "latest_stage1": (
+            {
+                "id": _as_str(latest_stage1.id),
+                "collected_at": latest_stage1.collected_at,
+                "systolic": latest_stage1.systolic,
+                "diastolic": latest_stage1.diastolic,
+                "bmi": float(latest_stage1.bmi) if latest_stage1.bmi is not None else None,
+                "heart_rate": latest_stage1.heart_rate,
+                "temperature": float(latest_stage1.temperature) if latest_stage1.temperature is not None else None,
+                "blood_sugar": float(latest_stage1.Blood_sugar) if latest_stage1.Blood_sugar is not None else None,
+                "hemoglobin": float(latest_stage1.hemoglobin) if latest_stage1.hemoglobin is not None else None,
+                "edge_risk_score": float(latest_stage1.edge_risk_score) if latest_stage1.edge_risk_score is not None else None,
+                "contributing_factors": latest_stage1.contributing_factors or {},
+            }
+            if latest_stage1
+            else None
+        ),
+        "latest_screening_report": (
+            {
+                "id": _as_str(latest_report.id),
+                "screened_at": latest_report.screened_at,
+                "general_risk_flag": latest_report.general_risk_flag,
+                "probability_score": float(latest_report.probability_score),
+                "triggers": latest_report.triggers or [],
+            }
+            if latest_report
+            else None
+        ),
+    }
 
 @router.get("/", response_model=List[Patient])
 def read_patients(
@@ -117,9 +208,16 @@ def get_patient_history(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
 
-    # RBAC: admin/clinical specialist full access; frontline only assigned patients
-    if _role_name(current_user) not in ["ADMIN", "CLINICAL_SPECIALIST"]:
-        if str(getattr(patient, "assigned_worker_id", "")) != str(current_user.id):
+    # RBAC:
+    # - ADMIN / CLINICAL_SPECIALIST: full access
+    # - PATIENT: only own history
+    # - Others (e.g. frontline staff): only assigned patients
+    current_role = _role_name(current_user)
+    if current_role not in ["ADMIN", "CLINICAL_SPECIALIST"]:
+        is_patient_self = current_role == "PATIENT" and str(current_user.id) == str(patient_id)
+        is_assigned_staff = str(getattr(patient, "assigned_worker_id", "")) == str(current_user.id)
+
+        if not (is_patient_self or is_assigned_staff):
             raise HTTPException(
                 status_code=403, detail="Not authorized to view this patient history")
 
