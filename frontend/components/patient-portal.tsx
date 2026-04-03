@@ -27,6 +27,7 @@ import {
   Info,
   Sparkles,
   Building2,
+  Loader2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -46,6 +47,39 @@ import {
 } from "recharts"
 
 type Language = "EN" | "SI" | "TA"
+type ExplainLanguage = "en" | "si" | "ta"
+
+interface ScreeningHistoryItem {
+  primary_disease_checked?: string | null
+  dominant_condition?: string | null
+  explainability_data?: {
+    features?: Array<{ feature?: string; importance?: number; contribution?: number }>
+    [key: string]: unknown
+  }
+  stage1?: {
+    systolic?: number | null
+    diastolic?: number | null
+    bmi?: number | null
+    heart_rate?: number | null
+    temperature?: number | null
+    blood_sugar?: number | null
+    hemoglobin?: number | null
+    edge_risk_score?: number | null
+  }
+}
+
+interface LatestScreeningsPayload {
+  patient_id?: string
+  latest_stage2?: ScreeningHistoryItem | null
+  latest_stage1?: ScreeningHistoryItem["stage1"] | null
+  latest_screening_report?: {
+    id?: string
+    screened_at?: string
+    general_risk_flag?: string
+    probability_score?: number
+    triggers?: unknown[]
+  } | null
+}
 
 interface PatientPortalProps {
   onLogout: () => void
@@ -136,6 +170,11 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
   const [isOffline, setIsOffline] = useState(false)
   const [patientData, setPatientData] = useState<PatientDisplayData>(DEFAULT_PATIENT_DATA)
   const [prescriptions, setPrescriptions] = useState<PrescriptionItem[]>([])
+  const [isAiExplaining, setIsAiExplaining] = useState(false)
+  const [aiScreeningMessages, setAiScreeningMessages] = useState<{ screening1: string; screening2: string }>({
+    screening1: "",
+    screening2: "",
+  })
   const gestationalWeek = useMemo(() => {
     const calculated = calculateGestationalWeekFromDueDate(patientData.dueDate)
     return calculated ?? patientData.gestationalWeek
@@ -308,6 +347,12 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
     return en
   }
 
+  const getExplainLanguage = (): ExplainLanguage => {
+    if (selectedLanguage === "SI") return "si"
+    if (selectedLanguage === "TA") return "ta"
+    return "en"
+  }
+
   const formatPrescriptionDate = (rawDate?: string | null): string => {
     if (!rawDate) return "--"
     const parsed = new Date(rawDate)
@@ -331,6 +376,178 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
     { week: "W22", systolic: 120, diastolic: 78, weight: 62.5 },
     { week: "W24", systolic: 118, diastolic: 76, weight: 64 },
   ]
+
+  const explainMedicalData = async (shapJson: Record<string, number>, conditionName: string) => {
+    const response = await fetch("/api/patient-explain", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        shapJson,
+        language: getExplainLanguage(),
+        conditionName,
+      }),
+    })
+
+    const data = (await response.json()) as { explanation?: string; error?: string }
+    if (!response.ok || data.error) {
+      throw new Error("AI explanation request failed")
+    }
+
+    return data.explanation || getText("No explanation available.", "පැහැදිලි කිරීමක් නොමැත.", "விளக்கம் இல்லை.")
+  }
+
+  const buildStage1FactorMap = (stage1?: ScreeningHistoryItem["stage1"]): Record<string, number> => {
+    if (!stage1) return {}
+
+    const mapped: Record<string, number | null | undefined> = {
+      systolic_bp: stage1.systolic,
+      diastolic_bp: stage1.diastolic,
+      bmi: stage1.bmi,
+      heart_rate: stage1.heart_rate,
+      temperature: stage1.temperature,
+      blood_sugar: stage1.blood_sugar,
+      hemoglobin: stage1.hemoglobin,
+      edge_risk_score: stage1.edge_risk_score,
+    }
+
+    return Object.fromEntries(
+      Object.entries(mapped).filter(([, value]) => typeof value === "number" && Number.isFinite(value)),
+    ) as Record<string, number>
+  }
+
+  const buildReportFactorMap = (report?: LatestScreeningsPayload["latest_screening_report"]): Record<string, number> => {
+    if (!report) return {}
+
+    const factors: Record<string, number> = {}
+    if (typeof report.probability_score === "number" && Number.isFinite(report.probability_score)) {
+      factors.probability_score = report.probability_score
+    }
+    if (Array.isArray(report.triggers)) {
+      factors.trigger_count = report.triggers.length
+    }
+    return factors
+  }
+
+  const buildStage2FactorMap = (explainabilityData?: ScreeningHistoryItem["explainability_data"]): Record<string, number> => {
+    if (!explainabilityData) return {}
+
+    const features = Array.isArray(explainabilityData.features) ? explainabilityData.features : []
+    if (features.length > 0) {
+      const fromFeatures: Record<string, number> = {}
+      features.forEach((entry) => {
+        const name = (entry.feature || "").toString().trim()
+        const importance = typeof entry.importance === "number" ? Math.abs(entry.importance) : null
+        const contribution = typeof entry.contribution === "number" ? Math.abs(entry.contribution) : null
+        const value = importance ?? contribution
+        if (name && value !== null && Number.isFinite(value)) {
+          fromFeatures[name] = value
+        }
+      })
+      if (Object.keys(fromFeatures).length > 0) return fromFeatures
+    }
+
+    const flatNumeric = Object.entries(explainabilityData).filter(
+      ([, value]) => typeof value === "number" && Number.isFinite(value),
+    )
+    return Object.fromEntries(flatNumeric) as Record<string, number>
+  }
+
+  const explainLatestScreenings = async () => {
+    setIsAiExplaining(true)
+    setAiScreeningMessages({ screening1: "", screening2: "" })
+    try {
+      if (typeof window === "undefined") return
+
+      const token = window.localStorage.getItem("bloomcare_access_token")
+      if (!token) {
+        setAiScreeningMessages({
+          screening1: getText(
+            "Please sign in again to load your latest screening explanations.",
+            "ඔබගේ නවතම පරීක්ෂණ පැහැදිලි කිරීම ලබාගැනීමට නැවත පිවිසෙන්න.",
+            "உங்கள் சமீபத்திய திரையிடல் விளக்கத்தைப் பெற மீண்டும் உள்நுழையவும்.",
+          ),
+          screening2: "",
+        })
+        return
+      }
+
+      let latestPayload: LatestScreeningsPayload | null = null
+      for (const baseUrl of getApiBaseCandidates()) {
+        try {
+          const response = await fetch(`${baseUrl}/patients/me/latest-screenings`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          })
+
+          if (!response.ok) {
+            continue
+          }
+
+          latestPayload = (await response.json()) as LatestScreeningsPayload
+          break
+        } catch {
+          // Try next candidate URL
+        }
+      }
+
+      if (!latestPayload) {
+        setAiScreeningMessages({
+          screening1: getText(
+            "No latest screening data found.",
+            "නවතම පරීක්ෂණ දත්ත හමු නොවීය.",
+            "சமீபத்திய திரையிடல் தரவு கிடைக்கவில்லை.",
+          ),
+          screening2: "",
+        })
+        return
+      }
+
+      const stage1Factors = buildStage1FactorMap(latestPayload.latest_stage1 || undefined)
+      const reportFactors = buildReportFactorMap(latestPayload.latest_screening_report)
+      const stage1MergedFactors = { ...stage1Factors, ...reportFactors }
+      const latestStage2 = latestPayload.latest_stage2 || undefined
+      const stage2Factors = buildStage2FactorMap(latestStage2?.explainability_data)
+
+      const [screening1Text, screening2Text] = await Promise.all([
+        Object.keys(stage1MergedFactors).length > 0
+          ? explainMedicalData(stage1MergedFactors, "Screening 1")
+          : Promise.resolve(
+              getText(
+                "Screening 1 details are not available yet.",
+                "Screening 1 විස්තර තවම ලබාගත නොහැක.",
+                "Screening 1 விவரங்கள் இன்னும் கிடைக்கவில்லை.",
+              ),
+            ),
+        Object.keys(stage2Factors).length > 0
+          ? explainMedicalData(
+              stage2Factors,
+              latestStage2?.dominant_condition || latestStage2?.primary_disease_checked || "Screening 2",
+            )
+          : Promise.resolve(
+              getText(
+                "Screening 2 explainability data is not available yet.",
+                "Screening 2 පැහැදිලි කිරීමේ දත්ත තවම ලබාගත නොහැක.",
+                "Screening 2 விளக்கத் தரவு இன்னும் கிடைக்கவில்லை.",
+              ),
+            ),
+      ])
+
+      setAiScreeningMessages({ screening1: screening1Text, screening2: screening2Text })
+    } catch {
+      setAiScreeningMessages({
+        screening1: getText(
+          "Network issue while loading screening explanations.",
+          "පරීක්ෂණ පැහැදිලි කිරීම් ලබාගැනීමේදී ජාල දෝෂයක් ඇතිවිය.",
+          "திரையிடல் விளக்கங்களைப் பெறும் போது பிணைய சிக்கல் ஏற்பட்டது.",
+        ),
+        screening2: "",
+      })
+    } finally {
+      setIsAiExplaining(false)
+    }
+  }
 
   const upcomingAppointments = [
     {
@@ -744,6 +961,65 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                    </CardContent>
                 </Card>
              </div>
+
+             <Card className="border-0 glass shadow-xl shadow-slate-200/50 overflow-hidden rounded-[24px]">
+               <CardHeader className="border-b border-slate-50/50 pb-6 px-8">
+                 <CardTitle className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-3">
+                   <Sparkles className="w-5 h-5 text-primary" />
+                   {getText("AI Explain My Risk Factors", "AI මගේ අවදානම් සාධක පැහැදිලි කරන්න", "AI என் ஆபத்து காரணிகளை விளக்குக")}
+                 </CardTitle>
+                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">
+                   {getText(
+                     "Get a simple explanation from your latest model factors.",
+                     "ඔබගේ නවතම මාදිලි සාධක වලින් සරල පැහැදිලි කිරීමක් ලබාගන්න.",
+                     "உங்கள் சமீபத்திய மாதிரி காரணிகளிலிருந்து எளிய விளக்கத்தை பெறுங்கள்.",
+                   )}
+                 </p>
+               </CardHeader>
+               <CardContent className="p-8">
+                 <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                   <Button
+                     onClick={() => void explainLatestScreenings()}
+                     disabled={isAiExplaining}
+                     className="rounded-xl"
+                   >
+                     {isAiExplaining ? (
+                       <>
+                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                         {getText("Generating...", "සකසමින්...", "உருவாக்குகிறது...")}
+                       </>
+                     ) : (
+                       <>
+                         <MessageSquare className="w-4 h-4 mr-2" />
+                         {getText(
+                           "Explain Latest Screening 1 & 2",
+                           "නවතම Screening 1 සහ 2 පැහැදිලි කරන්න",
+                           "சமீபத்திய Screening 1 மற்றும் 2 ஐ விளக்குக",
+                         )}
+                       </>
+                     )}
+                   </Button>
+                 </div>
+
+                 {(aiScreeningMessages.screening1 || aiScreeningMessages.screening2) && (
+                   <div className="mt-5 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                     <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-2">AI</p>
+                     {aiScreeningMessages.screening1 && (
+                       <p className="text-sm font-medium text-slate-700 leading-relaxed mb-2">
+                         <span className="font-black">{getText("Screening 1:", "Screening 1:", "Screening 1:")}</span>{" "}
+                         {aiScreeningMessages.screening1}
+                       </p>
+                     )}
+                     {aiScreeningMessages.screening2 && (
+                       <p className="text-sm font-medium text-slate-700 leading-relaxed">
+                         <span className="font-black">{getText("Screening 2:", "Screening 2:", "Screening 2:")}</span>{" "}
+                         {aiScreeningMessages.screening2}
+                       </p>
+                     )}
+                   </div>
+                 )}
+               </CardContent>
+             </Card>
           </TabsContent>
 
           {/* Appointments Tab */}
