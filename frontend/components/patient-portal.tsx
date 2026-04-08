@@ -151,14 +151,13 @@ interface AppointmentViewItem {
   type: string
   typeSi: string
   typeTa: string
-  specialist_name: string
-  appointment_type: string
+  doctor: string
   date: string
   time: string
   location: string
   status: string
-  notes?: string | null
-  queue_number?: number | null
+  notes: string | null
+  queue_number: number | null
   appointmentDateValue: number
 }
 
@@ -777,6 +776,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
         }
       })
         .filter((appointment): appointment is AppointmentViewItem => appointment !== null)
+
       .sort((left, right) => left.appointmentDateValue - right.appointmentDateValue)
   }, [appointments])
 
