@@ -749,6 +749,8 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
         ),
         screening2: "",
       })
+    } finally {
+      setIsAiExplaining(false)
     }
   }
 
