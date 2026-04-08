@@ -292,14 +292,6 @@ CREATE TABLE IF NOT EXISTS appointments (
     -- UNIQUE constraint treats appointment_date as atomic slot identifier
     UNIQUE(specialist_id, appointment_date),
     
-    -- Daily queue uniqueness: prevent duplicate queue numbers per doctor per day
-    -- Uses expression index on (specialist_id, DATE(appointment_date), queue_number)
-    CONSTRAINT chk_queue_per_specialist_per_day UNIQUE (
-        specialist_id, 
-        DATE(appointment_date), 
-        queue_number
-    ),
-    
     -- Ensure completed and cancelled appointments have timestamp and actor recorded
     CONSTRAINT chk_completed_appointment_audit CHECK (
         (status = 'COMPLETED' AND completed_by_id IS NOT NULL AND completed_at IS NOT NULL)
