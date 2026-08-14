@@ -362,7 +362,7 @@ npm run start
 
 Phone and laptop must be on the same Wi‑Fi. Avoid VPN during local LAN testing.
 
-> **Port note:** The checked-in mobile default in `mobile/src/config/api.ts` still points at port **8005**. For local development, set `EXPO_PUBLIC_API_BASE_URL` (or change that default) so mobile, frontend, and uvicorn all use **8001**.
+> **Port note:** Mobile defaults to `http://127.0.0.1:8001/api/v1`. For a physical device or Android emulator, set `EXPO_PUBLIC_API_BASE_URL` (see `mobile/.env.example`) so mobile, frontend, and uvicorn all use **8001**.
 
 ---
 

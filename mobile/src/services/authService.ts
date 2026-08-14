@@ -31,7 +31,13 @@ interface FirstLoginSetupResponse {
 const roleFromApi = (role: unknown): UserRole => {
   const value = String(role ?? '').toUpperCase();
   if (value === 'ADMIN') return 'admin';
-  if (value === 'CLINICAL_SPECIALIST') return 'clinical_specialist';
+  if (
+    value === 'CLINICAL_SPECIALIST' ||
+    value === 'DOCTOR' ||
+    value === 'OBSERTITIAN'
+  ) {
+    return 'clinical_specialist';
+  }
   if (value === 'PATIENT') return 'patient';
   return 'frontline_staff';
 };
@@ -230,7 +236,8 @@ class AuthService {
   }
 
   /**
-   * Offline PIN login (no internet required)
+   * Offline PIN unlock (no internet required).
+   * Preserves the stored JWT so reconnect/sync still works after going online.
    */
   async loginWithPin(pin: string): Promise<{ user: User; token: string }> {
     try {
@@ -242,7 +249,13 @@ class AuthService {
       const credential = await offlineDatabase.getOfflineCredentialByPinHash(pinHash);
       if (!credential) throw new Error('Invalid PIN');
 
-      this.token = '';
+      const existingSession = await secureStore.getSession();
+      const preservedToken =
+        (existingSession?.token && existingSession.token.trim()) ||
+        (this.token && this.token.trim()) ||
+        '';
+
+      this.token = preservedToken;
       this.user = {
         id: credential.user_id,
         email: credential.identifier,
@@ -258,7 +271,7 @@ class AuthService {
         this.user.email,
         this.user.full_name,
         this.user.role,
-        '',
+        preservedToken,
         pin
       );
 
@@ -376,7 +389,8 @@ class AuthService {
   }
 
   isAuthenticated(): boolean {
-    return !!this.token && !!this.user;
+    // Offline PIN unlock may not need a live JWT for local-only use.
+    return !!this.user && (!!this.token || this.isOffline);
   }
 
   isInOfflineMode(): boolean {
