@@ -94,13 +94,13 @@ BloomCare supports the full care pathway from community-level screening to speci
 
 - Analytics dashboards and KPIs
 - High-risk counts, clinic trends, workload distribution
-- Monthly screening report export
-- Staff account creation and management
+- Staff account creation (frontline / clinical specialist)
 
 ### Shared capabilities
 
-- Offline-first screening with service worker + web app manifest
-- AI assistant / chatbot for navigation and guidance
+- Single API client (`frontend/lib/api.ts`) defaulting to port **8001**
+- Offline-capable Stage 1 shell via service worker (optional; can disable)
+- Context-aware site chatbot (current view + role)
 - Notification badges and read/unread filtering
 - Responsive desktop and mobile layouts
 - Role-based access control (RBAC)
@@ -158,21 +158,25 @@ BloomCare supports the full care pathway from community-level screening to speci
 ├── backend/                  # FastAPI service
 │   ├── api/v1/               # Route modules
 │   ├── core/                 # Config, security, deps
-│   ├── db/                   # Session, schema init
+│   ├── db/                   # Session, schema, seeds, demo seed helper
 │   ├── models/               # SQLAlchemy models
 │   ├── schemas/              # Pydantic request/response models
 │   ├── services/             # Auth, ML, appointments, admin, etc.
+│   ├── tests/                # pytest suite (auth, roles, seeds, health)
 │   ├── docker-compose.yml    # PostgreSQL
-│   └── requirements.txt
+│   ├── requirements.txt
+│   └── requirements-dev.txt  # pytest + httpx
 │
 ├── mobile/                   # Expo React Native app
 │   ├── src/screens/          # Login, patient, frontline
 │   ├── src/services/         # Offline DB, sync, auth, risk engine
+│   ├── src/config/api.ts     # API base (default :8001; override via env)
 │   └── package.json
 │
 ├── models/                   # Training / export scripts + model artifacts
 ├── Data/                     # Training datasets and cleaning scripts
-├── bloomcare_local.db        # SQLite fallback DB (created when Postgres is down)
+├── bloomcare_local.db        # SQLite fallback DB (auto-seeded for demos)
+├── pytest.ini                # Backend test config
 ├── stage1_offline_ai.js      # Stage 1 inference bundle (also copied under frontend/mobile)
 ├── stage1_general_risk_screener.pkl
 ├── stage2_*.pkl              # Stage 2 condition models (also under models/)
@@ -240,13 +244,18 @@ Default Compose credentials (see `backend/docker-compose.yml` and `backend/core/
 - **Database:** `bloomcare_db`
 - **Port:** `5432`
 
-Initialize schema / seed:
+Initialize schema / seed (Postgres):
 
 ```bash
 python backend/db/init_db.py
+# Optional: upgrade legacy OBSERTITIAN rows → CLINICAL_SPECIALIST
+python backend/db/migrate_roles.py
 ```
 
-If PostgreSQL is not running, the backend automatically falls back to SQLite at `./bloomcare_local.db` in this repo root (relative to the process working directory). Always start uvicorn from the repo root so that fallback path stays consistent.
+If PostgreSQL is not running, the backend automatically falls back to SQLite at  
+`BloomCare/bloomcare_local.db` (absolute path under the repo root).  
+On SQLite startup it **auto-seeds** the interview demo accounts (same password as below).  
+Always start uvicorn from the **repo root** so that path stays consistent.
 
 ### 2. Configure environment files
 
@@ -309,6 +318,20 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+### Demo login credentials
+
+All demo passwords: **`rash2003`**  
+(Login page Autofill uses the same values from `frontend/lib/api.ts`.)
+
+| Portal | Identifier | API role |
+|--------|------------|----------|
+| Frontline staff | `frontline.staff@bloomcare.health` | `FRONTLINE_STAFF` |
+| Obstetrician / clinical specialist | `obsertitian@bloomcare.health` | `CLINICAL_SPECIALIST` |
+| Hospital admin | `hospitaladmin@bloomcare.health` | `ADMIN` |
+| Patient | `NIC-900000001V` (alt `199912345678`) | `PATIENT` |
+
+Canonical specialist role in code/DB is **`CLINICAL_SPECIALIST`** (legacy `OBSERTITIAN` is migrated / aliased for compatibility).
+
 ### 5. (Optional) Run the mobile app
 
 ```bash
@@ -343,6 +366,7 @@ Database settings also default in `backend/core/config.py` if unset.
 | `NEXT_PUBLIC_BACKEND_URL` | Backend origin (used by `frontend/lib/api.ts`; default `http://127.0.0.1:8001`) |
 | `NEXT_PUBLIC_API_BASE_URL` / `NEXT_PUBLIC_API_BASE` | API base including `/api/v1` |
 | `NEXT_PUBLIC_AUTH_TOKEN_KEY` | localStorage key for access token |
+| `NEXT_PUBLIC_ENABLE_OFFLINE_SW` | Set to `false` to unregister the offline service worker (useful if a stale SW masks a deploy) |
 | `GROQ_API_KEY` | Server-side explainability route (optional) |
 
 ### Mobile
@@ -473,7 +497,8 @@ JWT auth: obtain a token from `/api/v1/auth/login/staff` or `/api/v1/auth/login/
 
 ### Web
 
-- Service worker + web app manifest for PWA-style use
+- Optional service worker (`frontend/public/sw.js`) for Stage 1 shell assets (cache v4; network-first for HTML/`_next`)
+- Set `NEXT_PUBLIC_ENABLE_OFFLINE_SW=false` to disable / unregister during demos
 - Local queue for screenings when offline
 - Stage 1 AI fallback when the backend is unreachable
 - Reconnect sync when connectivity returns
@@ -483,6 +508,7 @@ JWT auth: obtain a token from `/api/v1/auth/login/staff` or `/api/v1/auth/login/
 - SQLite offline database (profiles, appointments, insights, screening history, pending sync queue)
 - SecureStore for hashed PIN and JWT
 - Online credential login → optional PIN setup for offline access
+- **PIN unlock preserves the stored JWT** (does not wipe the token) so reconnect/sync still works
 - Staff morning sync downloads assigned patients for disconnected clinics
 - Background / manual sync flushes pending operations on reconnect
 
@@ -498,12 +524,12 @@ See [`mobile/QUICK_START.md`](mobile/QUICK_START.md) and [`mobile/OFFLINE_IMPLEM
 
 ## User Roles & Portals
 
-| Role | Primary UI | Typical tasks |
-|------|------------|---------------|
-| **Frontline staff** | Frontline triage dashboard / mobile staff screen | Register, screen, escalate, book appointments |
-| **Clinician / specialist** | Clinical dashboard | Review escalations, Stage 2, prescribe, manage appointments |
-| **Patient** | Patient portal / mobile patient screen | View progress, results, Rx, appointments, insights |
-| **Admin** | Admin / KPI dashboards | Analytics, staff accounts, report export |
+| UI role | Backend / DB role | Primary UI | Typical tasks |
+|---------|-------------------|------------|---------------|
+| **Frontline** | `FRONTLINE_STAFF` | Frontline triage dashboard / mobile staff | Register, screen, escalate, book appointments |
+| **Doctor** | `CLINICAL_SPECIALIST` | Clinical dashboard | Review escalations, Stage 2, prescribe, manage appointments |
+| **Patient** | `PATIENT` | Patient portal / mobile patient | View progress, results, Rx, appointments, insights |
+| **Admin** | `ADMIN` | Admin dashboard | Analytics, staff registration |
 
 ---
 
@@ -533,6 +559,9 @@ npm run typecheck
 ```bash
 python -m uvicorn backend.main:app --host 0.0.0.0 --port 8001 --reload
 python backend/db/init_db.py
+python backend/db/migrate_roles.py   # optional Postgres role upgrade
+pip install -r backend/requirements-dev.txt
+python -m pytest backend/tests -v
 ```
 
 ---
@@ -550,9 +579,9 @@ Coverage includes:
 
 - API health / OpenAPI smoke checks  
 - Demo staff + patient login (password `rash2003`)  
-- Role aliasing (`OBSERTITIAN` → `CLINICAL_SPECIALIST`)  
+- Role aliasing (`OBSERTITIAN` / `DOCTOR` → `CLINICAL_SPECIALIST`)  
 - Password hashing + JWT helpers  
-- Isolated SQLite demo seeding  
+- Demo seeding against the active DB  
 - Frontend demo-credential contract against `frontend/lib/api.ts`
 
 Mobile typecheck:
@@ -562,14 +591,14 @@ cd mobile
 npm run typecheck
 ```
 
-Suggested manual checks:
+Suggested demo walkthrough (interview):
 
-1. Staff login → Stage 1 screening online → risk returned  
-2. Disable network → Stage 1 still scores via offline model  
-3. Reconnect → queued records sync  
-4. Specialist differential evaluation returns PE / GDM / preterm probabilities  
-5. Patient portal shows appointments, prescriptions, and insights  
-6. Admin KPI charts and staff management load  
+1. Frontline login → Stage 1 screening → escalate if high risk  
+2. Obstetrician login → review escalated case / Stage 2 / appointments  
+3. Patient login → appointments, prescriptions, insights  
+4. Admin login → KPIs + create a staff account  
+5. (Optional) Mobile: online login → set PIN → offline PIN unlock (JWT preserved)  
+6. Chatbot: ask to navigate while logged into a role (context-aware)  
 
 ---
 
@@ -577,15 +606,18 @@ Suggested manual checks:
 
 | Problem | What to try |
 |---------|-------------|
-| Frontend cannot reach API | Confirm uvicorn is on the same host/port as `NEXT_PUBLIC_BACKEND_URL` |
+| Frontend cannot reach API | Confirm uvicorn is on **8001** and matches `NEXT_PUBLIC_API_BASE_URL` |
 | CORS errors | Ensure origin is `http://localhost:3000` (allowed in `backend/main.py`) |
-| DB connection errors | `docker compose up -d` in `backend/`; verify `POSTGRES_*` credentials |
-| Unexpected empty local data | Confirm uvicorn was started from repo root so SQLite uses `./bloomcare_local.db` (not a second copy under `backend/`) |
-| Mobile assess hangs | Fix LAN IP / port; open `http://<LAN_IP>:8001/` from the phone browser; override the mobile `8005` default |
+| DB connection errors | `docker compose up -d` in `backend/`; verify `POSTGRES_*` credentials — or rely on SQLite fallback |
+| Demo login fails on SQLite | Restart uvicorn from repo root (auto-seed runs on startup); password is `rash2003` |
+| Unexpected empty local data | Confirm SQLite path is `BloomCare/bloomcare_local.db` (repo root), not a second copy under `backend/` |
+| Stale UI after deploy | Hard refresh; set `NEXT_PUBLIC_ENABLE_OFFLINE_SW=false` or bump SW cache |
+| Mobile cannot reach API | Set `EXPO_PUBLIC_API_BASE_URL` to `http://<LAN_IP>:8001/api/v1` (default is `127.0.0.1:8001`) |
 | SHAP install fails | Use `backend/requirements-no-shap.txt` if needed; explainability falls back |
 | LLM / assistant errors | Set `BLOOMCARE_MOCK_LLM=true` for local development |
 | `ModuleNotFoundError: backend` | Run uvicorn from the repo root, not from inside `backend/` |
 | Port conflicts | Change uvicorn port and update frontend/mobile env vars to match |
+| Legacy `OBSERTITIAN` role errors | Run `python backend/db/migrate_roles.py` on Postgres |
 
 ---
 
