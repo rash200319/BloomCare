@@ -288,7 +288,7 @@ export default function HomePage({ onNavigateToLogin }: HomePageProps) {
                 {/* Main Hero Circle */}
                 <div className="w-80 h-80 md:w-96 md:h-96 rounded-full overflow-hidden border-8 border-white shadow-[0_32px_64px_-16px_rgba(244,63,94,0.2)] animate-float">
                   <img 
-                    src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/ef05a8b7f0422206eb30a4a02582f39c-N2pTa6XJ1ut6MDawWGk2hfWhSzZ1Qh.jpg"
+                    src="/images/mother-illustrated.jpg"
                     alt="Maternal Care"
                     className="w-full h-full object-cover scale-110"
                   />
