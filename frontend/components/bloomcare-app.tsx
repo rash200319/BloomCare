@@ -13,11 +13,13 @@ type AppView = "home" | "login" | "dashboard"
 
 // Map backend roles to frontend roles
 const ROLE_MAP: Record<string, UserRole> = {
-  'FRONTLINE_STAFF': 'frontline',
-  'DOCTOR': 'doctor',
-  'CLINICAL_SPECIALIST': 'doctor',
-  'ADMIN': 'admin',
-  'PATIENT': 'patient'
+  FRONTLINE_STAFF: "frontline",
+  DOCTOR: "doctor",
+  CLINICAL_SPECIALIST: "doctor",
+  // Legacy seed/DB value — migrate with backend/db/migrate_roles.py
+  OBSERTITIAN: "doctor",
+  ADMIN: "admin",
+  PATIENT: "patient",
 }
 
 export default function BloomCareApp() {

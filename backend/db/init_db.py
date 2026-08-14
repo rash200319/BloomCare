@@ -71,11 +71,34 @@ def init_db():
             },
             {
                 "email": "obsertitian@bloomcare.health",
-                "full_name": "Obsertitian Demo",
+                "full_name": "Obstetrician Demo",
                 "role": "CLINICAL_SPECIALIST",
                 "password": "rash2003",
             },
         ]
+
+        # Ensure legacy OBSERTITIAN rows can be upgraded before seed upserts.
+        try:
+            cursor.execute("ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'CLINICAL_SPECIALIST'")
+        except Exception as enum_error:
+            logger.warning("CLINICAL_SPECIALIST enum ensure skipped: %s", enum_error)
+        try:
+            cursor.execute(
+                """
+                UPDATE users
+                SET role = 'CLINICAL_SPECIALIST'
+                WHERE role::text = 'OBSERTITIAN'
+                """
+            )
+            cursor.execute(
+                """
+                UPDATE appointments
+                SET created_by_role = 'CLINICAL_SPECIALIST'
+                WHERE created_by_role = 'OBSERTITIAN'
+                """
+            )
+        except Exception as migrate_error:
+            logger.warning("Legacy role migration skipped: %s", migrate_error)
 
         for item in seed_users:
             pwd_hash = get_password_hash(item["password"])

@@ -74,3 +74,8 @@ mobile/web-build/
 # models/
 # *.pkl
 # *.csv
+
+# Local agent helpers
+_clean_commit.py
+_audit_*.py
+

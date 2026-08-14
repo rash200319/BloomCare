@@ -21,9 +21,12 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ENUMS
 DO $$ BEGIN
-    CREATE TYPE user_role AS ENUM ('ADMIN', 'FRONTLINE_STAFF', 'OBSERTITIAN', 'PATIENT');
+    CREATE TYPE user_role AS ENUM ('ADMIN', 'FRONTLINE_STAFF', 'CLINICAL_SPECIALIST', 'PATIENT');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+
+-- Existing databases may still have legacy OBSERTITIAN enum label.
+-- migrate_roles.sql upgrades those DBs to CLINICAL_SPECIALIST.
 
 DO $$ BEGIN
     CREATE TYPE risk_tier AS ENUM ('routine_care', 'escalate');

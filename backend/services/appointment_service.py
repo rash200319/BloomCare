@@ -64,7 +64,11 @@ class AppointmentService:
 
     @staticmethod
     def _normalize_role(role: object) -> str:
-        return AppointmentService._role_value(role).upper()
+        value = AppointmentService._role_value(role).upper()
+        # Legacy DB / JWT profile alias → canonical specialist role
+        if value in {"OBSERTITIAN", "DOCTOR"}:
+            return UserRole.CLINICAL_SPECIALIST.value
+        return value
 
     @staticmethod
     def _is_specialist_role(role: object) -> bool:
