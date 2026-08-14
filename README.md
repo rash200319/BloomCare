@@ -542,8 +542,18 @@ python backend/db/init_db.py
 Backend (from repo root):
 
 ```bash
+pip install -r backend/requirements-dev.txt
 python -m pytest backend/tests -v
 ```
+
+Coverage includes:
+
+- API health / OpenAPI smoke checks  
+- Demo staff + patient login (password `rash2003`)  
+- Role aliasing (`OBSERTITIAN` → `CLINICAL_SPECIALIST`)  
+- Password hashing + JWT helpers  
+- Isolated SQLite demo seeding  
+- Frontend demo-credential contract against `frontend/lib/api.ts`
 
 Mobile typecheck:
 
