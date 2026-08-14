@@ -166,6 +166,16 @@ export default function BloomCareApp() {
     }
   }, [currentRole])
 
+  // Keep the layout-mounted chatbot aware of the active view/role.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.dispatchEvent(
+      new CustomEvent("bloomcare-context", {
+        detail: { currentView, currentRole },
+      }),
+    )
+  }, [currentView, currentRole])
+
   const renderMainView = () => {
     if (currentView === "home") {
       return <HomePage onNavigateToLogin={handleNavigateToLogin} />

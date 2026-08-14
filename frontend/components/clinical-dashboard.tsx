@@ -213,7 +213,6 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
   const [todayAppointments, setTodayAppointments] = useState<any[]>([])
   const [isLoadingTodayAppointments, setIsLoadingTodayAppointments] = useState(false)
   const [sidebarViewMode, setSidebarViewMode] = useState<"escalated" | "today">("escalated")
-  const [allDoctors, setAllDoctors] = useState<any[]>([])
   const [selectedDoctorFilter, setSelectedDoctorFilter] = useState<string | null>(null)
 
   useEffect(() => {
@@ -230,9 +229,8 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
   }, [activeTab, appointmentStatusFilter])
 
   useEffect(() => {
-    // Load today's appointments and all doctors on component mount
+    // Load today's appointments on component mount
     loadTodayAppointments()
-    loadAllDoctors()
     // Reload escalated cases
     if (escalatedPatients.length === 0) {
       loadEscalatedCases()
@@ -287,18 +285,6 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
       console.error("Failed to load today's appointments:", error)
     } finally {
       setIsLoadingTodayAppointments(false)
-    }
-  }
-
-  const loadAllDoctors = async () => {
-    try {
-      const response = await apiRequest(`/users/?role=CLINICAL_SPECIALIST&limit=500`)
-      if (response.ok) {
-        const data = await response.json()
-        setAllDoctors(Array.isArray(data) ? data : [])
-      }
-    } catch (error) {
-      console.error("Failed to load doctors:", error)
     }
   }
 

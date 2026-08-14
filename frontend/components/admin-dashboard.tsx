@@ -12,7 +12,6 @@ import {
   Activity,
   AlertTriangle,
   Building,
-  Download,
   Bell,
   Settings,
   LogOut,
@@ -102,7 +101,6 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showProfileSettings, setShowProfileSettings] = useState(false)
-  const [isExporting, setIsExporting] = useState(false)
   const [userProfile, setUserProfile] = useState<any>(null)
   const [dashboardMetrics, setDashboardMetrics] = useState<DashboardMetrics | null>(null)
   const [referralEfficiency, setReferralEfficiency] = useState<ReferralEfficiency | null>(null)
@@ -181,53 +179,6 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
     if (selectedLanguage === "SI") return si
     if (selectedLanguage === "TA") return ta
     return en
-  }
-
-  const handleExportPDF = async () => {
-    try {
-      setIsExporting(true)
-      const exportBases = getApiBaseCandidates().map((base) => base.replace(/\/api\/v1$/, ""))
-      let response: Response | null = null
-      let lastError: unknown = null
-
-      for (const base of exportBases) {
-        try {
-          const candidate = await fetch(`${base}/export/monthly-screening-trends`)
-          if (!candidate.ok) {
-            lastError = new Error(`Failed to export PDF (${candidate.status})`)
-            continue
-          }
-          response = candidate
-          break
-        } catch (error) {
-          lastError = error
-        }
-      }
-
-      if (!response) {
-        throw lastError instanceof Error ? lastError : new Error("Failed to export PDF")
-      }
-
-      // Get the PDF blob
-      const blob = await response.blob()
-
-      // Create a download link
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = "BloomCare_Monthly_Screening_Report.pdf"
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-
-      console.log("PDF exported successfully")
-    } catch (error) {
-      console.error("Error exporting PDF:", error)
-      alert("Failed to export PDF. Please try again.")
-    } finally {
-      setIsExporting(false)
-    }
   }
 
   const handleCreateStaff = async () => {
@@ -557,15 +508,6 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                       {getText("Monthly Screening Trends", "මාසික පරීක්ෂණ ප්‍රවණතා", "மாதாந்திர ஸ்கிரீனிங் போக்குகள்")}
                     </CardTitle>
                   </div>
-                  <Button
-                    onClick={handleExportPDF}
-                    disabled={isExporting}
-                    variant="outline"
-                    className="rounded-xl border-slate-200 text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    {isExporting ? getText("Exporting...", "අපනයනය කරමින්...", "ஏற்றுமதி செய்கிறது...") : getText("Export", "අපනයනය", "ஏற்றுமதி")}
-                  </Button>
                 </CardHeader>
                 <CardContent className="pt-8">
                   <div className="h-80 w-full font-bold">
