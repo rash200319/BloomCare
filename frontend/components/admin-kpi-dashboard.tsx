@@ -1,5 +1,7 @@
 "use client"
 
+import { getApiBaseCandidates } from "@/lib/api"
+
 import { useEffect, useState, useMemo } from "react"
 import {
   BarChart,
@@ -91,24 +93,6 @@ interface TrendPoint {
   case_count: number
   condition: string
   severity_avg: number
-}
-
-const getApiBaseCandidates = (): string[] => {
-  const candidates: (string | undefined)[] = [
-    process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, ""),
-    "http://localhost:8005/api/v1",
-    "http://127.0.0.1:8005/api/v1",
-  ]
-
-  if (typeof window !== "undefined") {
-    const protocol = window.location.protocol || "http:"
-    const host = window.location.hostname || "localhost"
-    candidates.push(`${protocol}//${host}:8005/api/v1`)
-  }
-
-  return candidates
-    .filter((c): c is string => Boolean(c))
-    .reduce((acc: string[], c: string) => (acc.includes(c) ? acc : [...acc, c]), [])
 }
 
 export default function AdminKPIDashboard({ onLogout }: AdminKPIDashboardProps) {

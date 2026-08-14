@@ -1,5 +1,7 @@
 "use client"
 
+import { getApiBaseCandidates } from "@/lib/api"
+
 import { useEffect, useMemo, useState } from "react"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -22,22 +24,6 @@ interface ProfileSettingsDialogProps {
   onOpenChange: (open: boolean) => void
   userProfile: StoredProfile | null
   onProfileSaved?: (profile: StoredProfile) => void
-}
-
-const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "")
-
-function getApiBaseCandidates(): string[] {
-  const candidates = [configuredApiBase, "http://localhost:8005/api/v1", "http://127.0.0.1:8005/api/v1"]
-
-  if (typeof window !== "undefined") {
-    const protocol = window.location.protocol || "http:"
-    const host = window.location.hostname || "localhost"
-    candidates.push(`${protocol}//${host}:8005/api/v1`)
-  }
-
-  candidates.push("http://localhost:8005/api/v1", "http://127.0.0.1:8005/api/v1")
-
-  return candidates.filter((value, index, arr): value is string => Boolean(value) && arr.indexOf(value as string) === index)
 }
 
 function normalizeRole(role: string | undefined): string {

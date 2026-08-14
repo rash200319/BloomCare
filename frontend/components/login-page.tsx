@@ -30,53 +30,10 @@ import {
   SelectValue
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import { apiRequest, DEMO_CREDENTIALS } from "@/lib/api"
 
 type UserRole = "frontline" | "doctor" | "admin" | "patient"
 type Language = "EN" | "SI" | "TA"
-
-const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "")
-
-function getAuthApiBaseCandidates(): string[] {
-  const candidates = [configuredApiBase, "http://localhost:8005/api/v1", "http://127.0.0.1:8005/api/v1"]
-
-  if (typeof window !== "undefined") {
-    const protocol = window.location.protocol || "http:"
-    const host = window.location.hostname || "localhost"
-    candidates.push(
-      `${protocol}//${host}:8005/api/v1`
-    )
-  }
-
-  candidates.push(
-    "http://localhost:8005/api/v1",
-    "http://127.0.0.1:8005/api/v1"
-  )
-
-  return candidates.filter((value, index, arr): value is string => Boolean(value) && arr.indexOf(value as string) === index)
-}
-
-async function authFetch(path: string, init?: RequestInit): Promise<Response> {
-  const authApiBaseCandidates = getAuthApiBaseCandidates()
-  let lastNetworkError: unknown = null
-
-  for (const baseUrl of authApiBaseCandidates) {
-    const url = `${baseUrl}${path}`
-    try {
-      const response = await fetch(url, init)
-      if (response.status === 404) {
-        continue
-      }
-      return response
-    } catch (error) {
-      lastNetworkError = error
-    }
-  }
-
-  if (lastNetworkError instanceof Error) {
-    throw new Error(`Unable to reach backend API. ${lastNetworkError.message}`)
-  }
-  throw new Error("Unable to reach backend API. Please verify backend is running and NEXT_PUBLIC_API_BASE_URL is correct.")
-}
 
 interface LoginPageProps {
   onLogin: (role: UserRole) => void
@@ -144,10 +101,10 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
   const fromApiRole = (role: string): UserRole => {
     const upper = String(role || "").toUpperCase()
     if (upper === "FRONTLINE_STAFF") return "frontline"
-    if (upper === "DOCTOR") return "doctor"
-    if (upper === "CLINICAL_SPECIALIST") return "doctor"
+    if (upper === "DOCTOR" || upper === "CLINICAL_SPECIALIST" || upper === "OBSERTITIAN") return "doctor"
     if (upper === "ADMIN") return "admin"
-    return "patient"
+    if (upper === "PATIENT") return "patient"
+    throw new Error(`Unknown account role: ${role || "(missing)"}`)
   }
 
   const getText = (en: string, si: string, ta: string) => {
@@ -157,6 +114,7 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
   }
 
   const isPatientRole = selectedRole === "patient"
+  const demoForRole = selectedRole ? DEMO_CREDENTIALS[selectedRole] : null
 
   const getIdentifierLabel = () => {
     if (isPatientRole) {
@@ -166,10 +124,16 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
   }
 
   const getIdentifierPlaceholder = () => {
-    if (isPatientRole) {
-      return "199912345678"
-    }
-    return "name@hemas.lk"
+    if (!selectedRole) return ""
+    return DEMO_CREDENTIALS[selectedRole].identifier
+  }
+
+  const fillDemoCredentials = () => {
+    if (!selectedRole) return
+    const demo = DEMO_CREDENTIALS[selectedRole]
+    setIdentifier(demo.identifier)
+    setPassword(demo.password)
+    setErrorMessage("")
   }
 
   const getIdentifierPayload = () => {
@@ -177,6 +141,24 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
       return { national_id: identifier }
     }
     return { email: identifier }
+  }
+
+  const parseApiError = async (response: Response, fallback: string) => {
+    const err = await response.json().catch(() => ({}))
+    const detail = (err as { detail?: unknown })?.detail
+    if (typeof detail === "string") return detail
+    if (Array.isArray(detail)) {
+      return detail
+        .map((item) =>
+          typeof item === "string"
+            ? item
+            : item && typeof item === "object" && "msg" in item
+              ? String((item as { msg: unknown }).msg)
+              : JSON.stringify(item),
+        )
+        .join("; ")
+    }
+    return fallback
   }
 
   const handleLogin = async () => {
@@ -201,7 +183,7 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
     try {
       if (isFirstLoginMode) {
         const setupEndpoint = isPatientRole ? "/auth/first-login/patient" : "/auth/first-login/staff"
-        const setupResponse = await authFetch(setupEndpoint, {
+        const setupResponse = await apiRequest(setupEndpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -212,15 +194,14 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
         })
 
         if (!setupResponse.ok) {
-          const err = await setupResponse.json().catch(() => ({}))
-          const detail = String(err?.detail || "Password setup failed")
+          const detail = await parseApiError(setupResponse, "Password setup failed")
           if (detail.toLowerCase().includes("password already set")) {
             setIsFirstLoginMode(false)
             setConfirmPassword("")
             setErrorMessage(getText(
               "Password already set. Please sign in.",
-              "à¶¸à·”à¶»à¶´à¶¯à¶º à¶¯à¶±à·Š æ¶§à¶­à·Š à·ƒà¶šà·ƒà· æ¶­. à¶´à·”à¶»à¶±à¶º à·€à¶±à·Šà¶±.",
-              "à®•à®Ÿà®µà¯à®šà¯à®šà¯Šà®²à¯ ஏற்கனவே அமைக்கப்பட்டுள்ளது. தயவுசெய்து உள்நுழைக."
+              "මුරපදය දැනටමත් සකසා ඇත. කරුණාකර පුරනය වන්න.",
+              "கடவுச்சொல் ஏற்கனவே அமைக்கப்பட்டுள்ளது. தயவுசெய்து உள்நுழையவும்."
             ))
             return
           }
@@ -238,7 +219,7 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
       }
 
       const loginEndpoint = isPatientRole ? "/auth/login/patient" : "/auth/login/staff"
-      const loginResponse = await authFetch(loginEndpoint, {
+      const loginResponse = await apiRequest(loginEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -248,8 +229,7 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
       })
 
       if (!loginResponse.ok) {
-        const err = await loginResponse.json().catch(() => ({}))
-        throw new Error(err?.detail || "Sign in failed")
+        throw new Error(await parseApiError(loginResponse, "Sign in failed"))
       }
 
       const tokenData = await loginResponse.json()
@@ -279,7 +259,7 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
       const accessToken = tokenData.access_token
       const dashboardEndpoint = dashboardEndpointMap[actualBackendRole]
 
-      const dashboardResponse = await authFetch(dashboardEndpoint, {
+      const dashboardResponse = await apiRequest(dashboardEndpoint, {
         headers: {
           "Authorization": `Bearer ${accessToken}`,
           "Content-Type": "application/json"
@@ -297,8 +277,7 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
       }
 
       if (!dashboardResponse.ok) {
-        const err = await dashboardResponse.json().catch(() => ({}))
-        throw new Error(err?.detail || "Failed to verify dashboard access")
+        throw new Error(await parseApiError(dashboardResponse, "Failed to verify dashboard access"))
       }
 
       // ✅ Store both token and full profile data
@@ -564,22 +543,44 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
                 </CardContent>
               </Card>
 
-              {/* Demo Credentials */}
+              {/* Demo Credentials — match backend/db/seeds.sql (+ init_db patient NIC) */}
               <div className="mt-8 p-8 bg-slate-50/50 border border-slate-100 rounded-3xl backdrop-blur-sm shadow-inner">
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center">
-                    <UserCircle className="w-5 h-5 text-slate-400" />
+                <div className="flex items-center justify-between gap-4 mb-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center">
+                      <UserCircle className="w-5 h-5 text-slate-400" />
+                    </div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Demo Credentials</p>
                   </div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Demo Credentials</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 rounded-xl text-[10px] font-black uppercase tracking-widest border-slate-200"
+                    onClick={fillDemoCredentials}
+                  >
+                    Autofill
+                  </Button>
                 </div>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between px-5 py-3 bg-white/50 rounded-xl border border-white">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Email</span>
-                    <span className="text-xs font-black text-slate-800">demo@hemas.lk</span>
+                  <div className="flex items-center justify-between px-5 py-3 bg-white/50 rounded-xl border border-white gap-3">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">
+                      {demoForRole?.label || "ID"}
+                    </span>
+                    <span className="text-xs font-black text-slate-800 text-right break-all">
+                      {demoForRole?.identifier || "—"}
+                    </span>
                   </div>
+                  {selectedRole === "patient" && (
+                    <div className="flex items-center justify-between px-5 py-3 bg-white/50 rounded-xl border border-white gap-3">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Alt NIC</span>
+                      <span className="text-xs font-black text-slate-800 text-right break-all">
+                        {DEMO_CREDENTIALS.patient.altIdentifier}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between px-5 py-3 bg-white/50 rounded-xl border border-white">
                     <span className="text-[10px] font-bold text-slate-400 uppercase">Password</span>
-                    <span className="text-xs font-black text-slate-800">demo123</span>
+                    <span className="text-xs font-black text-slate-800">{demoForRole?.password || "rash2003"}</span>
                   </div>
                 </div>
               </div>

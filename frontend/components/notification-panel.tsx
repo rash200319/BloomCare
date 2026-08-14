@@ -1,5 +1,7 @@
 "use client"
 
+import { getApiBaseCandidates } from "@/lib/api"
+
 import { useEffect, useRef, useState } from "react"
 import {
   CheckCircle,
@@ -61,17 +63,7 @@ export default function NotificationPanel({ patientId }: NotificationPanelProps)
         return
       }
 
-      const candidates = [
-        process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, ""),
-        "http://localhost:8005/api/v1",
-        "http://127.0.0.1:8005/api/v1"
-      ].filter(Boolean)
-
-      if (typeof window !== "undefined") {
-        const protocol = window.location.protocol || "http:"
-        const host = window.location.hostname || "localhost"
-        candidates.push(`${protocol}//${host}:8005/api/v1`)
-      }
+      const candidates = getApiBaseCandidates()
 
       let lastError: unknown = null
       let response: Response | null = null
@@ -164,17 +156,7 @@ export default function NotificationPanel({ patientId }: NotificationPanelProps)
       const token = typeof window !== "undefined" ? localStorage.getItem("bloomcare_access_token") : null
       if (!token) return
 
-      const candidates = [
-        process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, ""),
-        "http://localhost:8005/api/v1",
-        "http://127.0.0.1:8005/api/v1"
-      ].filter(Boolean)
-
-      if (typeof window !== "undefined") {
-        const protocol = window.location.protocol || "http:"
-        const host = window.location.hostname || "localhost"
-        candidates.push(`${protocol}//${host}:8005/api/v1`)
-      }
+      const candidates = getApiBaseCandidates()
 
       for (const base of candidates) {
         try {
@@ -209,17 +191,7 @@ export default function NotificationPanel({ patientId }: NotificationPanelProps)
       const token = typeof window !== "undefined" ? localStorage.getItem("bloomcare_access_token") : null
       if (!token) return
 
-      const candidates = [
-        process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, ""),
-        "http://localhost:8005/api/v1",
-        "http://127.0.0.1:8005/api/v1"
-      ].filter(Boolean)
-
-      if (typeof window !== "undefined") {
-        const protocol = window.location.protocol || "http:"
-        const host = window.location.hostname || "localhost"
-        candidates.push(`${protocol}//${host}:8005/api/v1`)
-      }
+      const candidates = getApiBaseCandidates()
 
       for (const base of candidates) {
         try {
@@ -248,17 +220,7 @@ export default function NotificationPanel({ patientId }: NotificationPanelProps)
       const token = typeof window !== "undefined" ? localStorage.getItem("bloomcare_access_token") : null
       if (!token) return
 
-      const candidates = [
-        process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, ""),
-        "http://localhost:8005/api/v1",
-        "http://127.0.0.1:8005/api/v1"
-      ].filter(Boolean)
-
-      if (typeof window !== "undefined") {
-        const protocol = window.location.protocol || "http:"
-        const host = window.location.hostname || "localhost"
-        candidates.push(`${protocol}//${host}:8005/api/v1`)
-      }
+      const candidates = getApiBaseCandidates()
 
       for (const base of candidates) {
         try {

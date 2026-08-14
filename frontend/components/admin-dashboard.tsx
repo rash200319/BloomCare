@@ -1,5 +1,7 @@
 "use client"
 
+import { getApiBaseCandidates } from "@/lib/api"
+
 import { useEffect, useState } from "react"
 import {
   User,
@@ -88,27 +90,6 @@ interface TrendPoint {
 }
 
 type StaffRoleOption = "FRONTLINE_STAFF" | "CLINICAL_SPECIALIST"
-
-const getApiBaseCandidates = (): string[] => {
-  const candidates: (string | undefined)[] = [
-    process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, ""),
-    "http://localhost:8000/api/v1",
-    "http://127.0.0.1:8000/api/v1",
-    "http://localhost:8005/api/v1",
-    "http://127.0.0.1:8005/api/v1",
-  ]
-
-  if (typeof window !== "undefined") {
-    const protocol = window.location.protocol || "http:"
-    const host = window.location.hostname || "localhost"
-    candidates.push(`${protocol}//${host}:8000/api/v1`)
-    candidates.push(`${protocol}//${host}:8005/api/v1`)
-  }
-
-  return candidates
-    .filter((candidate): candidate is string => Boolean(candidate))
-    .reduce((acc: string[], candidate: string) => (acc.includes(candidate) ? acc : [...acc, candidate]), [])
-}
 
 const languages = [
   { code: "EN", label: "English" },
