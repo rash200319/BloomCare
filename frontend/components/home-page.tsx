@@ -149,7 +149,7 @@ export default function HomePage({ onNavigateToLogin }: HomePageProps) {
   ]
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col relative overflow-hidden">
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col relative">
       {/* Page-wide Background Treatment */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
         <img 

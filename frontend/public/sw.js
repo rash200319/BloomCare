@@ -1,6 +1,5 @@
-const CACHE_NAME = "bloomcare-offline-v1"
+const CACHE_NAME = "bloomcare-offline-v3"
 const APP_SHELL = [
-  "/",
   "/manifest.json",
   "/scripts/stage1_offline_ai.js",
   "/images/mother-baby-shadow.png",
@@ -40,6 +39,42 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
+  // Always network-first for HTML navigations so chatbot/UI deploys are not stuck on stale cache.
+  if (event.request.mode === "navigate" || requestUrl.pathname === "/" || requestUrl.pathname.endsWith(".html")) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => networkResponse)
+        .catch(async () => {
+          const cached = await caches.match(event.request)
+          if (cached) return cached
+          return new Response("Offline", {
+            status: 503,
+            statusText: "Offline",
+            headers: { "Content-Type": "text/plain" },
+          })
+        })
+    )
+    return
+  }
+
+  // Do not cache Next.js build assets forever; prefer network so redeploys show up.
+  if (requestUrl.pathname.startsWith("/_next/")) {
+    event.respondWith(
+      fetch(event.request).catch(async () => {
+        const cached = await caches.match(event.request)
+        return (
+          cached ||
+          new Response("Offline", {
+            status: 503,
+            statusText: "Offline",
+            headers: { "Content-Type": "text/plain" },
+          })
+        )
+      })
+    )
+    return
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
@@ -51,13 +86,6 @@ self.addEventListener("fetch", (event) => {
         const cached = await caches.match(event.request)
         if (cached) {
           return cached
-        }
-
-        if (event.request.mode === "navigate") {
-          const fallback = await caches.match("/")
-          if (fallback) {
-            return fallback
-          }
         }
 
         return new Response("Offline", {

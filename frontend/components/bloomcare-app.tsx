@@ -7,7 +7,6 @@ import FrontlineTriageDashboard from "./frontline-triage-dashboard"
 import ClinicalDashboard from "./clinical-dashboard"
 import AdminDashboard from "./admin-dashboard"
 import PatientPortal from "./patient-portal"
-import SiteChatbot from "./site-chatbot"
 
 type UserRole = "frontline" | "doctor" | "admin" | "patient" | null
 type AppView = "home" | "login" | "dashboard"
@@ -149,6 +148,22 @@ export default function BloomCareApp() {
     return () => window.clearTimeout(timeout)
   }, [currentView, pendingSectionId])
 
+  // Global layout chatbot navigates via this event so it works on every UI.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const onChatbotNavigate = (event: Event) => {
+      const custom = event as CustomEvent<"home" | "login" | "features" | "conditions" | "dashboard">
+      if (!custom.detail) return
+      handleChatbotNavigate(custom.detail)
+    }
+
+    window.addEventListener("bloomcare-navigate", onChatbotNavigate as EventListener)
+    return () => {
+      window.removeEventListener("bloomcare-navigate", onChatbotNavigate as EventListener)
+    }
+  }, [currentRole])
+
   const renderMainView = () => {
     if (currentView === "home") {
       return <HomePage onNavigateToLogin={handleNavigateToLogin} />
@@ -176,14 +191,5 @@ export default function BloomCareApp() {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>
   }
 
-  return (
-    <>
-      {renderMainView()}
-      <SiteChatbot
-        currentView={currentView}
-        currentRole={currentRole}
-        onNavigate={handleChatbotNavigate}
-      />
-    </>
-  )
+  return <>{renderMainView()}</>
 }
