@@ -206,7 +206,11 @@ def _create_engine_with_fallback():
         logger.info("Connected to PostgreSQL: %s", primary_uri)
         return engine
     except SQLAlchemyError as exc:
-        fallback_uri = "sqlite:///./bloomcare_local.db"
+        from pathlib import Path
+
+        project_root = Path(__file__).resolve().parents[2]
+        sqlite_path = project_root / "bloomcare_local.db"
+        fallback_uri = f"sqlite:///{sqlite_path.as_posix()}"
         logger.warning(
             "PostgreSQL unavailable (%s). Falling back to local SQLite at %s",
             exc,
@@ -255,3 +259,11 @@ _ensure_patient_compat_columns(engine)
 _ensure_appointments_table(engine)
 _ensure_notifications_table(engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Interview demos: ensure login accounts exist when running on SQLite fallback.
+try:
+    from backend.db.seed_demo import seed_sqlite_if_needed
+
+    seed_sqlite_if_needed(engine, SessionLocal)
+except Exception as seed_exc:
+    logger.warning("Demo seed bootstrap skipped: %s", seed_exc)
