@@ -65,8 +65,7 @@ CREATE TABLE IF NOT EXISTS patients (
     assigned_worker_id UUID REFERENCES users(id) ON DELETE SET NULL
 );
 
-ALTER TABLE patients
-ADD COLUMN IF NOT EXISTS age INT;
+
 
 -- OTP RECORDS (One-Time Password for password reset and authentication)
 CREATE TABLE IF NOT EXISTS otp_records (
