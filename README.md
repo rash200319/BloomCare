@@ -4,7 +4,6 @@
 
 BloomCare is designed for low-connectivity clinical environments. It combines an offline-first Stage 1 screener (web + mobile) with server-side Stage 2 diagnostics for preeclampsia, gestational diabetes (GDM), and preterm birth risk — plus explainable AI outputs and multilingual UI (English, Sinhala, Tamil).
 
-> **Demo deployment (AWS):** [http://54.206.93.158](http://54.206.93.158)  
 > Demo only — not secure and **must not** be used for production or real patient data.
 
 ---
