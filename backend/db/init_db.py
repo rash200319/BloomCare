@@ -43,13 +43,12 @@ def init_db():
         with open(schema_path, "r") as f:
             sql = f.read()
 
-        try:
-            cursor.execute(sql)
-            logger.info("Schema execution completed successfully!")
-        except Exception as schema_error:
-            # Schema may be partially present in development; continue with seeding.
-            logger.warning("Schema execution reported: %s", schema_error)
-            conn.rollback()
+        # schema.sql is written to be idempotent (IF NOT EXISTS, DROP-then-
+        # CREATE for triggers, DO blocks catching duplicate_object for enums),
+        # so a failure here is a real bug in the schema, not a rerun artifact.
+        # Let it propagate rather than silently seeding against a broken DB.
+        cursor.execute(sql)
+        logger.info("Schema execution completed successfully!")
 
         cursor.execute('SET search_path TO "BloomCare"')
 
@@ -136,6 +135,7 @@ def init_db():
 
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
+        raise
     finally:
         if 'cursor' in locals():
             cursor.close()
@@ -144,4 +144,7 @@ def init_db():
 
 
 if __name__ == "__main__":
-    init_db()
+    try:
+        init_db()
+    except Exception:
+        sys.exit(1)
