@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15
@@ -10,7 +8,9 @@ services:
       POSTGRES_PASSWORD: bloomcare_pass
       POSTGRES_DB: bloomcare_db
     ports:
-      - "5432:5432"
+      # Override with e.g. `POSTGRES_HOST_PORT=5433 docker compose up -d` if
+      # another PostgreSQL instance already owns 5432 on the host.
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 

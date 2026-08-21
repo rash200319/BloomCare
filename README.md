@@ -243,6 +243,14 @@ Default Compose credentials (see `backend/docker-compose.yml` and `backend/core/
 - **Database:** `bloomcare_db`
 - **Port:** `5432`
 
+If port `5432` is already in use on your machine (e.g. a native PostgreSQL install), set `POSTGRES_HOST_PORT` in `backend/.env` to an open port (Compose reads `backend/.env` automatically when run from `backend/`) and update `POSTGRES_PORT` to match so the backend connects to the same port:
+
+```env
+# backend/.env
+POSTGRES_HOST_PORT=5433
+POSTGRES_PORT=5433
+```
+
 Initialize schema / seed (Postgres):
 
 ```bash
