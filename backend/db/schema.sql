@@ -385,7 +385,7 @@ CREATE INDEX IF NOT EXISTS idx_appointments_creator ON appointments(created_by_i
 CREATE INDEX IF NOT EXISTS idx_appointments_specialist ON appointments(specialist_id);
 CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status);
 CREATE INDEX IF NOT EXISTS idx_appointments_specialist_date ON appointments(specialist_id, appointment_date);
-CREATE INDEX IF NOT EXISTS idx_appointments_specialist_day_queue ON appointments(specialist_id, DATE(appointment_date), queue_number);
+CREATE INDEX IF NOT EXISTS idx_appointments_specialist_day_queue ON appointments(specialist_id, ((appointment_date AT TIME ZONE 'UTC')::date), queue_number);
 CREATE INDEX IF NOT EXISTS idx_appointments_completed ON appointments(completed_at) WHERE status = 'COMPLETED';
 CREATE INDEX IF NOT EXISTS idx_appointments_cancelled ON appointments(cancelled_at) WHERE status = 'CANCELLED';
 
