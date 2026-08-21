@@ -34,6 +34,8 @@ cd ..
 
 .\.venv\Scripts\Activate.ps1
 python -m uvicorn backend.main:app --host 0.0.0
+(python -m uvicorn backend.main:app --host 127.0.0.1 --port 8001 --reload
+)
 
 ## Terminal 2 — Frontend
 cd frontend

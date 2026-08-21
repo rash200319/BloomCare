@@ -37,6 +37,7 @@ coverage/
 .nyc_output/
 *.lcov
 
+
 # Project Specific
 vibration.log
 *.tsbuildinfo
