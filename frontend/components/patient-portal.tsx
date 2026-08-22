@@ -756,7 +756,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
           date: appointmentDate.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }),
           time: appointmentDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           doctor: appointment.specialist_name || "Assigned Specialist",
-          location: "Hemas Hospital Wattala",
+          location: "University of Moratuwa, Sri Lanka",
           status: (appointment.status || "scheduled").toLowerCase(),
           notes: appointment.notes || null,
           queue_number: appointment.queue_number ?? null,
@@ -1126,8 +1126,8 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                          </div>
                          <div>
                             <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-1">Facility</p>
-                            <p className="text-sm font-black text-slate-900">Hemas Hospital Wattala</p>
-                            <p className="text-xs text-slate-500">Negombo Rd, Wattala</p>
+                            <p className="text-sm font-black text-slate-900">University of Moratuwa</p>
+                            <p className="text-xs text-slate-500">Sri Lanka</p>
                          </div>
                       </div>
                       <div className="p-6 bg-rose-50/50 rounded-2xl border border-rose-100 flex items-start gap-4">

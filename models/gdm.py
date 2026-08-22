@@ -97,7 +97,7 @@ import shap
 import matplotlib.pyplot as plt
 
 # ---------------------------------------------------------------------
-# EXPLAINABLE AI (XAI) FOR THE HEMAS DASHBOARD
+# EXPLAINABLE AI (XAI) FOR THE BLOOMCARE DASHBOARD
 # ---------------------------------------------------------------------
 print("\n📊 Generating SHAP Clinical Trust Graphs for the Dashboard...")
 
@@ -111,7 +111,7 @@ plt.figure(figsize=(10, 6))
 shap.summary_plot(shap_values[:, :, 1], X_gdm_test, show=False)
 
 # Save the graph so the Frontend UI dev can display it on the Dashboard
-plt.title("Clinical Drivers of GDM Metabolic Risk (Hemas XAI)", fontsize=14)
+plt.title("Clinical Drivers of GDM Metabolic Risk (BloomCare XAI)", fontsize=14)
 plt.tight_layout()
 plt.savefig("stage2_gdm_shap_explainer.png", dpi=300, bbox_inches='tight')
 print("Saved XAI Graph: stage2_gdm_shap_explainer.png")

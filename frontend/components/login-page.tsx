@@ -331,7 +331,7 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
               <div>
                 <h1 className="text-xl font-bold tracking-tight text-slate-900">BloomCare</h1>
                 <p className="text-[10px] font-bold text-primary tracking-widest uppercase -mt-1">
-                  {getText("Hemas Hospitals", "හේමාස් රෝහල්", "හේමාස්")}
+                  {getText("Maternal Risk Intelligence", "මාතෘ අවදානම් බුද්ධිය", "தாய்வழி ஆபத்து நுண்ணறிவு")}
                 </p>
               </div>
             </div>
@@ -594,7 +594,7 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
           <div className="flex items-center gap-4">
             <Heart className="w-5 h-5 text-primary opacity-30" />
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-              © 2026 Hemas Hospitals. {getText("All rights reserved.", "සියලු හිමිකම් ඇවිරිණි.", "அனைத்து உரிமைகளும்.")}
+              © 2026 BloomCare. {getText("All rights reserved.", "සියලු හිමිකම් ඇවිරිණි.", "அனைத்து உரிமைகளும்.")}
             </p>
           </div>
           <div className="flex items-center gap-10">

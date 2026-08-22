@@ -49,6 +49,7 @@ def _cors_origins() -> list[str]:
         "https://localhost:3000",
         "https://127.0.0.1:3000",
         "https://bloom-care-ten.vercel.app",
+        "https://bloomcare.rashmip.me",
     ]
     extra = (settings.ALLOWED_ORIGINS or "").strip()
     if not extra:
@@ -60,7 +61,7 @@ def _cors_origins() -> list[str]:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|.*\.vercel\.app|.*\.up\.railway\.app)(:\d+)?$",
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|.*\.vercel\.app|.*\.up\.railway\.app|bloomcare\.rashmip\.me)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

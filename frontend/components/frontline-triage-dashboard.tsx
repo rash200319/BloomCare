@@ -1132,7 +1132,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
             <div>
               <h1 className="text-2xl font-black tracking-tight text-slate-900 leading-none">Bloom<span className="text-primary">Care</span></h1>
               <p className="text-[9px] font-bold text-slate-400 tracking-[0.2em] uppercase mt-1">
-                {getText("Hemas Hospitals Intelligence", "හේමාස් රෝහල් බුද්ධිය", "ஹேமாஸ் மருத்துவமனை நுண்ணறிவு")}
+                {getText("BloomCare Intelligence", "BloomCare බුද්ධිය", "BloomCare நுண்ணறிவு")}
               </p>
             </div>
           </div>

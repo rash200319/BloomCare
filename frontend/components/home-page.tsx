@@ -11,7 +11,6 @@ import {
   Clock, 
   CheckCircle,
   ArrowRight,
-  Phone,
   Mail,
   MapPin,
   ChevronRight,
@@ -171,7 +170,7 @@ export default function HomePage({ onNavigateToLogin }: HomePageProps) {
               </div>
               <div>
                 <h1 className="text-xl font-bold tracking-tight text-slate-900">BloomCare</h1>
-                <p className="text-[10px] font-medium tracking-widest uppercase text-primary">Hemas Hospitals</p>
+                <p className="text-[10px] font-medium tracking-widest uppercase text-primary">Maternal Risk Intelligence</p>
               </div>
             </div>
 
@@ -241,7 +240,7 @@ export default function HomePage({ onNavigateToLogin }: HomePageProps) {
               <div className="inline-flex items-center gap-2 bg-white/80 glass rounded-full px-5 py-2 mb-2 animate-float">
                 <Shield className="w-4 h-4 text-primary" />
                 <span className="text-xs font-semibold tracking-wide uppercase text-slate-700">
-                  {getText("Trusted by Hemas Hospitals", "හේමාස් රෝහල් විශ්වාස කරයි", "ஹேமாஸ் மருத்துவமனைகளால் நம்பப்படுகிறது")}
+                  {getText("Built for maternal care", "මාතෘ සත්කාරය සඳහා නිර්මාණය කළ", "தாய்வழி பராமரிப்பிற்காக உருவாக்கப்பட்டது")}
                 </span>
               </div>
               <h1 className="text-5xl md:text-6xl lg:text-7xl font-black leading-[1.1] text-slate-900 text-balance tracking-tight">
@@ -501,9 +500,9 @@ export default function HomePage({ onNavigateToLogin }: HomePageProps) {
             </h2>
             <p className="text-xl text-white/90 mb-10 leading-relaxed font-bold">
               {getText(
-                "Join Hemas Hospitals in deploying the world's first multi-condition AI maternal risk engine. Early detection saves lives.",
-                "AI-බලගැන්වූ අවදානම් හඳුනාගැනීම සමඟ මාතෘ සෞඛ්‍ය සේවය විප්ලවීය කිරීමට හේමාස් රෝහල් සමඟ එක්වන්න.",
-                "AI-இயக்கப்படும் ஆபத்து கண்டறிதல் மூலம் தாய்வழி சுகாதாரத்தை புரட்சி செய்ய ஹேமாஸ் மருத்துவமனைகளுடன் இணையுங்கள்."
+                "Deploy a multi-condition AI maternal risk engine for early detection of preeclampsia, GDM, and preterm birth. Early detection saves lives.",
+                "ප්‍රෙක්ලැම්ප්සියා, GDM සහ නොමේරූ උපත් ඉක්මනින් හඳුනා ගැනීමට බහු-තත්ත්ව AI මාතෘ අවදානම් එන්ජිමක් යොදවන්න. ඉක්මන් හඳුනාගැනීම ජීවිත බේරා ගනී.",
+                "ப்ரீக்ளாம்ப்சியா, GDM மற்றும் குறைப்பிரசவத்தை ஆரம்பத்திலேயே கண்டறிய பல-நிலை AI தாய்வழி ஆபத்து இயந்திரத்தை பயன்படுத்துங்கள். ஆரம்பகால கண்டறிதல் உயிர்களை காக்கும்."
               )}
             </p>
             <div className="flex flex-col sm:flex-row gap-5">
@@ -542,7 +541,7 @@ export default function HomePage({ onNavigateToLogin }: HomePageProps) {
                 </div>
                 <div>
                   <h4 className="text-3xl font-black tracking-tighter">BloomCare</h4>
-                  <p className="text-[10px] font-black tracking-[0.3em] uppercase text-primary">Hemas Hospitals</p>
+                  <p className="text-[10px] font-black tracking-[0.3em] uppercase text-primary">Maternal Risk Intelligence</p>
                 </div>
               </div>
               <p className="text-lg text-slate-400 max-w-md font-medium leading-relaxed">
@@ -566,19 +565,21 @@ export default function HomePage({ onNavigateToLogin }: HomePageProps) {
               <h5 className="font-black uppercase tracking-widest text-slate-200 mb-6 text-sm">{getText("Contact", "සම්බන්ධ වන්න", "தொடர்பු")}</h5>
               <div className="space-y-4 text-slate-400 font-bold">
                 <p className="flex items-center gap-3">
-                  <Mail className="w-4 h-4 text-primary" />
-                  bloom@hemas.lk
+                  <Mail className="w-4 h-4 text-primary shrink-0" />
+                  <a href="mailto:pabodarashmi668@gmail.com" className="hover:text-primary transition-colors break-all">
+                    pabodarashmi668@gmail.com
+                  </a>
                 </p>
-                <p className="flex items-center gap-3">
-                  <MapPin className="w-4 h-4 text-primary" />
-                  Wattala, Sri Lanka
+                <p className="flex items-start gap-3">
+                  <MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                  University of Moratuwa, Sri Lanka
                 </p>
               </div>
             </div>
           </div>
           
           <div className="border-t border-slate-800 pt-12 flex flex-col md:flex-row items-center justify-between gap-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-            <p>© 2026 Hemas Hospitals. {getText("All rights reserved AI Safety First.", "සියලු හිමිකම් ඇවිරිණි.", "அனைத்து உரிமைகளும் பாதுகாக்கப்பட்டவை.")}</p>
+            <p>© 2026 BloomCare. {getText("All rights reserved. AI Safety First.", "සියලු හිමිකම් ඇවිරිණි.", "அனைத்து உரிமைகளும் பாதுகாக்கப்பட்டவை.")}</p>
             <div className="flex items-center gap-6">
               <span className="text-slate-700">Powered by</span>
               <span className="text-slate-300">Code Nexus</span>

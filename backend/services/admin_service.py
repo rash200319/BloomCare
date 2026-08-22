@@ -3,7 +3,7 @@ AdminService: Metric Aggregation & KPI Engine for BloomCare Admin Dashboard
 Implements:
   1. Metric Aggregator Pattern (Top-row statistics)
   2. Time-Series Trends (Graphs & prevalence tracking)
-  3. Hemas-specific KPIs (Referral efficiency, risk drivers, specialist workload)
+  3. Clinical KPIs (Referral efficiency, risk drivers, specialist workload)
 """
 
 from sqlalchemy.orm import Session
@@ -257,7 +257,7 @@ class AdminService:
     @staticmethod
     def get_top_risk_drivers(db: Session, limit: int = 5) -> List[RiskDriverAggregate]:
         """
-        🏆 HEMAS KPI: Top Risk Drivers
+        🏆 KPI: Top Risk Drivers
         Analyzes recent high-risk stage1 and stage2 JSON explainability payloads.
         """
         try:
@@ -386,7 +386,7 @@ class AdminService:
     @staticmethod
     def get_referral_efficiency(db: Session) -> Dict[str, Any]:
         """
-        🏥 HEMAS KPI: Referral Efficiency
+        🏥 KPI: Referral Efficiency
         Tracks the flow from Stage 1 (Community) → Stage 2 (Specialist).
         """
         try:
@@ -448,7 +448,7 @@ class AdminService:
     @staticmethod
     def get_specialist_workload(db: Session) -> List[SpecialistWorkload]:
         """
-        🏥 HEMAS KPI: Specialist Workload Distribution
+        🏥 KPI: Specialist Workload Distribution
         Aggregates stage2_recommendations by specialist to show workload.
         """
         try:
@@ -563,7 +563,7 @@ class AdminService:
     @staticmethod
     def get_cost_impact_estimate(db: Session) -> Dict[str, Any]:
         """
-        💰 HEMAS KPI: Cost Savings Estimate
+        💰 KPI: Cost Savings Estimate
         Estimates cost savings from early detection and prevention.
         Based on: (High-Risk Cases Detected) × (Average Cost Avoidance per Case)
         """
