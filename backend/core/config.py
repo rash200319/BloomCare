@@ -8,8 +8,9 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "BloomCare Maternal Risk Intelligence API"
     
-    # Security
-    SECRET_KEY: str = "a_very_secret_key_change_me_in_production"
+    # Security — set SECRET_KEY in backend/.env for any shared deploy.
+    # Default is intentionally demo-only and must not be used in production.
+    SECRET_KEY: str = "bloomcare-local-demo-only-change-me"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     ALGORITHM: str = "HS256"
 

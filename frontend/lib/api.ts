@@ -168,7 +168,7 @@ export const DEMO_CREDENTIALS = {
   },
   doctor: {
     label: "Email",
-    identifier: "obsertitian@bloomcare.health",
+    identifier: "obstetrician@bloomcare.health",
     password: "rash2003",
   },
   admin: {

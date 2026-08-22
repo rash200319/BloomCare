@@ -5,7 +5,7 @@ Implements the two-stage data engineering and inference pipeline.
 
 Stage 1 (Edge)
 --------------
-  • Lightweight MLP runs on-device (TFLite / PyTorch Mobile).
+  • Lightweight model runs on-device (exported JS Stage 1 screener).
   • This module only receives and persists the edge result via the sync endpoint.
 
 Stage 2 (Server)

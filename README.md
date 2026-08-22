@@ -174,13 +174,12 @@ BloomCare supports the full care pathway from community-level screening to speci
 │
 ├── models/                   # Training / export scripts + model artifacts
 ├── Data/                     # Training datasets and cleaning scripts
-├── bloomcare_local.db        # SQLite fallback DB (auto-seeded for demos)
+├── bloomcare_local.db        # SQLite fallback DB (gitignored; auto-seeded for demos)
 ├── pytest.ini                # Backend test config
 ├── stage1_offline_ai.js      # Stage 1 inference bundle (also copied under frontend/mobile)
 ├── stage1_general_risk_screener.pkl
 ├── stage2_*.pkl              # Stage 2 condition models (also under models/)
 ├── requirements.txt          # ML training deps (pandas, sklearn, …)
-├── start.bat                 # Legacy Windows helper (prefer uvicorn below)
 ├── README.md                 # This file
 └── LICENSE
 ```
@@ -191,10 +190,6 @@ Additional docs:
 |----------|----------|
 | Backend deep dive | [`backend/README.md`](backend/README.md) |
 | Mobile app README | [`mobile/README.md`](mobile/README.md) |
-| Mobile offline guide | [`mobile/OFFLINE_IMPLEMENTATION_GUIDE.md`](mobile/OFFLINE_IMPLEMENTATION_GUIDE.md) |
-| Mobile quick start | [`mobile/QUICK_START.md`](mobile/QUICK_START.md) |
-| Screen update notes | [`mobile/SCREEN_UPDATE_GUIDE.md`](mobile/SCREEN_UPDATE_GUIDE.md) |
-| Technical presentation script | [`script.md`](script.md) |
 
 ---
 
@@ -333,7 +328,7 @@ All demo passwords: **`rash2003`**
 | Portal | Identifier | API role |
 |--------|------------|----------|
 | Frontline staff | `frontline.staff@bloomcare.health` | `FRONTLINE_STAFF` |
-| Obstetrician / clinical specialist | `obsertitian@bloomcare.health` | `CLINICAL_SPECIALIST` |
+| Obstetrician / clinical specialist | `obstetrician@bloomcare.health` | `CLINICAL_SPECIALIST` |
 | Hospital admin | `hospitaladmin@bloomcare.health` | `ADMIN` |
 | Patient | `NIC-900000001V` (alt `199912345678`) | `PATIENT` |
 
@@ -361,7 +356,7 @@ Point the app at your LAN API (see [Configuration](#configuration)). Scan the Ex
 | `BLOOMCARE_OPENAI_MODEL` | OpenAI model name | `gpt-4o` |
 | `BLOOMCARE_MOCK_LLM` | Use offline mock LLM | `true` for local dev |
 | `BLOOMCARE_PORT` | Documented API port in `.env.example` | `8001` |
-| `SECRET_KEY` | JWT signing key | Change in production |
+| `SECRET_KEY` | JWT signing key | Demo default in code / `.env.example` — **change for any shared deploy** |
 | `POSTGRES_*` | Database connection | Matches Docker Compose |
 
 Database settings also default in `backend/core/config.py` if unset.
@@ -433,10 +428,6 @@ python models/stage1.py
 ```
 
 Exported Stage 1 JS is used by the web PWA (`frontend/public/scripts/stage1_offline_ai.js`) and mobile (`mobile/src/services/stage1_offline_ai.js`).
-
-### Legacy `start.bat`
-
-`start.bat` still references a removed `api.py` / `api_requirements.txt` layout. Prefer the uvicorn command in [Quick Start](#quick-start).
 
 ---
 
@@ -525,7 +516,7 @@ JWT auth: obtain a token from `/api/v1/auth/login/staff` or `/api/v1/auth/login/
 - Staff can only work with the morning-synced patient set while offline
 - Chat / messaging is online-only
 
-See [`mobile/QUICK_START.md`](mobile/QUICK_START.md) and [`mobile/OFFLINE_IMPLEMENTATION_GUIDE.md`](mobile/OFFLINE_IMPLEMENTATION_GUIDE.md) for detailed flows.
+See [`mobile/README.md`](mobile/README.md) for detailed offline flows.
 
 ---
 
@@ -652,7 +643,6 @@ Suggested demo walkthrough (interview):
 
 - [`backend/README.md`](backend/README.md) — API, ML pipeline, and backend ops  
 - [`mobile/README.md`](mobile/README.md) — Mobile Stage 1 offline app  
-- [`script.md`](script.md) — 5-minute technical presentation script  
 
 ---
 

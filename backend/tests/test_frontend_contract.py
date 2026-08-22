@@ -11,7 +11,7 @@ def test_frontend_demo_credentials_match_seeded_accounts():
     for needle in [
         "frontline.staff@bloomcare.health",
         "hospitaladmin@bloomcare.health",
-        "obsertitian@bloomcare.health",
+        "obstetrician@bloomcare.health",
         "NIC-900000001V",
         "199912345678",
         "rash2003",

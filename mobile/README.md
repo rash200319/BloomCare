@@ -1,114 +1,96 @@
-# BloomCare Mobile (Offline Stage 1)
+# BloomCare Mobile
 
-Standalone React Native mobile app for BloomCare Stage 1 triage, with online sync support to FastAPI.
+Expo / React Native app for **offline-first Stage 1** maternal triage, with PIN unlock, SQLite caching, and sync to the FastAPI backend when connectivity returns.
+
+Canonical setup: **[root README](../README.md)**. API port defaults to **8001**.
+
+> Demo only — not for production or real patient data.
+
+---
 
 ## Features
 
-- Offline-first Stage 1 maternal triage on device
-- Stage 1 model-based risk via `stage1_offline_ai.js`
-- Queue and sync when internet is available
-- English, Sinhala, Tamil UI
-- Explainable recommendation summary for frontline users
+- On-device Stage 1 risk via `src/services/stage1_offline_ai.js`
+- Expo SQLite offline DB (profiles, appointments, insights, pending sync queue)
+- SecureStore for hashed PIN + JWT (PIN unlock preserves JWT for reconnect sync)
+- Morning sync of assigned patients for disconnected clinics
+- English / Sinhala / Tamil UI strings
 
-## Tech Stack
+---
 
-- Expo + React Native + TypeScript
-- AsyncStorage for offline queue
-- NetInfo for connectivity state
+## Tech
+
+| Piece | Tech |
+|-------|------|
+| Runtime | Expo ~53, React Native 0.79, TypeScript |
+| Offline | Expo SQLite, AsyncStorage queue |
+| Auth | Expo SecureStore, NetInfo |
+| API | `EXPO_PUBLIC_API_BASE_URL` → `/api/v1` |
+
+---
 
 ## Prerequisites
 
 - Node.js 18+
-- npm
-- Python 3.10+
-- Expo Go app on mobile device (or Android emulator)
+- Backend running (`uvicorn` on port **8001** from repo root — see root README)
+- Expo Go (device) or Android emulator
 
-## 1) Start Backend API
+---
 
-From project root:
-
-```bash
-cd ..
-pip install -r api_requirements.txt
-python api.py
-```
-
-Verify backend is running:
-
-- Open `http://localhost:8005/health`
-- Expected: JSON response with status
-
-## 2) Configure Mobile API URL
-
-Edit `mobile/src/services/syncService.ts` and set `API_URL`.
-
-- Android emulator: `http://10.0.2.2:8005/predict-risk`
-- Physical Android/iOS phone: `http://<YOUR_LAPTOP_LAN_IP>:8005/predict-risk`
-
-Example:
-
-```ts
-const API_URL = 'http://192.168.1.50:8005/predict-risk';
-```
-
-Notes:
-
-- Phone and laptop must be on the same Wi-Fi.
-- Do not use VPN while testing local LAN connectivity.
-
-## 3) Start Mobile App
-
-From `mobile` folder:
+## Configure API URL
 
 ```bash
+# PowerShell example — use your LAN IP for a physical device
+$env:EXPO_PUBLIC_API_BASE_URL="http://192.168.1.50:8001/api/v1"
+```
+
+Or copy `mobile/.env.example` → `mobile/.env`.
+
+| Target | Suggested base |
+|--------|----------------|
+| Android emulator | `http://10.0.2.2:8001/api/v1` |
+| iOS simulator | `http://127.0.0.1:8001/api/v1` |
+| Physical device | `http://<YOUR_LAN_IP>:8001/api/v1` |
+
+Phone and laptop must share Wi‑Fi. Avoid VPN during local testing.
+
+Defaults are defined in `src/config/api.ts`. Stage 1 scoring is **on-device**; results upload through `/triage/sync` (not a separate predict route).
+
+---
+
+## Run
+
+```bash
+cd mobile
 npm install
 npm run start
 ```
 
-Then:
+Scan the Expo QR code, or use `npm run android` / `npm run ios`.
 
-- Open Expo Go on phone
-- Scan QR code from terminal
-
-## 4) Quick Verification
-
-- Enter vitals and tap **Assess Risk**
-- Online mode: should return risk and recommendations
-- Offline mode: disable internet on phone, tap assess, risk should still appear via local Stage 1 model
-- Re-enable internet and tap **Sync Now** to flush queued records
-
-## Troubleshooting
-
-### Assess button keeps loading
-
-- Check `API_URL` is valid in `mobile/src/services/syncService.ts`
-- Confirm backend is reachable from phone browser using `http://<LAN_IP>:8005/health`
-- Confirm phone and laptop are on same network
-
-### `python api.py` exits immediately
-
-- Ensure dependencies are installed: `pip install -r api_requirements.txt`
-- Check model file name expected by `api.py`
-- If API logs show model load error, update model path in `api.py` to match the actual file in project root
-
-### No online sync but offline works
-
-- Online request timeouts are expected when backend is unreachable; app will fall back to offline risk
-- Fix network/API URL and use **Sync Now**
-
-## Useful Commands
-
-From `mobile`:
+Typecheck:
 
 ```bash
 npm run typecheck
-npm run start
-npm run android
 ```
 
-## Current Scope
+---
 
-- Stage 1 risk on device
-- Stage 2 via backend endpoint integration
-- Offline queueing and retry sync
+## Demo flow
 
+1. Online staff login → optional PIN setup  
+2. Morning sync (download assigned patients)  
+3. Go offline → PIN unlock → Stage 1 screenings  
+4. Reconnect → flush pending sync queue  
+
+Demo credentials match the root README (password `rash2003`).
+
+---
+
+## Troubleshooting
+
+| Issue | Check |
+|-------|--------|
+| Cannot reach API | `EXPO_PUBLIC_API_BASE_URL` host/port must match uvicorn (**8001**) |
+| Emulator localhost fails | Use `10.0.2.2` on Android, not `127.0.0.1` |
+| Stale auth after seed email rename | Clear app storage / re-login with `obstetrician@bloomcare.health` |

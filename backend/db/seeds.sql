@@ -15,8 +15,8 @@ INSERT INTO users (id, email, hashed_password, full_name, role, is_active)
 VALUES
     ('11111111-1111-1111-1111-111111111111', 'hospitaladmin@bloomcare.health',      crypt('rash2003', gen_salt('bf')), 'Hospital Admin Demo',      'ADMIN',               TRUE),
     ('22222222-2222-2222-2222-222222222222', 'frontline.staff@bloomcare.health',    crypt('rash2003', gen_salt('bf')), 'Frontline Staff Demo',     'FRONTLINE_STAFF',     TRUE),
-    ('33333333-3333-3333-3333-333333333333', 'obsertitian@bloomcare.health',         crypt('rash2003', gen_salt('bf')), 'Obstetrician Demo',        'CLINICAL_SPECIALIST', TRUE),
-    ('55555555-5555-5555-5555-555555555555', 'obsertitian2@bloomcare.health',        crypt('rash2003', gen_salt('bf')), 'Obstetrician Demo 2',      'CLINICAL_SPECIALIST', TRUE)
+    ('33333333-3333-3333-3333-333333333333', 'obstetrician@bloomcare.health',         crypt('rash2003', gen_salt('bf')), 'Obstetrician Demo',        'CLINICAL_SPECIALIST', TRUE),
+    ('55555555-5555-5555-5555-555555555555', 'obstetrician2@bloomcare.health',        crypt('rash2003', gen_salt('bf')), 'Obstetrician Demo 2',      'CLINICAL_SPECIALIST', TRUE)
 ON CONFLICT (email)
 DO UPDATE SET
     hashed_password = EXCLUDED.hashed_password,

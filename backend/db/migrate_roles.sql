@@ -1,5 +1,5 @@
 -- Migrate legacy OBSERTITIAN role → CLINICAL_SPECIALIST (PostgreSQL)
--- Safe to re-run. Keeps demo emails (e.g. obsertitian@bloomcare.health) unchanged.
+-- Safe to re-run. Keeps demo emails (e.g. obstetrician@bloomcare.health) unchanged.
 --
 -- Usage:
 --   psql -d <your_db> -f backend/db/migrate_roles.sql

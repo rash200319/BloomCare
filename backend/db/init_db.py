@@ -69,7 +69,7 @@ def init_db():
                 "password": "rash2003",
             },
             {
-                "email": "obsertitian@bloomcare.health",
+                "email": "obstetrician@bloomcare.health",
                 "full_name": "Obstetrician Demo",
                 "role": "CLINICAL_SPECIALIST",
                 "password": "rash2003",

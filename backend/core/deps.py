@@ -79,3 +79,17 @@ def get_current_admin(
             detail="The user doesn't have enough privileges"
         )
     return current_user
+
+
+def get_current_clinic_staff(
+    current_user: User = Depends(get_current_active_user),
+) -> User:
+    """Frontline, clinical specialist, or admin — for patient management routes."""
+    role_name = current_user.role.value if hasattr(
+        current_user.role, "value") else str(current_user.role)
+    if role_name not in {"ADMIN", "FRONTLINE_STAFF", "CLINICAL_SPECIALIST"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Clinic staff privileges required",
+        )
+    return current_user

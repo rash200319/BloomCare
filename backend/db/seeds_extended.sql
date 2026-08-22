@@ -21,17 +21,17 @@ VALUES
     ('90000000-0000-0000-0000-000000000001', 'admin.extended@bloomcare.health',           crypt('rash2003', gen_salt('bf')), 'Admin Extended',            'ADMIN',               TRUE, FALSE, 'Hospital Operations', '0779000001'),
     ('90000000-0000-0000-0000-000000000002', 'frontline.extended@bloomcare.health',       crypt('rash2003', gen_salt('bf')), 'Frontline Extended',        'FRONTLINE_STAFF',     TRUE, FALSE, 'Community Maternal Care', '0779000002'),
 
-    -- 10 obsertitians
-    ('90000000-0000-0000-0000-000000000101', 'obsertitian01@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Ayesha Perera',         'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Obstetrics', '0779100101'),
-    ('90000000-0000-0000-0000-000000000102', 'obsertitian02@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Malith Fernando',       'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Maternal-Fetal Medicine', '0779100102'),
-    ('90000000-0000-0000-0000-000000000103', 'obsertitian03@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Senuri Jayasinghe',     'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Obstetrics', '0779100103'),
-    ('90000000-0000-0000-0000-000000000104', 'obsertitian04@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Kavidu Silva',          'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Endocrinology', '0779100104'),
-    ('90000000-0000-0000-0000-000000000105', 'obsertitian05@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Rashmi Wijesuriya',     'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Internal Medicine', '0779100105'),
-    ('90000000-0000-0000-0000-000000000106', 'obsertitian06@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Tharindu Ekanayake',    'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Obstetrics', '0779100106'),
-    ('90000000-0000-0000-0000-000000000107', 'obsertitian07@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Nethmi Abeykoon',       'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Cardiology', '0779100107'),
-    ('90000000-0000-0000-0000-000000000108', 'obsertitian08@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Lakshan Herath',        'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Nephrology', '0779100108'),
-    ('90000000-0000-0000-0000-000000000109', 'obsertitian09@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Imesha Ranasinghe',     'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Critical Care', '0779100109'),
-    ('90000000-0000-0000-0000-000000000110', 'obsertitian10@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Pahan de Mel',          'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Maternal-Fetal Medicine', '0779100110')
+    -- 10 obstetricians
+    ('90000000-0000-0000-0000-000000000101', 'obstetrician01@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Ayesha Perera',         'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Obstetrics', '0779100101'),
+    ('90000000-0000-0000-0000-000000000102', 'obstetrician02@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Malith Fernando',       'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Maternal-Fetal Medicine', '0779100102'),
+    ('90000000-0000-0000-0000-000000000103', 'obstetrician03@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Senuri Jayasinghe',     'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Obstetrics', '0779100103'),
+    ('90000000-0000-0000-0000-000000000104', 'obstetrician04@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Kavidu Silva',          'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Endocrinology', '0779100104'),
+    ('90000000-0000-0000-0000-000000000105', 'obstetrician05@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Rashmi Wijesuriya',     'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Internal Medicine', '0779100105'),
+    ('90000000-0000-0000-0000-000000000106', 'obstetrician06@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Tharindu Ekanayake',    'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Obstetrics', '0779100106'),
+    ('90000000-0000-0000-0000-000000000107', 'obstetrician07@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Nethmi Abeykoon',       'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Cardiology', '0779100107'),
+    ('90000000-0000-0000-0000-000000000108', 'obstetrician08@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Lakshan Herath',        'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Nephrology', '0779100108'),
+    ('90000000-0000-0000-0000-000000000109', 'obstetrician09@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Imesha Ranasinghe',     'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Critical Care', '0779100109'),
+    ('90000000-0000-0000-0000-000000000110', 'obstetrician10@bloomcare.health',             crypt('rash2003', gen_salt('bf')), 'Dr. Pahan de Mel',          'CLINICAL_SPECIALIST',         TRUE, FALSE, 'Maternal-Fetal Medicine', '0779100110')
 ON CONFLICT (email)
 DO UPDATE SET
     hashed_password = EXCLUDED.hashed_password,
@@ -446,7 +446,7 @@ VALUES
         '445566',
         crypt('445566', gen_salt('bf')),
         'FIRST_LOGIN',
-        'obsertitian01@bloomcare.health',
+        'obstetrician01@bloomcare.health',
         TRUE,
         1,
         5,

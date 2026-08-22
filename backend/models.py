@@ -69,7 +69,7 @@ class TriageInput(BaseModel):
     locally; this endpoint syncs that result along with the raw vitals.
     """
 
-    # Patient identifiers (de-identified for FHIR R4 compatibility)
+    # Patient identifiers (demo / de-identified)
     patient_id: str = Field(..., description="Unique patient identifier (UUID / EHR ID)")
     encounter_id: Optional[str] = Field(None, description="Encounter / visit reference ID")
     gestational_age_weeks: int = Field(..., ge=4, le=42, description="Gestational age in weeks")
@@ -90,7 +90,7 @@ class TriageInput(BaseModel):
     heart_rate: int = Field(..., ge=30, le=200, description="Resting heart rate (bpm)")
     temperature: float = Field(..., ge=35.0, le=42.0, description="Body temperature (°C)")
 
-    # Edge device ML output (synced from TFLite / PyTorch Mobile)
+    # Edge device ML output (synced from on-device Stage 1 JS model)
     edge_risk_classification: RiskTier = Field(
         ...,
         description="Binary risk classification produced by the on-device MLP",
