@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     ALGORITHM: str = "HS256"
 
+    # Comma-separated extra CORS origins (e.g. https://your-app.up.railway.app)
+    ALLOWED_ORIGINS: str = ""
+
     # Database
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_USER: str = "bloomcare_user"

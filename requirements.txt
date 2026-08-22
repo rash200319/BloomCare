@@ -1,6 +1,3 @@
-pandas
-numpy
-scikit-learn
-joblib
-matplotlib
-seaborn
+# Dependencies for Railway / API deploy (repo root).
+# Local ML training scripts can still use packages from models/ as needed.
+-r backend/requirements-no-shap.txt
