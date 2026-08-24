@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     # Local demos only: include otp_for_testing in forgot-password responses
     BLOOMCARE_EXPOSE_DEMO_OTP: bool = False
 
+    # Login throttle (in-memory). Set MAX_ATTEMPTS=0 to disable.
+    BLOOMCARE_LOGIN_MAX_ATTEMPTS: int = 10
+    BLOOMCARE_LOGIN_LOCKOUT_MINUTES: int = 15
+
+    # Opt-in PHI access audit table writes (safe off for demos)
+    BLOOMCARE_AUDIT_LOG_ENABLED: bool = False
+
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_USER: str = "bloomcare_user"
     POSTGRES_PASSWORD: str = "bloomcare_pass"
