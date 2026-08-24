@@ -27,9 +27,9 @@ class OTPRecord(Base):
     staff_id = Column(String(36), ForeignKey(
         "users.id", ondelete="CASCADE"), nullable=True)
 
-    # OTP Data
+    # OTP Data — otp_code is a legacy placeholder; only otp_hash is verified.
     otp_code = Column(String(6), nullable=False, index=True)
-    otp_hash = Column(String(255), nullable=False)  # Hashed OTP for storage
+    otp_hash = Column(String(255), nullable=False)  # HMAC hash; never store plaintext OTP
     otp_type = Column(Enum(OTPType), nullable=False, index=True)
     destination = Column(String(255), nullable=False)  # Phone number or email
 

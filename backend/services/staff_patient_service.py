@@ -230,9 +230,13 @@ class AuthService:
 
     @staticmethod
     def setup_patient_first_login_password(
-        db: Session, national_id: str, password: str, confirm_password: str
+        db: Session,
+        national_id: str,
+        temporary_password: str,
+        password: str,
+        confirm_password: str,
     ) -> dict:
-        """Set first-login password for patient using national ID."""
+        """Set first-login password; requires the issued temporary password."""
         patient = db.query(Patient).filter(
             Patient.national_id == national_id).first()
         if not patient:
@@ -241,6 +245,11 @@ class AuthService:
         if not patient.first_time_login:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Password already set")
+        if not verify_password(temporary_password, patient.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid temporary password",
+            )
 
         AuthService._validate_password_setup(password, confirm_password)
         patient.hashed_password = get_password_hash(password)
@@ -250,9 +259,13 @@ class AuthService:
 
     @staticmethod
     def setup_staff_first_login_password(
-        db: Session, email: str, password: str, confirm_password: str
+        db: Session,
+        email: str,
+        temporary_password: str,
+        password: str,
+        confirm_password: str,
     ) -> dict:
-        """Set first-login password for staff/doctor using email."""
+        """Set first-login password; requires the issued temporary password."""
         user = db.query(User).filter(
             User.email == email,
             cast(User.role, String).in_(["FRONTLINE_STAFF", "CLINICAL_SPECIALIST", "DOCTOR", "ADMIN"]),
@@ -263,6 +276,11 @@ class AuthService:
         if not user.first_time_login:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Password already set")
+        if not verify_password(temporary_password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid temporary password",
+            )
 
         AuthService._validate_password_setup(password, confirm_password)
         user.hashed_password = get_password_hash(password)
@@ -319,7 +337,6 @@ class AuthService:
                 detail="Patient contact number not configured"
             )
 
-        # Generate and store OTP
         plaintext_otp, otp_record = OTPService.create_patient_otp(
             db,
             patient_id=str(patient.id),
@@ -327,15 +344,15 @@ class AuthService:
             destination=patient.contact_number
         )
 
-        # TODO: Send OTP via SMS to patient.contact_number
-        # For now, we return the OTP in development
-
-        return {
+        payload = {
             "message": "OTP sent to registered phone number",
             "destination_masked": OTPService.mask_contact(patient.contact_number, "phone"),
             "expires_in_seconds": 600,
-            "otp_for_testing": plaintext_otp  # Remove in production!
         }
+        from backend.core.config import settings
+        if settings.BLOOMCARE_EXPOSE_DEMO_OTP:
+            payload["otp_for_testing"] = plaintext_otp
+        return payload
 
     @staticmethod
     def verify_and_reset_patient_password(
@@ -387,7 +404,6 @@ class AuthService:
                 detail="Staff account not found"
             )
 
-        # Generate and store OTP
         plaintext_otp, otp_record = OTPService.create_staff_otp(
             db,
             staff_id=str(user.id),
@@ -395,15 +411,15 @@ class AuthService:
             destination=user.email
         )
 
-        # TODO: Send OTP via email to user.email
-        # For now, we return the OTP in development
-
-        return {
+        payload = {
             "message": "OTP sent to registered email",
             "destination_masked": OTPService.mask_contact(user.email, "email"),
             "expires_in_seconds": 600,
-            "otp_for_testing": plaintext_otp  # Remove in production!
         }
+        from backend.core.config import settings
+        if settings.BLOOMCARE_EXPOSE_DEMO_OTP:
+            payload["otp_for_testing"] = plaintext_otp
+        return payload
 
     @staticmethod
     def verify_and_reset_staff_password(
