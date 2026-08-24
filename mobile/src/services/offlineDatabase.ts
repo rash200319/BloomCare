@@ -412,12 +412,15 @@ class OfflineDatabase {
     for (const row of pendingRows) {
       if (!row.payload_json) continue;
       try {
-        const payload = JSON.parse(row.payload_json);
+        const { parseSyncPayload, serializeSyncPayload } = await import('./syncEnvelope');
+        const parsed = await parseSyncPayload(row.payload_json);
+        if (!parsed?.payload || typeof parsed.payload !== 'object') continue;
+        const payload = parsed.payload as Record<string, unknown>;
         if (payload?.patient_id === localId) {
           payload.patient_id = newId;
           await db.runAsync(
             `UPDATE pending_syncs SET payload_json = ? WHERE record_id = ?`,
-            [JSON.stringify(payload), row.record_id]
+            [await serializeSyncPayload(payload), row.record_id]
           );
         }
       } catch {
@@ -823,6 +826,8 @@ class OfflineDatabase {
     const db = await this.getDb();
     const recordId = `${entityType}-${operation}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const now = new Date().toISOString();
+    const { serializeSyncPayload } = await import('./syncEnvelope');
+    const payloadJson = await serializeSyncPayload(payload);
 
     await db.runAsync(
       `
@@ -830,7 +835,7 @@ class OfflineDatabase {
         (record_id, entity_type, operation, patient_id, payload_json, created_at, sync_status)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `,
-      [recordId, entityType, operation, patientId || null, JSON.stringify(payload), now, 'pending']
+      [recordId, entityType, operation, patientId || null, payloadJson, now, 'pending']
     );
 
     return recordId;
@@ -838,7 +843,7 @@ class OfflineDatabase {
 
   async getPendingSyncs(): Promise<SyncMetadata[]> {
     const db = await this.getDb();
-    return await db.getAllAsync<SyncMetadata>(
+    const rows = await db.getAllAsync<SyncMetadata>(
       `
         SELECT record_id, entity_type, operation, patient_id, payload_json, 
                created_at, synced_at, sync_status
@@ -847,6 +852,41 @@ class OfflineDatabase {
         ORDER BY created_at ASC
       `
     );
+
+    const { parseSyncPayload, serializeSyncPayload } = await import('./syncEnvelope');
+    const verified: SyncMetadata[] = [];
+
+    for (const row of rows) {
+      const parsed = await parseSyncPayload(row.payload_json);
+      if (!parsed) {
+        // Quarantine tampered / unreadable signed payloads.
+        await db.runAsync(
+          `UPDATE pending_syncs SET sync_status = 'failed' WHERE record_id = ?`,
+          [row.record_id]
+        );
+        continue;
+      }
+
+      // Normalize storage to signed envelope; expose plaintext JSON to sync consumers.
+      if (!parsed.signed) {
+        try {
+          const resigned = await serializeSyncPayload(parsed.payload);
+          await db.runAsync(
+            `UPDATE pending_syncs SET payload_json = ? WHERE record_id = ?`,
+            [resigned, row.record_id]
+          );
+        } catch {
+          // Keep serving plaintext if resign fails.
+        }
+      }
+
+      verified.push({
+        ...row,
+        payload_json: JSON.stringify(parsed.payload),
+      });
+    }
+
+    return verified;
   }
 
   async markSyncSuccess(recordId: string): Promise<void> {
