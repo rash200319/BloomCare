@@ -93,3 +93,41 @@ def get_current_clinic_staff(
             detail="Clinic staff privileges required",
         )
     return current_user
+
+
+def _role_name(user: User) -> str:
+    return user.role.value if hasattr(user.role, "value") else str(user.role)
+
+
+def can_access_patient(db: Session, current_user: User, patient_id: str) -> bool:
+    """
+    Least-privilege patient access (aligned with patients.py history/detail):
+    - ADMIN / CLINICAL_SPECIALIST: any patient
+    - PATIENT: own id only
+    - FRONTLINE_STAFF: assigned_worker_id match only
+    """
+    role = _role_name(current_user)
+    if role in {"ADMIN", "CLINICAL_SPECIALIST"}:
+        return True
+    if role == "PATIENT":
+        return str(current_user.id) == str(patient_id)
+    if role == "FRONTLINE_STAFF":
+        patient = db.query(Patient).filter(Patient.id == patient_id).first()
+        if not patient:
+            return False
+        return str(getattr(patient, "assigned_worker_id", "") or "") == str(current_user.id)
+    return False
+
+
+def require_patient_access(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> User:
+    """FastAPI dependency: 403 unless current_user may access patient_id."""
+    if not can_access_patient(db, current_user, patient_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this patient",
+        )
+    return current_user

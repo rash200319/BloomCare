@@ -6,7 +6,7 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from backend.core.deps import get_db, get_current_user
+from backend.core.deps import get_db, get_current_user, can_access_patient
 from backend.models.user import User, UserRole
 from backend.models.patient import Patient
 from backend.schemas.insights import (
@@ -47,15 +47,7 @@ def get_patient_weekly_insight(
     - Patients can only view their own weekly insight
     - Clinical specialists, admins, and staff can view any patient's insight
     """
-    # Authorization: Patient can only view own, others can view any
-    if current_user.role == UserRole.PATIENT:
-        patient = db.query(Patient).filter(Patient.id == patient_id).first()
-        if not patient or patient.national_id != getattr(current_user, "national_id", None):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Patients can only view their own insights"
-            )
-    elif current_user.role not in [UserRole.CLINICAL_SPECIALIST, UserRole.ADMIN, UserRole.FRONTLINE_STAFF]:
+    if not can_access_patient(db, current_user, patient_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to view patient insights"
@@ -91,15 +83,7 @@ def get_patient_weekly_stats(
     - Patients can only view their own stats
     - Clinical specialists, admins, and staff can view any patient's stats
     """
-    # Authorization: Patient can only view own, others can view any
-    if current_user.role == UserRole.PATIENT:
-        patient = db.query(Patient).filter(Patient.id == patient_id).first()
-        if not patient or patient.national_id != getattr(current_user, "national_id", None):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Patients can only view their own stats"
-            )
-    elif current_user.role not in [UserRole.CLINICAL_SPECIALIST, UserRole.ADMIN, UserRole.FRONTLINE_STAFF]:
+    if not can_access_patient(db, current_user, patient_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to view patient stats"
