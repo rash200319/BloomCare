@@ -1007,6 +1007,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
         name: matchedPatient.full_name,
         age: matchedPatient.date_of_birth ? parseDateToAge(matchedPatient.date_of_birth) : Number(matchedPatient.age || 0),
         dateOfBirth: matchedPatient.date_of_birth || null,
+        dueDate: matchedPatient.due_date || null,
         contactNumber: matchedPatient.contact_number || null,
         emergencyContact: matchedPatient.emergency_contact || null,
         bloodGroup: matchedPatient.blood_group || null,
