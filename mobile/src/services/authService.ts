@@ -191,12 +191,22 @@ class AuthService {
     }
   }
 
-  async setupStaffFirstLoginPassword(email: string, password: string, confirmPassword: string): Promise<void> {
+  async setupStaffFirstLoginPassword(
+    email: string,
+    temporaryPassword: string,
+    password: string,
+    confirmPassword: string,
+  ): Promise<void> {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/first-login/staff`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, confirm_password: confirmPassword }),
+        body: JSON.stringify({
+          email,
+          temporary_password: temporaryPassword,
+          password,
+          confirm_password: confirmPassword,
+        }),
       });
 
       if (!response.ok) {
@@ -213,12 +223,22 @@ class AuthService {
     }
   }
 
-  async setupPatientFirstLoginPassword(nationalId: string, password: string, confirmPassword: string): Promise<void> {
+  async setupPatientFirstLoginPassword(
+    nationalId: string,
+    temporaryPassword: string,
+    password: string,
+    confirmPassword: string,
+  ): Promise<void> {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/first-login/patient`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ national_id: nationalId, password, confirm_password: confirmPassword }),
+        body: JSON.stringify({
+          national_id: nationalId,
+          temporary_password: temporaryPassword,
+          password,
+          confirm_password: confirmPassword,
+        }),
       });
 
       if (!response.ok) {

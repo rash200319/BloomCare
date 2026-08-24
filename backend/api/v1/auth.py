@@ -152,6 +152,7 @@ def setup_patient_first_login_password(
     return AuthService.setup_patient_first_login_password(
         db,
         payload.national_id,
+        payload.temporary_password,
         payload.password,
         payload.confirm_password,
     )
@@ -161,7 +162,7 @@ def setup_patient_first_login_password(
     "/first-login/staff",
     response_model=dict,
     summary="Staff/Doctor First Login Password Setup",
-    description="Set password on first login using email"
+    description="Set password on first login using email and temporary password"
 )
 def setup_staff_first_login_password(
     payload: FirstLoginStaffSetupRequest,
@@ -170,6 +171,7 @@ def setup_staff_first_login_password(
     return AuthService.setup_staff_first_login_password(
         db,
         payload.email,
+        payload.temporary_password,
         payload.password,
         payload.confirm_password,
     )
