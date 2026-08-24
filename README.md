@@ -4,7 +4,7 @@
 
 BloomCare is designed for low-connectivity clinical environments. It combines an offline-first Stage 1 screener (web + mobile) with server-side Stage 2 diagnostics for preeclampsia, gestational diabetes (GDM), and preterm birth risk — plus explainable AI outputs and multilingual UI (English, Sinhala, Tamil).
 
-> **Demo / portfolio use only.** Do not use with real patient data. Security has been hardened in staged P0–P2 work (auth boundary → clinical readiness → maturity scanners/CSP/offline integrity), but this is **not** a production medical portal and is **not** HIPAA/HITRUST certified. See [Security & Compliance Notes](#security--compliance-notes).
+> **Demo / portfolio use only.** Do not use with real patient data. Security has been hardened in staged P0–P2 work (auth boundary → clinical readiness → maturity scanners/CSP/offline integrity), but this is **not** a production medical portal and is **not** certified. See [Security & Compliance Notes](#security--compliance-notes).
 
 ---
 
