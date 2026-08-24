@@ -9,6 +9,7 @@ class Token(BaseModel):
 
 class TokenPayload(BaseModel):
     sub: str | None = None
+    tv: int | None = 0
 
 
 # ============== NEW SCHEMAS FOR STAFF & PATIENT MANAGEMENT ==============

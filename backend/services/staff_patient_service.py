@@ -254,6 +254,7 @@ class AuthService:
         AuthService._validate_password_setup(password, confirm_password)
         patient.hashed_password = get_password_hash(password)
         patient.first_time_login = False
+        patient.token_version = int(getattr(patient, "token_version", 0) or 0) + 1
         db.commit()
         return {"message": "Password set successfully"}
 
@@ -285,6 +286,7 @@ class AuthService:
         AuthService._validate_password_setup(password, confirm_password)
         user.hashed_password = get_password_hash(password)
         user.first_time_login = False
+        user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
         db.commit()
         return {"message": "Password set successfully"}
 
@@ -304,6 +306,7 @@ class AuthService:
 
             user.hashed_password = get_password_hash(new_password)
             user.first_time_login = False
+            user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
             db.commit()
             return {"message": "Password changed successfully"}
 
@@ -315,6 +318,7 @@ class AuthService:
 
         patient.hashed_password = get_password_hash(new_password)
         patient.first_time_login = False
+        patient.token_version = int(getattr(patient, "token_version", 0) or 0) + 1
         db.commit()
         return {"message": "Password changed successfully"}
 
@@ -383,6 +387,7 @@ class AuthService:
         AuthService._validate_password_setup(new_password, confirm_password)
         patient.hashed_password = get_password_hash(new_password)
         patient.first_time_login = False
+        patient.token_version = int(getattr(patient, "token_version", 0) or 0) + 1
         db.commit()
 
         return {"message": "Password reset successfully", "password_reset": True}
@@ -453,6 +458,7 @@ class AuthService:
         AuthService._validate_password_setup(new_password, confirm_password)
         user.hashed_password = get_password_hash(new_password)
         user.first_time_login = False
+        user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
         db.commit()
 
         return {"message": "Password reset successfully", "password_reset": True}
