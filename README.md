@@ -103,7 +103,7 @@ BloomCare supports the full care pathway from community-level screening to speci
 - Patient-scoped authorization (`can_access_patient`) on reports, insights, and triage
 - CSP + baseline security headers on the Next.js app
 - Offline-capable Stage 1 shell via service worker (optional; can disable)
-- Context-aware site chatbot (current view + role)
+- Local multilingual FAQ + navigation assistant (keyword intents; no LLM)
 - Notification badges and read/unread filtering
 - Responsive desktop and mobile layouts
 - Role-based access control (RBAC)
