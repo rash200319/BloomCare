@@ -18,7 +18,7 @@
     "expo-asset": "~11.1.7",
     "expo-crypto": "~14.1.5",
     "expo-secure-store": "~13.0.2",
-    "expo-sqlite": "~15.2.10",
+    "expo-sqlite": "~57.0.1",
     "expo-status-bar": "~2.0.1",
     "react": "19.0.0",
     "react-native": "0.79.0",
