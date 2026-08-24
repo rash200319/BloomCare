@@ -623,11 +623,12 @@ Suggested demo walkthrough (interview):
 
 - Change `SECRET_KEY` and database passwords before any shared or production deployment.
 - Never commit real `.env` files (see `.gitignore`).
-- Demo AWS host is **not** hardened for PHI / real clinical use.
+- Demo AWS / Railway / Vercel hosts are **not** hardened for PHI / real clinical use.
 - `bloomcare_local.db` is a local fallback database — do not treat it as production storage.
-- Mobile SQLite is typically unencrypted; sensitive deployments should consider encrypted storage.
+- Mobile SQLite is typically unencrypted; AsyncStorage sync queues are device-encrypted + MAC’d (see control mapping). Sensitive deployments should still consider SQLCipher-class DB encryption.
 - Prefer HTTPS in production; keep JWT lifetimes and CORS allow-lists tight.
 - BloomCare outputs support clinical decision-making but do **not** replace professional medical judgment.
+- **Do not claim HIPAA / HITRUST** for this demo. See [`SECURITY.md`](SECURITY.md) and [`docs/CONTROL_MAPPING.md`](docs/CONTROL_MAPPING.md).
 
 ---
 
@@ -641,8 +642,10 @@ Suggested demo walkthrough (interview):
 
 ## Related Documentation
 
-- [`backend/README.md`](backend/README.md) — API, ML pipeline, and backend ops  
-- [`mobile/README.md`](mobile/README.md) — Mobile Stage 1 offline app  
+- [`SECURITY.md`](SECURITY.md) — vulnerability reporting + pen-test readiness checklist
+- [`docs/CONTROL_MAPPING.md`](docs/CONTROL_MAPPING.md) — access / audit / integrity / transmission map
+- [`backend/README.md`](backend/README.md) — API, ML pipeline, and backend ops
+- [`mobile/README.md`](mobile/README.md) — Mobile Stage 1 offline app
 
 ---
 
