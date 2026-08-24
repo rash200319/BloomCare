@@ -662,9 +662,9 @@ BloomCare treats security as a **staged program**, not a single middleware check
 
 | Stage | Focus | Highlights |
 |-------|--------|------------|
-| **P0 — Auth boundary** | Before any real patient data | Short JWT TTL (8h); demo `SECRET_KEY` warn / optional fail-closed; HMAC OTPs (no plaintext in API by default); demo login gate; auth on appointment discovery; `can_access_patient` on PHI routes; first-login requires temporary password; optional lock of `/docs` |
-| **P1 — Clinical readiness** | Abuse resistance + accountability | Login throttle / soft lockout; Bearer auth on `/api/patient-explain`; no PIN/PHI console logs; opt-in PHI audit log; salted mobile PIN hashes; optional idle logout; `token_version` + `/auth/logout-all` |
-| **P2 — Maturity** | Scanners, browser, offline integrity, docs | gitleaks + SCA + Dependabot; CSP / security headers; signed pending syncs; encrypted AsyncStorage queues; [`docs/CONTROL_MAPPING.md`](docs/CONTROL_MAPPING.md); [`SECURITY.md`](SECURITY.md) pen-test checklist |
+| **Auth boundary** | Before any real patient data | Short JWT TTL (8h); demo `SECRET_KEY` warn / optional fail-closed; HMAC OTPs (no plaintext in API by default); demo login gate; auth on appointment discovery; `can_access_patient` on PHI routes; first-login requires temporary password; optional lock of `/docs` |
+| **Clinical readiness** | Abuse resistance + accountability | Login throttle / soft lockout; Bearer auth on `/api/patient-explain`; no PIN/PHI console logs; opt-in PHI audit log; salted mobile PIN hashes; optional idle logout; `token_version` + `/auth/logout-all` |
+| ** Maturity** | Scanners, browser, offline integrity, docs | gitleaks + SCA + Dependabot; CSP / security headers; signed pending syncs; encrypted AsyncStorage queues; [`docs/CONTROL_MAPPING.md`](docs/CONTROL_MAPPING.md); [`SECURITY.md`](SECURITY.md) pen-test checklist |
 
 ### Deploy-safe defaults (keep demos working)
 
@@ -703,7 +703,7 @@ Access / audit / integrity / transmission map: [`docs/CONTROL_MAPPING.md`](docs/
 ## License & Attribution
 
 - License: **MIT** — see [`LICENSE`](LICENSE)
-- Copyright © 2026 Rashmi Paboda
+- Copyright © 2026 CodeNexusTeam
 - Built for maternal healthcare workflows with multilingual support for Sri Lanka (English / Sinhala / Tamil)
 
 ---
