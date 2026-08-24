@@ -30,7 +30,7 @@ import {
   SelectValue
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { apiRequest, DEMO_CREDENTIALS } from "@/lib/api"
+import { apiRequest, DEMO_CREDENTIALS, DEMO_LOGIN_ENABLED, type DemoLoginRole } from "@/lib/api"
 
 type UserRole = "frontline" | "doctor" | "admin" | "patient"
 type Language = "EN" | "SI" | "TA"
@@ -93,6 +93,7 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
   const [identifier, setIdentifier] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [temporaryPassword, setTemporaryPassword] = useState("")
   const [isFirstLoginMode, setIsFirstLoginMode] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -114,7 +115,13 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
   }
 
   const isPatientRole = selectedRole === "patient"
-  const demoForRole = selectedRole ? DEMO_CREDENTIALS[selectedRole] : null
+  const demoForRole =
+    DEMO_LOGIN_ENABLED &&
+    selectedRole &&
+    selectedRole !== "admin" &&
+    selectedRole in DEMO_CREDENTIALS
+      ? DEMO_CREDENTIALS[selectedRole as DemoLoginRole]
+      : null
 
   const getIdentifierLabel = () => {
     if (isPatientRole) {
@@ -124,15 +131,14 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
   }
 
   const getIdentifierPlaceholder = () => {
-    if (!selectedRole) return ""
-    return DEMO_CREDENTIALS[selectedRole].identifier
+    if (!demoForRole) return ""
+    return demoForRole.identifier
   }
 
   const fillDemoCredentials = () => {
-    if (!selectedRole) return
-    const demo = DEMO_CREDENTIALS[selectedRole]
-    setIdentifier(demo.identifier)
-    setPassword(demo.password)
+    if (!demoForRole) return
+    setIdentifier(demoForRole.identifier)
+    setPassword(demoForRole.password)
     setErrorMessage("")
   }
 
@@ -167,8 +173,12 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
       return
     }
 
-    if (isFirstLoginMode && !confirmPassword) {
-      setErrorMessage(getText("Please confirm your password.", "කරුණාකර මුරපදය තහවුරු කරන්න.", "கடவுச்சொல்லை உறுதிப்படுத்தவும்."))
+    if (isFirstLoginMode && (!temporaryPassword || !confirmPassword)) {
+      setErrorMessage(getText(
+        "Enter temporary password, new password, and confirmation.",
+        "තාවකාලික මුරපදය, නව මුරපදය සහ තහවුරු කිරීම ඇතුළත් කරන්න.",
+        "தற்காலிக கடவுச்சொல், புதிய கடவுச்சொல் மற்றும் உறுதிப்படுத்தலை உள்ளிடவும்."
+      ))
       return
     }
 
@@ -188,6 +198,7 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...getIdentifierPayload(),
+            temporary_password: temporaryPassword,
             password,
             confirm_password: confirmPassword,
           }),
@@ -463,6 +474,25 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
 
                   {isFirstLoginMode && (
                     <div className="space-y-3">
+                      <Label htmlFor="temporary-password" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                        {getText("Temporary Password", "තාවකාලික මුරපදය", "தற்காலிக கடவுச்சொல்")}
+                      </Label>
+                      <div className="relative group">
+                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-primary transition-colors" />
+                        <Input
+                          id="temporary-password"
+                          type={showPassword ? "text" : "password"}
+                          placeholder="••••••••"
+                          className="h-12 pl-12 bg-white/50 border-slate-100 focus:border-primary/30 focus:ring-primary/10 rounded-xl transition-all font-bold text-slate-800"
+                          value={temporaryPassword}
+                          onChange={(e) => setTemporaryPassword(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {isFirstLoginMode && (
+                    <div className="space-y-3">
                       <Label htmlFor="confirm-password" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
                         {getText("Confirm Password", "මුරපදය තහවුරු කරන්න", "கடவுச்சொல்லை உறுதிப்படுத்தவும்")}
                       </Label>
@@ -491,7 +521,7 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
                     <Button
                       className="w-full bg-primary hover:bg-primary/90 text-white h-14 rounded-2xl shadow-xl shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] font-black uppercase tracking-[0.2em] text-xs"
                       onClick={handleLogin}
-                      disabled={!identifier || !password || (isFirstLoginMode && !confirmPassword) || isLoading}
+                      disabled={!identifier || !password || (isFirstLoginMode && (!temporaryPassword || !confirmPassword)) || isLoading}
                     >
                       {isLoading ? (
                         <span className="flex items-center gap-3">
@@ -517,6 +547,7 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
                         setIsFirstLoginMode(!isFirstLoginMode)
                         setPassword("")
                         setConfirmPassword("")
+                        setTemporaryPassword("")
                         setErrorMessage("")
                       }}
                     >
@@ -543,7 +574,8 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
                 </CardContent>
               </Card>
 
-              {/* Demo Credentials — match backend/db/seeds.sql (+ init_db patient NIC) */}
+              {/* Demo Credentials — gated; admin intentionally omitted */}
+              {DEMO_LOGIN_ENABLED && demoForRole && (
               <div className="mt-8 p-8 bg-slate-50/50 border border-slate-100 rounded-3xl backdrop-blur-sm shadow-inner">
                 <div className="flex items-center justify-between gap-4 mb-6">
                   <div className="flex items-center gap-4">
@@ -584,6 +616,7 @@ export default function LoginPage({ onLogin, onBack }: LoginPageProps) {
                   </div>
                 </div>
               </div>
+              )}
             </div>
           )}
         </div>
