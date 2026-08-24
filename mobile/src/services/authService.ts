@@ -265,8 +265,12 @@ class AuthService {
         throw new Error('PIN must be 4-6 digits');
       }
 
-      const pinHash = await secureStore.computePinHash(pin);
-      const credential = await offlineDatabase.getOfflineCredentialByPinHash(pinHash);
+      const candidates = await secureStore.pinHashCandidates(pin);
+      let credential = null;
+      for (const pinHash of candidates) {
+        credential = await offlineDatabase.getOfflineCredentialByPinHash(pinHash);
+        if (credential) break;
+      }
       if (!credential) throw new Error('Invalid PIN');
 
       const existingSession = await secureStore.getSession();
