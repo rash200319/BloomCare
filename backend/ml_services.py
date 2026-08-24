@@ -450,7 +450,7 @@ def run_stage2_phenotyping_engine(payload: DiagnoseInput) -> DiagnoseMLOutput:
         5. Supervised Layer    → Class-weighted RF condition probabilities
         6. Package and return DiagnoseMLOutput
     """
-    logger.info("Stage-2 engine started | patient=%s", payload.patient_id)
+    logger.info("Stage-2 engine started")
 
     m = payload.metabolomics
     d = payload.doppler

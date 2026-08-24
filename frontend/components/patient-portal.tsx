@@ -1,6 +1,6 @@
 "use client"
 
-import { getApiBaseCandidates } from "@/lib/api"
+import { getApiBaseCandidates, getAccessToken } from "@/lib/api"
 
 import { useState, useEffect, useMemo } from "react"
 import {
@@ -528,9 +528,13 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
   }
 
   const explainMedicalData = async (shapJson: Record<string, number>, conditionName: string) => {
+    const token = getAccessToken()
     const response = await fetch("/api/patient-explain", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({
         shapJson,
         language: getExplainLanguage(),
