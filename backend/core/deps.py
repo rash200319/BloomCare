@@ -1,16 +1,16 @@
-from typing import Generator
+from typing import Generator, Any
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from backend.core import security
 from backend.core.config import settings
 from backend.db.session import SessionLocal
 from backend.models.user import User, UserRole
 from backend.models.patient import Patient
 from backend.schemas.auth import TokenPayload
+from backend.services.audit_service import AuditService
 
 security_scheme = HTTPBearer(
     description="Enter your JWT token here. Get it by calling /auth/login/staff or /auth/login/patient."
@@ -23,6 +23,10 @@ def get_db() -> Generator:
         yield db
     finally:
         db.close()
+
+
+def _token_version_of(principal: Any) -> int:
+    return int(getattr(principal, "token_version", 0) or 0)
 
 
 def get_current_user(
@@ -39,12 +43,24 @@ def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not validate credentials",
         )
+    claim_tv = int(token_data.tv or 0)
+
     user = db.query(User).filter(User.id == token_data.sub).first()
     if user:
+        if claim_tv != _token_version_of(user):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session revoked. Please login again.",
+            )
         return user
 
     patient = db.query(Patient).filter(Patient.id == token_data.sub).first()
     if patient:
+        if claim_tv != _token_version_of(patient):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session revoked. Please login again.",
+            )
         # Patients are managed in patients table, but protected routes expect role/full_name attrs.
         class PatientPrincipal:
             pass
@@ -55,6 +71,7 @@ def get_current_user(
         principal.role = UserRole.PATIENT
         principal.is_active = True
         principal.national_id = patient.national_id
+        principal.token_version = _token_version_of(patient)
         return principal
 
     raise HTTPException(status_code=404, detail="User not found")
@@ -119,15 +136,30 @@ def can_access_patient(db: Session, current_user: User, patient_id: str) -> bool
     return False
 
 
+def ensure_patient_access(
+    db: Session,
+    current_user: User,
+    patient_id: str,
+    *,
+    action: str = "phi.read",
+    detail: str | None = None,
+) -> None:
+    """Raise 403 if unauthorized; optionally write an audit event when enabled."""
+    if not can_access_patient(db, current_user, patient_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this patient",
+        )
+    AuditService.record_patient_access(
+        db, current_user, patient_id, action=action, detail=detail
+    )
+
+
 def require_patient_access(
     patient_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> User:
     """FastAPI dependency: 403 unless current_user may access patient_id."""
-    if not can_access_patient(db, current_user, patient_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to access this patient",
-        )
+    ensure_patient_access(db, current_user, patient_id, action="phi.read")
     return current_user

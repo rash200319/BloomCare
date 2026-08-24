@@ -9,7 +9,7 @@ import hashlib
 import json
 import uuid
 
-from backend.core.deps import get_db, get_current_active_user, can_access_patient
+from backend.core.deps import get_db, get_current_active_user, can_access_patient, ensure_patient_access
 from backend.schemas.screening import BatchedTriageSyncInput, TriageSyncResponse, RiskTier
 from backend.models.sync_log import SyncQueueLog
 from backend.models.screening import PatientReport, Stage1Screening
@@ -246,9 +246,10 @@ def stage1_history(
     )
 
     role = _role_name(current_user)
-    if patient_id and not can_access_patient(db, current_user, str(patient_id)):
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Not authorized to view this patient history")
+    if patient_id:
+        ensure_patient_access(
+            db, current_user, str(patient_id), action="triage.history"
+        )
 
     if role in ["ADMIN", "CLINICAL_SPECIALIST"]:
         if patient_id:

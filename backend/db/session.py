@@ -8,7 +8,8 @@ from backend.db.base import Base
 # Import all models to register them with Base.metadata
 from backend.models import (
     User, Patient, Stage1Screening, Stage2Diagnostic,
-    ScreeningReport, Appointment, Prescription, SyncQueueLog, OTPRecord, Notification
+    ScreeningReport, Appointment, Prescription, SyncQueueLog, OTPRecord, Notification,
+    AuditEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,12 @@ def _ensure_patient_compat_columns(engine) -> None:
                 conn.execute(text(
                     "ALTER TABLE IF EXISTS patients ADD COLUMN IF NOT EXISTS first_time_login BOOLEAN DEFAULT TRUE"
                 ))
+                conn.execute(text(
+                    "ALTER TABLE IF EXISTS patients ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 0"
+                ))
+                conn.execute(text(
+                    "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 0"
+                ))
             elif dialect == "sqlite":
                 columns = conn.exec_driver_sql("PRAGMA table_info(patients)").fetchall()
                 existing = {row[1] for row in columns}
@@ -61,8 +68,44 @@ def _ensure_patient_compat_columns(engine) -> None:
                     conn.exec_driver_sql(
                         "ALTER TABLE patients ADD COLUMN first_time_login BOOLEAN DEFAULT 1"
                     )
+                if "token_version" not in existing:
+                    conn.exec_driver_sql(
+                        "ALTER TABLE patients ADD COLUMN token_version INTEGER DEFAULT 0"
+                    )
+                user_cols = conn.exec_driver_sql("PRAGMA table_info(users)").fetchall()
+                user_existing = {row[1] for row in user_cols}
+                if "token_version" not in user_existing:
+                    conn.exec_driver_sql(
+                        "ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0"
+                    )
     except SQLAlchemyError as exc:
         logger.warning("Unable to ensure patients compatibility columns: %s", exc)
+
+
+def _ensure_audit_events_table(engine) -> None:
+    """Create audit_events when audit logging may be enabled."""
+    try:
+        with engine.begin() as conn:
+            dialect = engine.dialect.name
+            if dialect == "postgresql":
+                AuditEvent.__table__.create(bind=conn, checkfirst=True)
+            elif dialect == "sqlite":
+                conn.exec_driver_sql(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_events (
+                        id VARCHAR(36) PRIMARY KEY,
+                        actor_id VARCHAR(36),
+                        actor_role VARCHAR(50),
+                        action VARCHAR(100) NOT NULL,
+                        resource_type VARCHAR(50) NOT NULL DEFAULT 'patient',
+                        resource_id VARCHAR(36),
+                        detail TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+    except SQLAlchemyError as exc:
+        logger.warning("Unable to ensure audit_events table: %s", exc)
 
 
 def _ensure_appointments_table(engine) -> None:
@@ -258,6 +301,7 @@ _ensure_stage2_audit_columns(engine)
 _ensure_patient_compat_columns(engine)
 _ensure_appointments_table(engine)
 _ensure_notifications_table(engine)
+_ensure_audit_events_table(engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Interview demos: ensure login accounts exist when running on SQLite fallback.

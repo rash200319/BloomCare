@@ -6,7 +6,7 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from backend.core.deps import get_db, get_current_user, can_access_patient
+from backend.core.deps import get_db, get_current_user, ensure_patient_access
 from backend.models.user import User, UserRole
 from backend.models.patient import Patient
 from backend.schemas.insights import (
@@ -47,11 +47,9 @@ def get_patient_weekly_insight(
     - Patients can only view their own weekly insight
     - Clinical specialists, admins, and staff can view any patient's insight
     """
-    if not can_access_patient(db, current_user, patient_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view patient insights"
-        )
+    ensure_patient_access(
+        db, current_user, patient_id, action="insight.weekly"
+    )
     
     return InsightsService.get_patient_weekly_insight(db, patient_id)
 
@@ -83,11 +81,9 @@ def get_patient_weekly_stats(
     - Patients can only view their own stats
     - Clinical specialists, admins, and staff can view any patient's stats
     """
-    if not can_access_patient(db, current_user, patient_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view patient stats"
-        )
+    ensure_patient_access(
+        db, current_user, patient_id, action="insight.stats"
+    )
     
     return InsightsService.get_patient_weekly_stats(db, patient_id)
 
