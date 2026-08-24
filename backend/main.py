@@ -3,13 +3,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from backend.api.api_router import api_router
-from backend.core.config import settings
+from backend.core.config import settings, validate_security_settings
 
+validate_security_settings()
+
+_docs_url = None if settings.BLOOMCARE_DISABLE_API_DOCS else "/docs"
+_redoc_url = None if settings.BLOOMCARE_DISABLE_API_DOCS else "/redoc"
+_openapi_url = None if settings.BLOOMCARE_DISABLE_API_DOCS else "/openapi.json"
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version="2.0.0",
     description="BloomCare FastAPI backend service.",
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
 )
 
 
