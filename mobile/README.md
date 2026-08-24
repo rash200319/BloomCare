@@ -23,7 +23,7 @@ Canonical setup: **[root README](../README.md)**. API port defaults to **8001**.
 | Piece | Tech |
 |-------|------|
 | Runtime | Expo ~53, React Native 0.79, TypeScript |
-| Offline | Expo SQLite, AsyncStorage queue |
+| Offline | Expo SQLite, encrypted AsyncStorage queues + signed pending syncs |
 | Auth | Expo SecureStore, NetInfo |
 | API | `EXPO_PUBLIC_API_BASE_URL` → `/api/v1` |
 
@@ -84,6 +84,16 @@ npm run typecheck
 4. Reconnect → flush pending sync queue  
 
 Demo credentials match the root README (password `rash2003`).
+
+---
+
+## Offline queue security (P2)
+
+- Pending Stage 1 AsyncStorage queues are sealed with a device key in SecureStore (`queueCrypto.ts`).
+- SQLite `pending_syncs.payload_json` values are wrapped in signed envelopes (`syncEnvelope.ts`); tampered rows are quarantined.
+- SQLite patient caches remain **unencrypted** — not suitable for real PHI without SQLCipher-class storage.
+
+See [`docs/CONTROL_MAPPING.md`](../docs/CONTROL_MAPPING.md).
 
 ---
 
