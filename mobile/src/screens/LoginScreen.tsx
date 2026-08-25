@@ -31,6 +31,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [temporaryPassword, setTemporaryPassword] = useState('');
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -45,6 +46,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
     setPassword('');
     setNewPassword('');
     setConfirmPassword('');
+    setTemporaryPassword('');
   };
 
   const handleRoleSelect = (role: UserRole): void => {
@@ -79,6 +81,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
         }
 
         if (isFirstLogin) {
+          setTemporaryPassword('');
           setNewPassword('');
           setConfirmPassword('');
           setStep('first-password-setup');
@@ -111,6 +114,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
       }
 
       if (isFirstLogin) {
+        setTemporaryPassword('');
         setNewPassword('');
         setConfirmPassword('');
         setStep('first-password-setup');
@@ -149,8 +153,8 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
       return;
     }
 
-    if (!newPassword || !confirmPassword) {
-      Alert.alert('Error', 'Please enter and confirm your password');
+    if (!temporaryPassword || !newPassword || !confirmPassword) {
+      Alert.alert('Error', 'Please enter temporary password, new password, and confirmation');
       return;
     }
 
@@ -163,11 +167,11 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
     try {
       if (selectedRole === 'patient') {
         const nic = nationalId.trim().toUpperCase();
-        await authService.setupPatientFirstLoginPassword(nic, newPassword, confirmPassword);
+        await authService.setupPatientFirstLoginPassword(nic, temporaryPassword, newPassword, confirmPassword);
         await authService.loginPatient(nic, newPassword);
       } else {
         const userEmail = email.trim().toLowerCase();
-        await authService.setupStaffFirstLoginPassword(userEmail, newPassword, confirmPassword);
+        await authService.setupStaffFirstLoginPassword(userEmail, temporaryPassword, newPassword, confirmPassword);
         await authService.loginStaff(userEmail, newPassword);
       }
 
@@ -394,6 +398,10 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
               </View>
             )}
 
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Temporary Password</Text>
+              <TextInput style={styles.input} placeholder="Issued at registration" placeholderTextColor="#999" secureTextEntry={!showPassword} value={temporaryPassword} onChangeText={setTemporaryPassword} editable={!isLoading} />
+            </View>
             <View style={styles.formGroup}>
               <Text style={styles.label}>New Password</Text>
               <TextInput style={styles.input} placeholder="Create password" placeholderTextColor="#999" secureTextEntry={!showPassword} value={newPassword} onChangeText={setNewPassword} editable={!isLoading} />

@@ -5,7 +5,7 @@ import pytest
 DEMO_STAFF = [
     ("frontline.staff@bloomcare.health", "FRONTLINE_STAFF"),
     ("hospitaladmin@bloomcare.health", "ADMIN"),
-    ("obsertitian@bloomcare.health", "CLINICAL_SPECIALIST"),
+    ("obstetrician@bloomcare.health", "CLINICAL_SPECIALIST"),
 ]
 
 
@@ -57,7 +57,7 @@ def test_doctor_dashboard_with_specialist_token(client, demo_password):
     login = client.post(
         "/api/v1/auth/login/staff",
         json={
-            "email": "obsertitian@bloomcare.health",
+            "email": "obstetrician@bloomcare.health",
             "password": demo_password,
         },
     )

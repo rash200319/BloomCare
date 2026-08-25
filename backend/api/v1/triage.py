@@ -9,7 +9,7 @@ import hashlib
 import json
 import uuid
 
-from backend.core.deps import get_db, get_current_active_user
+from backend.core.deps import get_db, get_current_active_user, can_access_patient, ensure_patient_access
 from backend.schemas.screening import BatchedTriageSyncInput, TriageSyncResponse, RiskTier
 from backend.models.sync_log import SyncQueueLog
 from backend.models.screening import PatientReport, Stage1Screening
@@ -99,6 +99,19 @@ def triage_sync(
         patient = db.query(DBPatient).filter(cast(DBPatient.id, String) == patient_id).first()
         if not patient:
             error_message = f"Patient not found for sync patient_id: {patient_id}"
+            logger.warning(error_message)
+            _upsert_sync_log(
+                db,
+                existing_log=existing_log,
+                device_id=payload.device_id,
+                payload_hash=payload_hash,
+                sync_status="FAILED",
+                error_message=error_message,
+            )
+            continue
+
+        if not can_access_patient(db, current_user, patient_id):
+            error_message = f"Not authorized to sync triage for patient_id: {patient_id}"
             logger.warning(error_message)
             _upsert_sync_log(
                 db,
@@ -233,6 +246,11 @@ def stage1_history(
     )
 
     role = _role_name(current_user)
+    if patient_id:
+        ensure_patient_access(
+            db, current_user, str(patient_id), action="triage.history"
+        )
+
     if role in ["ADMIN", "CLINICAL_SPECIALIST"]:
         if patient_id:
             rows = rows.filter(

@@ -14,11 +14,11 @@ def test_ensure_demo_seeds_creates_expected_accounts():
         emails = {u.email for u in db.query(User).all()}
         assert "frontline.staff@bloomcare.health" in emails
         assert "hospitaladmin@bloomcare.health" in emails
-        assert "obsertitian@bloomcare.health" in emails
+        assert "obstetrician@bloomcare.health" in emails
 
         doctor = (
             db.query(User)
-            .filter(User.email == "obsertitian@bloomcare.health")
+            .filter(User.email == "obstetrician@bloomcare.health")
             .one()
         )
         assert doctor.role == UserRole.CLINICAL_SPECIALIST
@@ -44,7 +44,7 @@ def test_ensure_demo_seeds_is_idempotent():
                     [
                         "frontline.staff@bloomcare.health",
                         "hospitaladmin@bloomcare.health",
-                        "obsertitian@bloomcare.health",
+                        "obstetrician@bloomcare.health",
                     ]
                 )
             )

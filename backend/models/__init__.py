@@ -7,3 +7,4 @@ from .prescription import Prescription
 from .sync_log import SyncQueueLog
 from .otp import OTPRecord
 from .notification import Notification
+from .audit import AuditEvent

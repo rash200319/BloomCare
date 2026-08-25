@@ -2,12 +2,14 @@
 
 import secrets
 import hashlib
+import hmac
 from datetime import datetime, timedelta
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from backend.models.otp import OTPRecord, OTPType
-from backend.models.patient import Patient
-from backend.models.user import User
+from backend.core.config import settings
+
+_OTP_CODE_PLACEHOLDER = "******"
 
 
 class OTPService:
@@ -20,17 +22,18 @@ class OTPService:
     @staticmethod
     def generate_otp() -> str:
         """Generate a cryptographically secure 6-digit OTP."""
-        return ''.join(secrets.choice('0123456789') for _ in range(OTPService.OTP_LENGTH))
+        return "".join(secrets.choice("0123456789") for _ in range(OTPService.OTP_LENGTH))
 
     @staticmethod
     def hash_otp(otp: str) -> str:
-        """Hash OTP for secure storage in database."""
-        return hashlib.sha256(otp.encode()).hexdigest()
+        """HMAC-SHA256 with SECRET_KEY as pepper."""
+        key = (settings.SECRET_KEY or "").encode("utf-8")
+        return hmac.new(key, otp.encode("utf-8"), hashlib.sha256).hexdigest()
 
     @staticmethod
     def verify_hash(otp: str, otp_hash: str) -> bool:
-        """Verify OTP against stored hash."""
-        return OTPService.hash_otp(otp) == otp_hash
+        """Verify OTP against stored hash (constant-time)."""
+        return hmac.compare_digest(OTPService.hash_otp(otp), otp_hash or "")
 
     @staticmethod
     def create_patient_otp(
@@ -39,40 +42,31 @@ class OTPService:
         otp_type: OTPType,
         destination: str,
         ip_address: str = None,
-        user_agent: str = None
+        user_agent: str = None,
     ) -> tuple[str, OTPRecord]:
-        """
-        Create OTP record for patient password reset.
-
-        Returns: tuple of (plaintext_otp, otp_record)
-        """
-        # Delete any existing unverified OTPs for this patient
         db.query(OTPRecord).filter(
             OTPRecord.patient_id == patient_id,
             OTPRecord.otp_type == otp_type,
-            OTPRecord.is_verified == False
+            OTPRecord.is_verified == False,
         ).delete()
 
-        # Generate new OTP
         plaintext_otp = OTPService.generate_otp()
         otp_hash = OTPService.hash_otp(plaintext_otp)
 
-        # Create OTP record
         otp_record = OTPRecord(
             patient_id=patient_id,
-            otp_code=plaintext_otp,  # Store plaintext for immediate use/testing
+            otp_code=_OTP_CODE_PLACEHOLDER,
             otp_hash=otp_hash,
             otp_type=otp_type,
             destination=destination,
             expires_at=datetime.utcnow() + timedelta(minutes=OTPService.OTP_EXPIRY_MINUTES),
             ip_address=ip_address,
             user_agent=user_agent,
-            max_attempts=OTPService.OTP_MAX_ATTEMPTS
+            max_attempts=OTPService.OTP_MAX_ATTEMPTS,
         )
         db.add(otp_record)
         db.commit()
         db.refresh(otp_record)
-
         return plaintext_otp, otp_record
 
     @staticmethod
@@ -82,40 +76,31 @@ class OTPService:
         otp_type: OTPType,
         destination: str,
         ip_address: str = None,
-        user_agent: str = None
+        user_agent: str = None,
     ) -> tuple[str, OTPRecord]:
-        """
-        Create OTP record for staff password reset.
-
-        Returns: tuple of (plaintext_otp, otp_record)
-        """
-        # Delete any existing unverified OTPs for this staff
         db.query(OTPRecord).filter(
             OTPRecord.staff_id == staff_id,
             OTPRecord.otp_type == otp_type,
-            OTPRecord.is_verified == False
+            OTPRecord.is_verified == False,
         ).delete()
 
-        # Generate new OTP
         plaintext_otp = OTPService.generate_otp()
         otp_hash = OTPService.hash_otp(plaintext_otp)
 
-        # Create OTP record
         otp_record = OTPRecord(
             staff_id=staff_id,
-            otp_code=plaintext_otp,
+            otp_code=_OTP_CODE_PLACEHOLDER,
             otp_hash=otp_hash,
             otp_type=otp_type,
             destination=destination,
             expires_at=datetime.utcnow() + timedelta(minutes=OTPService.OTP_EXPIRY_MINUTES),
             ip_address=ip_address,
             user_agent=user_agent,
-            max_attempts=OTPService.OTP_MAX_ATTEMPTS
+            max_attempts=OTPService.OTP_MAX_ATTEMPTS,
         )
         db.add(otp_record)
         db.commit()
         db.refresh(otp_record)
-
         return plaintext_otp, otp_record
 
     @staticmethod

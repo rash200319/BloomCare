@@ -5,7 +5,7 @@ Implements the two-stage data engineering and inference pipeline.
 
 Stage 1 (Edge)
 --------------
-  • Lightweight MLP runs on-device (TFLite / PyTorch Mobile).
+  • Lightweight model runs on-device (exported JS Stage 1 screener).
   • This module only receives and persists the edge result via the sync endpoint.
 
 Stage 2 (Server)
@@ -450,7 +450,7 @@ def run_stage2_phenotyping_engine(payload: DiagnoseInput) -> DiagnoseMLOutput:
         5. Supervised Layer    → Class-weighted RF condition probabilities
         6. Package and return DiagnoseMLOutput
     """
-    logger.info("Stage-2 engine started | patient=%s", payload.patient_id)
+    logger.info("Stage-2 engine started")
 
     m = payload.metabolomics
     d = payload.doppler

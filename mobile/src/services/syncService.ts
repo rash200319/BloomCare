@@ -7,7 +7,7 @@ import authService from './authService';
 import patientCacheService from './patientCacheService';
 import offlineDatabase from './offlineDatabase';
 import { readPendingQueue, writePendingQueue } from './offlineQueue';
-import { API_BASE_URL, STAGE1_PREDICT_URL } from '../config/api';
+import { API_BASE_URL, STAGE1_SYNC_URL } from '../config/api';
 
 const DEFAULT_TIMEOUT_MS = 8000;
 const PATIENT_CREATE_URL = `${API_BASE_URL}/patients/`;
@@ -124,61 +124,20 @@ export const buildPendingRecord = (vitals: Stage1VitalsInput): PendingScreening 
 });
 
 export const submitRiskOnline = async (
-  vitals: Stage1VitalsInput,
-  timeoutMs: number = DEFAULT_TIMEOUT_MS
+  _vitals: Stage1VitalsInput,
+  _timeoutMs: number = DEFAULT_TIMEOUT_MS
 ): Promise<Response> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
-
-  try {
-    const { bs, ...rest } = vitals;
-    const apiPayload = {
-      ...rest,
-      blood_sugar: bs,
-    };
-
-    return await fetch(STAGE1_PREDICT_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-      body: JSON.stringify(apiPayload),
-      signal: controller.signal
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  // Stage 1 scoring is on-device only (stage1_offline_ai.js). Upload results via /triage/sync.
+  throw new Error('STAGE1_ON_DEVICE_ONLY');
 };
 
 export const syncPendingRecords = async (): Promise<{ pending: number; synced: number }> => {
   const queue = await readPendingQueue();
-  if (queue.length === 0) {
-    return { pending: 0, synced: 0 };
-  }
-
-  const unsynced: PendingScreening[] = [];
-  let synced = 0;
-
-  for (const item of queue) {
-    try {
-      const response = await submitRiskOnline(item.vitals, 5000);
-      if (!response.ok) {
-        unsynced.push(item);
-      } else {
-        synced += 1;
-      }
-    } catch {
-      unsynced.push(item);
-    }
-  }
-
-  await writePendingQueue(unsynced);
-  return { pending: unsynced.length, synced };
+  // Legacy predict-and-clear path removed; pending vitals stay queued until triage sync runs.
+  return { pending: queue.length, synced: 0 };
 };
 
-export const getApiUrl = (): string => STAGE1_PREDICT_URL;
+export const getApiUrl = (): string => STAGE1_SYNC_URL;
 
 /**
  * Morning Sync (Sync & Go):

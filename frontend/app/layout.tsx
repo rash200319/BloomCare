@@ -10,7 +10,7 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: 'BloomCare - Maternal Risk Intelligence System',
-  description: 'AI-Powered Maternal Risk Intelligence System for Hemas Hospitals',
+  description: 'AI-Powered Maternal Risk Intelligence System',
   generator: 'v0.app',
   manifest: '/manifest.json',
   icons: {

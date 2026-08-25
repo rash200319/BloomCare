@@ -4,7 +4,7 @@
 
 BloomCare is designed for low-connectivity clinical environments. It combines an offline-first Stage 1 screener (web + mobile) with server-side Stage 2 diagnostics for preeclampsia, gestational diabetes (GDM), and preterm birth risk — plus explainable AI outputs and multilingual UI (English, Sinhala, Tamil).
 
-> Demo only — not secure and **must not** be used for production or real patient data.
+> **Demo / portfolio use only.** Do not use with real patient data. Security has been hardened in staged P0–P2 work (auth boundary → clinical readiness → maturity scanners/CSP/offline integrity), but this is **not** a production medical portal and is **not** certified. See [Security & Compliance Notes](#security--compliance-notes).
 
 ---
 
@@ -58,8 +58,10 @@ BloomCare supports the full care pathway from community-level screening to speci
 
 - Role-based sign-in: frontline staff, clinician/specialist, admin, patient
 - Patient login via national ID; staff login via email
-- First-login password setup for new accounts
-- Session persistence across refreshes
+- First-login password setup requires the **temporary password** issued at registration
+- Login attempt throttle + soft lockout; optional idle logout on web
+- Logout bumps `token_version` (server-side session revoke / logout-all)
+- Demo autofill gated by `NEXT_PUBLIC_ENABLE_DEMO_LOGIN` (admin credentials not shown in UI)
 - Multilingual auth UI (English / Sinhala / Tamil)
 
 ### Frontline staff portal
@@ -98,11 +100,14 @@ BloomCare supports the full care pathway from community-level screening to speci
 ### Shared capabilities
 
 - Single API client (`frontend/lib/api.ts`) defaulting to port **8001**
+- Patient-scoped authorization (`can_access_patient`) on reports, insights, and triage
+- CSP + baseline security headers on the Next.js app
 - Offline-capable Stage 1 shell via service worker (optional; can disable)
-- Context-aware site chatbot (current view + role)
+- Local multilingual FAQ + navigation assistant (keyword intents; no LLM)
 - Notification badges and read/unread filtering
 - Responsive desktop and mobile layouts
 - Role-based access control (RBAC)
+- CI: gitleaks (fail on secrets), SCA advisories (warn), Dependabot
 
 ---
 
@@ -168,19 +173,23 @@ BloomCare supports the full care pathway from community-level screening to speci
 │
 ├── mobile/                   # Expo React Native app
 │   ├── src/screens/          # Login, patient, frontline
-│   ├── src/services/         # Offline DB, sync, auth, risk engine
+│   ├── src/services/         # Offline DB, sync, auth, queue crypto, risk engine
 │   ├── src/config/api.ts     # API base (default :8001; override via env)
 │   └── package.json
 │
+├── docs/                     # Control mapping (access / audit / integrity / transmission)
+├── SECURITY.md               # Reporting + pen-test readiness checklist
+├── .gitleaks.toml            # Secret-scan allowlist for demo placeholders
+├── .github/                  # CI (pytest, frontend build, gitleaks, SCA) + Dependabot
+│
 ├── models/                   # Training / export scripts + model artifacts
 ├── Data/                     # Training datasets and cleaning scripts
-├── bloomcare_local.db        # SQLite fallback DB (auto-seeded for demos)
+├── bloomcare_local.db        # SQLite fallback DB (gitignored; auto-seeded for demos)
 ├── pytest.ini                # Backend test config
 ├── stage1_offline_ai.js      # Stage 1 inference bundle (also copied under frontend/mobile)
 ├── stage1_general_risk_screener.pkl
 ├── stage2_*.pkl              # Stage 2 condition models (also under models/)
 ├── requirements.txt          # ML training deps (pandas, sklearn, …)
-├── start.bat                 # Legacy Windows helper (prefer uvicorn below)
 ├── README.md                 # This file
 └── LICENSE
 ```
@@ -191,10 +200,6 @@ Additional docs:
 |----------|----------|
 | Backend deep dive | [`backend/README.md`](backend/README.md) |
 | Mobile app README | [`mobile/README.md`](mobile/README.md) |
-| Mobile offline guide | [`mobile/OFFLINE_IMPLEMENTATION_GUIDE.md`](mobile/OFFLINE_IMPLEMENTATION_GUIDE.md) |
-| Mobile quick start | [`mobile/QUICK_START.md`](mobile/QUICK_START.md) |
-| Screen update notes | [`mobile/SCREEN_UPDATE_GUIDE.md`](mobile/SCREEN_UPDATE_GUIDE.md) |
-| Technical presentation script | [`script.md`](script.md) |
 
 ---
 
@@ -328,12 +333,12 @@ Open [http://localhost:3000](http://localhost:3000).
 ### Demo login credentials
 
 All demo passwords: **`rash2003`**  
-(Login page Autofill uses the same values from `frontend/lib/api.ts`.)
+Login-page Autofill uses values from `frontend/lib/api.ts` when `NEXT_PUBLIC_ENABLE_DEMO_LOGIN` is not `"false"`. **Admin is intentionally omitted** from autofill (use the table below if needed).
 
 | Portal | Identifier | API role |
 |--------|------------|----------|
 | Frontline staff | `frontline.staff@bloomcare.health` | `FRONTLINE_STAFF` |
-| Obstetrician / clinical specialist | `obsertitian@bloomcare.health` | `CLINICAL_SPECIALIST` |
+| Obstetrician / clinical specialist | `obstetrician@bloomcare.health` | `CLINICAL_SPECIALIST` |
 | Hospital admin | `hospitaladmin@bloomcare.health` | `ADMIN` |
 | Patient | `NIC-900000001V` (alt `199912345678`) | `PATIENT` |
 
@@ -355,16 +360,25 @@ Point the app at your LAN API (see [Configuration](#configuration)). Scan the Ex
 
 ### Backend (`backend/.env`)
 
-| Variable | Purpose | Typical local value |
-|----------|---------|---------------------|
+| Variable | Purpose | Typical local / demo value |
+|----------|---------|----------------------------|
 | `OPENAI_API_KEY` | Live clinical explanations | Optional |
 | `BLOOMCARE_OPENAI_MODEL` | OpenAI model name | `gpt-4o` |
 | `BLOOMCARE_MOCK_LLM` | Use offline mock LLM | `true` for local dev |
 | `BLOOMCARE_PORT` | Documented API port in `.env.example` | `8001` |
-| `SECRET_KEY` | JWT signing key | Change in production |
+| `SECRET_KEY` | JWT signing key | Demo default — **change on any shared host** |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | JWT lifetime | `480` (8 hours) |
+| `BLOOMCARE_ENV` | `local` or `production` | `local` |
+| `BLOOMCARE_ENFORCE_SECRETS` | Refuse boot on demo `SECRET_KEY` | `false` until real key is set |
+| `BLOOMCARE_DISABLE_API_DOCS` | Hide `/docs` + OpenAPI | `false` locally; `true` on shared hosts |
+| `BLOOMCARE_EXPOSE_DEMO_OTP` | Return OTP in API (local only) | `false` — **never on Railway** |
+| `BLOOMCARE_LOGIN_MAX_ATTEMPTS` | Soft lockout threshold (`0` = off) | `10` |
+| `BLOOMCARE_LOGIN_LOCKOUT_MINUTES` | Lockout window | `15` |
+| `BLOOMCARE_AUDIT_LOG_ENABLED` | Write PHI access audit events | `false` for demos |
+| `ALLOWED_ORIGINS` | CORS allow-list (comma-separated) | e.g. `https://bloomcare.rashmip.me` |
 | `POSTGRES_*` | Database connection | Matches Docker Compose |
 
-Database settings also default in `backend/core/config.py` if unset.
+Database settings also default in `backend/core/config.py` if unset. Full list: [`backend/.env.example`](backend/.env.example).
 
 ### Frontend (`frontend/.env.local`)
 
@@ -373,8 +387,12 @@ Database settings also default in `backend/core/config.py` if unset.
 | `NEXT_PUBLIC_BACKEND_URL` | Backend origin (used by `frontend/lib/api.ts`; default `http://127.0.0.1:8001`) |
 | `NEXT_PUBLIC_API_BASE_URL` / `NEXT_PUBLIC_API_BASE` | API base including `/api/v1` |
 | `NEXT_PUBLIC_AUTH_TOKEN_KEY` | localStorage key for access token |
-| `NEXT_PUBLIC_ENABLE_OFFLINE_SW` | Set to `false` to unregister the offline service worker (useful if a stale SW masks a deploy) |
-| `GROQ_API_KEY` | Server-side explainability route (optional) |
+| `NEXT_PUBLIC_ENABLE_DEMO_LOGIN` | Show demo autofill (`false` to hide) |
+| `NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES` | Idle logout (`0` = disabled; keep `0` on Vercel demos) |
+| `NEXT_PUBLIC_ENABLE_OFFLINE_SW` | Set to `false` to unregister the offline service worker |
+| `GROQ_API_KEY` | Server-side explainability route (optional; route requires Bearer auth) |
+
+Full list: [`frontend/.env.example`](frontend/.env.example).
 
 ### Mobile
 
@@ -433,10 +451,6 @@ python models/stage1.py
 ```
 
 Exported Stage 1 JS is used by the web PWA (`frontend/public/scripts/stage1_offline_ai.js`) and mobile (`mobile/src/services/stage1_offline_ai.js`).
-
-### Legacy `start.bat`
-
-`start.bat` still references a removed `api.py` / `api_requirements.txt` layout. Prefer the uvicorn command in [Quick Start](#quick-start).
 
 ---
 
@@ -509,23 +523,28 @@ JWT auth: obtain a token from `/api/v1/auth/login/staff` or `/api/v1/auth/login/
 - Local queue for screenings when offline
 - Stage 1 AI fallback when the backend is unreachable
 - Reconnect sync when connectivity returns
+- CSP + security headers applied via `frontend/next.config.mjs`
 
 ### Mobile
 
 - SQLite offline database (profiles, appointments, insights, screening history, pending sync queue)
-- SecureStore for hashed PIN and JWT
+- SecureStore for salted PIN hash, JWT, and device crypto keys
 - Online credential login → optional PIN setup for offline access
 - **PIN unlock preserves the stored JWT** (does not wipe the token) so reconnect/sync still works
 - Staff morning sync downloads assigned patients for disconnected clinics
 - Background / manual sync flushes pending operations on reconnect
+- **Pending sync integrity:** SQLite `pending_syncs` payloads are device-signed (`syncEnvelope.ts`); tampered rows are quarantined
+- **Queue at rest:** AsyncStorage sync queues are sealed with a device key + MAC (`queueCrypto.ts`); plaintext queues migrate on first read
+- SQLite patient caches remain **unencrypted** — not suitable for real PHI without SQLCipher-class storage
 
 **Known offline limits**
 
 - New patient registration typically requires online NIC validation
 - Staff can only work with the morning-synced patient set while offline
 - Chat / messaging is online-only
+- Server does not verify mobile MACs (keeps older demo clients working)
 
-See [`mobile/QUICK_START.md`](mobile/QUICK_START.md) and [`mobile/OFFLINE_IMPLEMENTATION_GUIDE.md`](mobile/OFFLINE_IMPLEMENTATION_GUIDE.md) for detailed flows.
+See [`mobile/README.md`](mobile/README.md) for detailed offline flows.
 
 ---
 
@@ -587,9 +606,18 @@ Coverage includes:
 - API health / OpenAPI smoke checks  
 - Demo staff + patient login (password `rash2003`)  
 - Role aliasing (`OBSERTITIAN` / `DOCTOR` → `CLINICAL_SPECIALIST`)  
-- Password hashing + JWT helpers  
+- Password hashing + JWT helpers (incl. short TTL + `token_version` claim)  
+- Login throttle / soft lockout helpers  
 - Demo seeding against the active DB  
 - Frontend demo-credential contract against `frontend/lib/api.ts`
+
+CI (`.github/workflows/ci.yml`) also runs:
+
+- **gitleaks** — fails on real secrets (demo placeholders allowlisted in `.gitleaks.toml`)  
+- **SCA** — `pip-audit` + `npm audit` (warn-only / `continue-on-error` so demos are not blocked)  
+- Backend pytest + frontend `tsc` / build  
+
+Dependabot keeps frontend, mobile, backend, and Actions deps current (`.github/dependabot.yml`).
 
 Mobile typecheck:
 
@@ -630,29 +658,62 @@ Suggested demo walkthrough (interview):
 
 ## Security & Compliance Notes
 
-- Change `SECRET_KEY` and database passwords before any shared or production deployment.
+BloomCare treats security as a **staged program**, not a single middleware checkbox. Work is grouped as:
+
+| Stage | Focus | Highlights |
+|-------|--------|------------|
+| **Auth boundary** | Before any real patient data | Short JWT TTL (8h); demo `SECRET_KEY` warn / optional fail-closed; HMAC OTPs (no plaintext in API by default); demo login gate; auth on appointment discovery; `can_access_patient` on PHI routes; first-login requires temporary password; optional lock of `/docs` |
+| **Clinical readiness** | Abuse resistance + accountability | Login throttle / soft lockout; Bearer auth on `/api/patient-explain`; no PIN/PHI console logs; opt-in PHI audit log; salted mobile PIN hashes; optional idle logout; `token_version` + `/auth/logout-all` |
+| ** Maturity** | Scanners, browser, offline integrity, docs | gitleaks + SCA + Dependabot; CSP / security headers; signed pending syncs; encrypted AsyncStorage queues; [`docs/CONTROL_MAPPING.md`](docs/CONTROL_MAPPING.md); [`SECURITY.md`](SECURITY.md) pen-test checklist |
+
+### Deploy-safe defaults (keep demos working)
+
+| Setting | Demo-safe | Shared / clinical |
+|---------|-----------|-------------------|
+| `BLOOMCARE_ENFORCE_SECRETS` | `false` until a real `SECRET_KEY` is set | `true` |
+| `BLOOMCARE_EXPOSE_DEMO_OTP` | `false` | never enable |
+| `BLOOMCARE_AUDIT_LOG_ENABLED` | `false` | `true` on Postgres |
+| `NEXT_PUBLIC_ENABLE_DEMO_LOGIN` | `true` for portfolio demos | `false` |
+| `NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES` | `0` | e.g. `15` |
+| `BLOOMCARE_DISABLE_API_DOCS` | `false` locally | `true` |
+
+### Still intentionally incomplete
+
+- JWT in browser `localStorage` (prefer httpOnly cookies / BFF for production)
+- No clinician MFA / TOTP yet
+- Mobile SQLite not SQLCipher-encrypted
+- CSP remains demo-permissive (`unsafe-inline` / `unsafe-eval`)
+- SCA job is warn-only until advisory triage is routine
+- **Do not claim HIPAA / HITRUST** without a program, BAAs, and formal assessment
+
+### Ops checklist
+
+- Change `SECRET_KEY` and database passwords before any shared deployment.
 - Never commit real `.env` files (see `.gitignore`).
-- Demo AWS host is **not** hardened for PHI / real clinical use.
-- `bloomcare_local.db` is a local fallback database — do not treat it as production storage.
-- Mobile SQLite is typically unencrypted; sensitive deployments should consider encrypted storage.
-- Prefer HTTPS in production; keep JWT lifetimes and CORS allow-lists tight.
+- Prefer HTTPS; keep CORS (`ALLOWED_ORIGINS`) tight to real frontends.
+- Railway / Vercel demos are not hardened for PHI.
+- `bloomcare_local.db` is a local fallback — not production storage.
 - BloomCare outputs support clinical decision-making but do **not** replace professional medical judgment.
+
+Full reporting process and pre–pen-test checklist: [`SECURITY.md`](SECURITY.md).  
+Access / audit / integrity / transmission map: [`docs/CONTROL_MAPPING.md`](docs/CONTROL_MAPPING.md).
 
 ---
 
 ## License & Attribution
 
 - License: **MIT** — see [`LICENSE`](LICENSE)
-- Copyright © 2026 Rashmi Paboda
+- Copyright © 2026 CodeNexusTeam
 - Built for maternal healthcare workflows with multilingual support for Sri Lanka (English / Sinhala / Tamil)
 
 ---
 
 ## Related Documentation
 
-- [`backend/README.md`](backend/README.md) — API, ML pipeline, and backend ops  
-- [`mobile/README.md`](mobile/README.md) — Mobile Stage 1 offline app  
-- [`script.md`](script.md) — 5-minute technical presentation script  
+- [`SECURITY.md`](SECURITY.md) — vulnerability reporting + pen-test readiness checklist
+- [`docs/CONTROL_MAPPING.md`](docs/CONTROL_MAPPING.md) — access / audit / integrity / transmission map
+- [`backend/README.md`](backend/README.md) — API, ML pipeline, and backend ops
+- [`mobile/README.md`](mobile/README.md) — Mobile Stage 1 offline app
 
 ---
 

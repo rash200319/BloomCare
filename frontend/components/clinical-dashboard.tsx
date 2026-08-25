@@ -1012,7 +1012,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
             </div>
             <div>
               <h1 className="text-2xl font-black tracking-tight text-slate-900 leading-none group-hover:text-primary transition-colors">Bloom<span className="text-primary">Care</span></h1>
-              <p className="text-[9px] font-bold text-slate-400 tracking-[0.2em] uppercase mt-1">Hemas Hospitals Intelligence</p>
+              <p className="text-[9px] font-bold text-slate-400 tracking-[0.2em] uppercase mt-1">BloomCare Intelligence</p>
             </div>
           </div>
           <div className="h-8 w-px bg-slate-200 mx-2" />

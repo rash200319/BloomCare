@@ -4,7 +4,7 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
-from backend.core.deps import get_current_user, get_db
+from backend.core.deps import get_current_user, get_current_active_user, get_db
 from backend.models.appointment import Appointment
 from backend.models.patient import Patient
 from backend.models.user import User, UserRole
@@ -29,7 +29,10 @@ router = APIRouter()
     summary="Get All Specializations",
     description="List all available specializations with specialist count",
 )
-def get_specializations(db: Session = Depends(get_db)) -> Any:
+def get_specializations(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_active_user),
+) -> Any:
     return AppointmentService.get_specializations(db)
 
 
@@ -42,6 +45,7 @@ def get_specializations(db: Session = Depends(get_db)) -> Any:
 def get_specialists_by_specialization(
     specialization: str,
     db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_active_user),
 ) -> Any:
     return AppointmentService.get_specialists_by_specialization(db, specialization)
 
@@ -57,6 +61,7 @@ def get_specialist_availability(
     days_ahead: int = Query(
         14, ge=1, le=30, description="Number of days to check (1-30)"),
     db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_active_user),
 ) -> Any:
     return AppointmentService.get_specialist_availability(db, specialist_name, days_ahead)
 

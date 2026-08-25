@@ -18,6 +18,8 @@ class Patient(Base):
     emergency_contact = Column(String(50), nullable=True)
     blood_group = Column(String(10), nullable=True)
     first_time_login = Column(Boolean, default=True)
+    # Bumped by logout-all / password change to invalidate outstanding JWTs
+    token_version = Column(Integer, nullable=False, default=0)
     assigned_worker_id = Column(String(36), ForeignKey(
         "users.id", ondelete="SET NULL"), nullable=True)
     registered_at = Column(DateTime, server_default=func.now())

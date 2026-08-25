@@ -75,6 +75,11 @@ mobile/web-build/
 # *.pkl
 # *.csv
 
+# Local databases (auto-seeded on backend startup for demos)
+*.db
+*.db-journal
+bloomcare_local.db
+
 # Local agent helpers
 _clean_commit.py
 _audit_*.py

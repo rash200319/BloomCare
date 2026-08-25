@@ -3,13 +3,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from backend.api.api_router import api_router
-from backend.core.config import settings
+from backend.core.config import settings, validate_security_settings
 
+validate_security_settings()
+
+_docs_url = None if settings.BLOOMCARE_DISABLE_API_DOCS else "/docs"
+_redoc_url = None if settings.BLOOMCARE_DISABLE_API_DOCS else "/redoc"
+_openapi_url = None if settings.BLOOMCARE_DISABLE_API_DOCS else "/openapi.json"
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version="2.0.0",
     description="BloomCare FastAPI backend service.",
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
 )
 
 
@@ -42,23 +50,26 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
-# Configure CORS to allow frontend requests
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+def _cors_origins() -> list[str]:
+    defaults = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://localhost:3000",
         "https://127.0.0.1:3000",
-        "http://localhost:8005",
-        "http://127.0.0.1:8005",
-        "http://54.206.93.158",
-        "http://54.206.93.158:3000",
-        "https://54.206.93.158",
-        "https://54.206.93.158:3000",
-    ],
-    # Keep explicit allow_origins while also covering local dev ports consistently and EC2 IP.
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|54\.206\.93\.158)(:\d+)?$",
+        "https://bloom-care-ten.vercel.app",
+        "https://bloomcare.rashmip.me",
+    ]
+    extra = (settings.ALLOWED_ORIGINS or "").strip()
+    if not extra:
+        return defaults
+    return defaults + [o.strip() for o in extra.split(",") if o.strip()]
+
+
+# Configure CORS to allow frontend requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins(),
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|.*\.vercel\.app|.*\.up\.railway\.app|bloomcare\.rashmip\.me)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

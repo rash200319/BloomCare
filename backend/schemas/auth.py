@@ -9,6 +9,7 @@ class Token(BaseModel):
 
 class TokenPayload(BaseModel):
     sub: str | None = None
+    tv: int | None = 0
 
 
 # ============== NEW SCHEMAS FOR STAFF & PATIENT MANAGEMENT ==============
@@ -26,15 +27,17 @@ class StaffLoginRequest(BaseModel):
 
 
 class FirstLoginPatientSetupRequest(BaseModel):
-    """Patient first-login password setup"""
+    """Patient first-login password setup — requires issued temporary password."""
     national_id: str = Field(..., description="Patient national ID")
+    temporary_password: str = Field(..., description="Temporary password issued at registration")
     password: str = Field(..., description="New password")
     confirm_password: str = Field(..., description="Confirm new password")
 
 
 class FirstLoginStaffSetupRequest(BaseModel):
-    """Staff/doctor first-login password setup"""
+    """Staff/doctor first-login password setup — requires issued temporary password."""
     email: str = Field(..., description="Staff/doctor email")
+    temporary_password: str = Field(..., description="Temporary password issued at registration")
     password: str = Field(..., description="New password")
     confirm_password: str = Field(..., description="Confirm new password")
 

@@ -11,4 +11,6 @@ export const API_BASE_URL = (envApiBaseUrl && envApiBaseUrl.trim().length > 0)
   ? envApiBaseUrl.trim().replace(/\/+$/, '')
   : DEFAULT_API_BASE_URL;
 
-export const STAGE1_PREDICT_URL = `${API_BASE_URL}/triage/predict/stage1`;
+// Stage 1 inference runs on-device via stage1_offline_ai.js.
+// There is no server /triage/predict/stage1 route — use /triage/sync to upload results.
+export const STAGE1_SYNC_URL = `${API_BASE_URL}/triage/sync`;
