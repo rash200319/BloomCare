@@ -1,0 +1,96 @@
+[33m9bc964c[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mfeature/full-impl-sync-20260329[m[33m, [m[1;31morigin/feature/full-impl-sync-20260329[m[33m, [m[1;31morigin/HEAD[m[33m)[m Add daily-run command reference
+[33mc236229[m Add CI workflow for backend and frontend
+[33m6a2b544[m Make Postgres Docker host port configurable
+[33m5da09ad[m Fail loudly on schema.sql errors instead of silently continuing
+[33m6c24783[m Fix non-IMMUTABLE index on appointments preventing schema init
+[33m7b99261[m Fix unsatisfiable pydantic pin in backend requirements
+[33m6b2e0a8[m Remove age column from patients table
+[33m32972b5[m Revise demo deployment information in README
+[33m32769bd[m Update README for demo creds, roles, SQLite seeds, tests, and port 8001.
+[33m79ac3fb[m Add backend pytest suite for auth, roles, seeds, and API health.
+[33m427cc00[m Align mobile API default to 8001 and preserve JWT on PIN unlock.
+[33m5c70451[m Remove unused frontend dashboard components.
+[33m303449b[m Pass chatbot view/role context and hide broken export/users calls.
+[33m3fc38c5[m Seed SQLite fallback with demo login accounts on startup.
+[33m4384255[m Harden offline SW and use local home hero images.
+[33m45c11c9[m Unify OBSERTITIAN role to CLINICAL_SPECIALIST across schema, seeds, and FE.
+[33m6f461e5[m Unify frontend on a single 8001 API client and seeded demo login.
+[33mbc1385a[m Update BloomCare app docs, cleanup, and global chatbot UI.
+[33mba79ef2[m Create LICENSE
+[33mea2e2bf[m "fixed doctor role missspell in appointments "
+[33mb0627a1[m "fixed the groq analyser"
+[33m2bddf68[m "fixed obsertitian role in schema and added extended seeds"
+[33mc92bd91[m "added some more seeds"
+[33m7277fe6[m "fixed the database error "
+[33ma72f943[m Update readme.md
+[33m98510d1[m Delete exess directory
+[33m50b4841[m refined the readme.md
+[33m90eee3d[m fixed encoded text
+[33m8625716[m fixed registration of frontend staff and doctors
+[33m6b5471a[m fixed mobile API functionalities and offline access
+[33mc67b097[m Merge remote-tracking branch 'origin/feature/full-impl-sync-20260329' into feature/full-impl-sync-20260329
+[33ma07ac99[m fixed appointment apis and fixed notification setup
+[33m3ae741f[m Merge remote changes and fix frontend JSX
+[33m70ec423[m Fix frontend JSX error and update backend implementation
+[33ma13aefb[m Merge branch 'feature/full-impl-sync-20260329' of https://github.com/rash200319/aithon into feature/full-impl-sync-20260329
+[33m1f0d73c[m notification settings for appoinments
+[33m25f3df7[m Merge branch 'feature/full-impl-sync-20260329' of https://github.com/rash200319/aithon into feature/full-impl-sync-20260329
+[33m09300d9[m Merge branch 'feature/full-impl-sync-20260329' of https://github.com/rash200319/aithon into feature/full-impl-sync-20260329
+[33mc751065[m Merge feature/full-impl-sync-20260329: Resolve conflicts in auth, services, and dashboards
+[33m607f784[m made an ai explaining tab using groq api for patients
+[33mbf33864[m did the changes in appoinment and forgot password otp generation part
+[33mb16b4fe[m made ai chatbot using key-value algorithm
+[33m32727bf[m added chatbot feature
+[33mc035b81[m fixed all api endpoints without appointment
+[33m1d1e677[m refined appointment table and removed console dump considering security
+[33m0cabd97[m  fixed patient side of prescriptions
+[33m1612b50[m fixed prescription adding from doctor side and patient side due date and week counting
+[33m78b1f80[m fixed mobile connections and logins
+[33m67487c6[m fixed sql mismatch and made the login, register pipeline
+[33mfddb6ce[m Merge branch 'feature/full-impl-sync-20260329' of https://github.com/rash200319/aithon into feature/full-impl-sync-20260329
+[33m59f14b5[m Configure turbopack.root to silence workspace warning
+[33me4709bc[m Remove pnpm-lock.yaml, using npm instead
+[33m92007c2[m Remove duplicate root-level package-lock.json
+[33m159ffa7[m Resolve merge conflicts
+[33ma0e5276[m no change will be happened
+[33m9c85047[m Fix run errors in differential part
+[33mad4a976[m Clean up: Remove test files and unwanted documentation
+[33m5d43c8b[m Merge feature/full-impl-sync-20260329: Added admin_analytics, specialist modules with insights integration
+[33m0a90a98[m Merge remote changes with local insights endpoints - resolved api_router.py conflict
+[33m0a0283b[m Add isnsight services
+[33m71be7be[m created a prescription table for specialized prescriptions
+[33m422d09a[m user details top righ corner fronend
+[33m68fdd22[m front and back end alignment
+[33m3c09718[m Merge pull request #4 from rash200319/Dew_1
+[33mf291ff8[m Merge branch 'feature/full-impl-sync-20260329' into Dew_1
+[33m9ff2b76[m Create apis for staff managements,patient mangagements, authorization and appointent. Create some changes in schema.
+[33m20712dd[m fixed the doctor dashboard and functions
+[33me047aa0[m fixed the registration of a patient and pipelines
+[33mb44fc3f[m fixed the fetch patient api by removing str and adding UUID
+[33m12295b7[m added a seed.sql file
+[33m6b02f4a[m fixed first stage assessment button and removed sync tab from website
+[33m1c17607[m building the backend again and fixed authentication issues on website
+[33m54f137e[m chore: snapshot full implementation updates
+[33ma50ec5f[m your message
+[33mec0853b[m Few edits in Readme file
+[33m625458a[m First commitk
+[33mefbbfa5[m[33m ([m[1;31morigin/feature/offline-stage1-golden-features[m[33m)[m Implement chat UI for GenAI Assistant
+[33mf7f1b2d[m Update manifest.json background color and add purposes
+[33m0d5dd66[m Implement offline detection in PatientPortal component
+[33m30c2280[m Add images to the app shell for offline support
+[33m524efd4[m updated frontline page
+[33me020b7f[m Add offline Stage 1 mobile app, model integration, sync timeout handling, and setup docs
+[33m324f744[m Add offline Stage 1 workflow and responsive triage updates
+[33m1a2dbcc[m[33m ([m[1;31morigin/FrontEnd_BloomCare[m[33m)[m Revise project name and local server details
+[33m0161a5d[m Refine project structure and getting started sections
+[33me207212[m Revise README for BloomCare project details
+[33m32cfa25[m Add frontend files in frontend folder
+[33m5efa161[m Add frontend files for Bloomcare
+[33m9ca1021[m updated readme.md
+[33m9053e1b[m made some changes and cleaned datasets
+[33m6a94cd5[m Update GDM Stage 2 ROC-AUC value
+[33m5979f34[m Update README with current code process details
+[33m6283c1b[m Merge branch 'main' of https://github.com/rash200319/aithon
+[33m45f248d[m Initial commit
+[33m3fb0519[m Delete README.md
+[33m27b874c[m Initial commit
