@@ -53,6 +53,17 @@ def init_db():
 
         cursor.execute('SET search_path TO "BloomCare"')
 
+        # Ensure JWT invalidation columns exist on older Railway DBs.
+        try:
+            cursor.execute(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0"
+            )
+            cursor.execute(
+                "ALTER TABLE patients ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0"
+            )
+        except Exception as col_error:
+            logger.warning("token_version ensure skipped: %s", col_error)
+
         # Insert default users for demo/testing
         from backend.core.security import get_password_hash
 

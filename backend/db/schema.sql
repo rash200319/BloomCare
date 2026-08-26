@@ -42,10 +42,14 @@ CREATE TABLE IF NOT EXISTS users (
     role user_role DEFAULT 'FRONTLINE_STAFF',
     is_active BOOLEAN DEFAULT TRUE,
     first_time_login BOOLEAN DEFAULT TRUE,
+    token_version INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     specialization VARCHAR(100), -- For specialists, e.g., "Obstetrics", "Cardiology"
     phone_number VARCHAR(20)
 );
+
+-- Existing DBs created before token_version existed
+ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
 
 -- PATIENTS
 CREATE TABLE IF NOT EXISTS patients (
@@ -60,10 +64,13 @@ CREATE TABLE IF NOT EXISTS patients (
     emergency_contact VARCHAR(50),
     blood_group VARCHAR(10),
     first_time_login BOOLEAN DEFAULT TRUE,
+    token_version INTEGER NOT NULL DEFAULT 0,
     registered_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     assigned_worker_id UUID REFERENCES users(id) ON DELETE SET NULL
 );
+
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
 
 
 
