@@ -17,7 +17,7 @@ const ROLE_MAP: Record<string, UserRole> = {
   FRONTLINE_STAFF: "frontline",
   DOCTOR: "doctor",
   CLINICAL_SPECIALIST: "doctor",
-  // Legacy seed/DB value — migrate with backend/db/migrate_roles.py
+  // Legacy seed/DB value — migrated by init_db.py
   OBSERTITIAN: "doctor",
   ADMIN: "admin",
   PATIENT: "patient",

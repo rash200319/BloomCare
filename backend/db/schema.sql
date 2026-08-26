@@ -26,7 +26,7 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 -- Existing databases may still have legacy OBSERTITIAN enum label.
--- migrate_roles.sql upgrades those DBs to CLINICAL_SPECIALIST.
+-- init_db.py upgrades those rows to CLINICAL_SPECIALIST after schema apply.
 
 DO $$ BEGIN
     CREATE TYPE risk_tier AS ENUM ('routine_care', 'escalate');

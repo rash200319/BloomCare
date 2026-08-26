@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def init_db():
+    """Apply schema.sql, migrate legacy roles, and upsert core demo login accounts."""
     logger.info("Initializing database from schema.sql...")
 
     # Parse SQLAlchemy URI to get psycopg2 parameters

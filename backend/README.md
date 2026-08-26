@@ -29,7 +29,7 @@ backend/
 ├── api/api_router.py    # Mounts /api/v1 routers
 ├── api/v1/              # Route modules
 ├── core/                # Config, security, deps
-├── db/                  # Session, schema, seeds, migrations
+├── db/                  # Session, schema.sql, seeds.sql, init/seed helpers
 ├── models/              # SQLAlchemy models
 ├── schemas/             # Pydantic schemas
 ├── services/            # Business logic + ML helpers
