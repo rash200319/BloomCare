@@ -29,6 +29,7 @@ import {
   Sparkles,
   Building2,
   Loader2,
+  Bell,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -40,6 +41,7 @@ import { cn } from "@/lib/utils"
 import { getWeeklyInsight } from "@/lib/weekly-insights"
 import ProfileSettingsDialog from "./profile-settings-dialog"
 import PatientAppointmentRequest from "./patient-appointment-request"
+import NotificationPanel from "./notification-panel"
 import { decideBookingOperation } from "@/lib/appointment-orchestration"
 import {
   LineChart,
@@ -1003,6 +1005,10 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
               <Sparkles className="w-4 h-4 mr-2" />
               {getText("Insights", "විදසුන්", "நுண்ணறிவு")}
             </TabsTrigger>
+            <TabsTrigger value="notifications" className="h-10 px-6 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-[10px] font-black uppercase tracking-widest transition-all">
+              <Bell className="w-4 h-4 mr-2" />
+              {getText("Reminders", "මතක් කිරීම්", "நினைவூட்டல்கள்")}
+            </TabsTrigger>
           </TabsList>
 
           {/* Snapshot Tab */}
@@ -1375,6 +1381,11 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                    </div>
                 </CardContent>
              </Card>
+          </TabsContent>
+
+          {/* Reminders / Notifications Tab */}
+          <TabsContent value="notifications" className="space-y-8 animate-in fade-in duration-500">
+            <NotificationPanel />
           </TabsContent>
         </Tabs>
       </main>

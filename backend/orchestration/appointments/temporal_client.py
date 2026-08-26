@@ -45,7 +45,13 @@ async def start_appointment_workflow(operation_id: str, workflow_id: str) -> Non
     )
 
 
-async def submit_booking_decision(workflow_id: str, decision: str) -> str:
+async def submit_booking_decision(
+    workflow_id: str,
+    decision: str,
+    *,
+    actor_role: str | None = None,
+    actor_user_id: str | None = None,
+) -> str:
     from backend.orchestration.appointments.contracts import BookingDecisionCommand
     from backend.orchestration.appointments.workflow import AppointmentBookingWorkflow
 
@@ -53,7 +59,9 @@ async def submit_booking_decision(workflow_id: str, decision: str) -> str:
     handle = client.get_workflow_handle(workflow_id)
     return await handle.execute_update(
         AppointmentBookingWorkflow.decide,
-        BookingDecisionCommand(decision=decision),
+        BookingDecisionCommand(
+            decision=decision, actor_role=actor_role, actor_user_id=actor_user_id
+        ),
     )
 
 

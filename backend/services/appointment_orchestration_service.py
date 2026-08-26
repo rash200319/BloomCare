@@ -24,6 +24,18 @@ from backend.services.appointment_service import AppointmentService
 
 FINAL_OPERATION_STATUSES = {"COMPLETED", "CANCELLED", "REJECTED", "EXPIRED", "FAILED"}
 
+_ORCHESTRATION_DISABLED_NOTICE = (
+    "Your appointment request was received. Automatic reminders and instant "
+    "confirmation may be temporarily unavailable while our booking service "
+    "is offline; a staff member will follow up if needed."
+)
+
+
+def _orchestration_notice(status_value: str) -> str | None:
+    if settings.TEMPORAL_ENABLED or status_value in FINAL_OPERATION_STATUSES:
+        return None
+    return _ORCHESTRATION_DISABLED_NOTICE
+
 
 class AppointmentOrchestrationService:
     @staticmethod
@@ -184,6 +196,7 @@ class AppointmentOrchestrationService:
             created_at=operation.created_at,
             updated_at=operation.updated_at,
             completed_at=operation.completed_at,
+            orchestration_notice=_orchestration_notice(operation.status),
         )
 
     @staticmethod
@@ -194,4 +207,5 @@ class AppointmentOrchestrationService:
             status=operation.status,
             appointment_id=operation.appointment_id,
             status_url=f"/api/v1/appointment-operations/{operation.id}",
+            orchestration_notice=_orchestration_notice(operation.status),
         )

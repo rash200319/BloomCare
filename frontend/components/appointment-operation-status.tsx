@@ -56,6 +56,9 @@ export default function AppointmentOperationStatus({ initialOperation, onChange 
         <Badge variant={failed ? "destructive" : "secondary"}>{operation.status.replaceAll("_", " ")}</Badge>
       </div>
       {operation.error_message && <p className="mt-3 text-sm text-rose-600">{operation.error_message}</p>}
+      {!operation.error_message && operation.orchestration_notice && (
+        <p className="mt-3 text-sm text-amber-600">{operation.orchestration_notice}</p>
+      )}
     </div>
   )
 }

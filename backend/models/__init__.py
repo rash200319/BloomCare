@@ -12,3 +12,4 @@ from .appointment_operation import AppointmentBookingOperation
 from .appointment_slot_reservation import AppointmentSlotReservation
 from .workflow_outbox import WorkflowOutbox
 from .notification_delivery import NotificationDelivery
+from .notification_preference import PatientNotificationPreference

@@ -28,6 +28,7 @@ interface Notification {
     | "APPOINTMENT_CANCELLED"
     | "APPOINTMENT_COMPLETED"
     | "APPOINTMENT_REMINDER"
+    | "BOOKING_FAILED"
     | "ESCALATION_ALERT"
   title: string
   message: string
@@ -397,7 +398,8 @@ export default function NotificationPanel({ patientId }: NotificationPanelProps)
                 "transition-all hover:shadow-md",
                 notification.notification_type === "APPOINTMENT_CONFIRMED" &&
                   "border-green-200 bg-green-50/50",
-                notification.notification_type === "APPOINTMENT_CANCELLED" &&
+                (notification.notification_type === "APPOINTMENT_CANCELLED" ||
+                  notification.notification_type === "BOOKING_FAILED") &&
                   "border-red-200 bg-red-50/50",
                 notification.notification_type === "APPOINTMENT_COMPLETED" &&
                   "border-purple-200 bg-purple-50/50",
@@ -412,7 +414,8 @@ export default function NotificationPanel({ patientId }: NotificationPanelProps)
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
                         <CheckCircle className="h-6 w-6 text-green-600" />
                       </div>
-                    ) : notification.notification_type === "APPOINTMENT_CANCELLED" ? (
+                    ) : notification.notification_type === "APPOINTMENT_CANCELLED" ||
+                        notification.notification_type === "BOOKING_FAILED" ? (
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
                         <AlertCircle className="h-6 w-6 text-red-600" />
                       </div>
@@ -436,7 +439,8 @@ export default function NotificationPanel({ patientId }: NotificationPanelProps)
                             "text-sm font-semibold",
                             notification.notification_type === "APPOINTMENT_CONFIRMED" &&
                               "text-green-900",
-                            notification.notification_type === "APPOINTMENT_CANCELLED" &&
+                            (notification.notification_type === "APPOINTMENT_CANCELLED" ||
+                              notification.notification_type === "BOOKING_FAILED") &&
                               "text-red-900",
                             notification.notification_type === "APPOINTMENT_COMPLETED" &&
                               "text-purple-900"
@@ -457,7 +461,8 @@ export default function NotificationPanel({ patientId }: NotificationPanelProps)
                         "mt-2 text-sm line-clamp-2",
                         notification.notification_type === "APPOINTMENT_CONFIRMED" &&
                           "text-green-800",
-                        notification.notification_type === "APPOINTMENT_CANCELLED" &&
+                        (notification.notification_type === "APPOINTMENT_CANCELLED" ||
+                          notification.notification_type === "BOOKING_FAILED") &&
                           "text-red-800",
                         notification.notification_type === "APPOINTMENT_COMPLETED" &&
                           "text-purple-800"

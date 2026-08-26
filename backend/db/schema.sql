@@ -262,6 +262,11 @@ CREATE TABLE IF NOT EXISTS appointments (
     completed_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
     completed_at TIMESTAMPTZ,
     cancelled_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    -- Set when the canceller isn't a staff user row (patient self-cancel via
+    -- Temporal, or the workflow's own auto-expire timeout). Either this or
+    -- cancelled_by_id must be set for a CANCELLED appointment (see
+    -- chk_cancelled_appointment_audit below).
+    cancelled_by_role VARCHAR(50),
     cancelled_at TIMESTAMPTZ,
     
     -- Notes and metadata
@@ -302,7 +307,8 @@ CREATE TABLE IF NOT EXISTS appointments (
         OR status != 'COMPLETED'
     ),
     CONSTRAINT chk_cancelled_appointment_audit CHECK (
-        (status = 'CANCELLED' AND cancelled_by_id IS NOT NULL AND cancelled_at IS NOT NULL)
+        (status = 'CANCELLED' AND cancelled_at IS NOT NULL
+            AND (cancelled_by_id IS NOT NULL OR cancelled_by_role IS NOT NULL))
         OR status != 'CANCELLED'
     )
 );

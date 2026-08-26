@@ -29,6 +29,7 @@ class Appointment(Base):
     completed_by_id = Column(UUID_REFERENCE, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     cancelled_by_id = Column(UUID_REFERENCE, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    cancelled_by_role = Column(String(50), nullable=True)
     cancelled_at = Column(DateTime(timezone=True), nullable=True)
     reason_for_cancellation = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)

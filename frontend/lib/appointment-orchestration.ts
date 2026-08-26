@@ -34,6 +34,7 @@ export interface BookingOperation {
   status_url?: string
   error_code?: string | null
   error_message?: string | null
+  orchestration_notice?: string | null
 }
 
 export interface BookingCommandResponse {

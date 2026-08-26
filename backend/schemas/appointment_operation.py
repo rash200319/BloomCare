@@ -36,6 +36,7 @@ class AppointmentOperationAccepted(BaseModel):
     status: BookingOperationStatus
     appointment_id: Optional[str] = None
     status_url: str
+    orchestration_notice: Optional[str] = None
 
 
 class AppointmentOperationResponse(BaseModel):
@@ -59,6 +60,7 @@ class AppointmentOperationResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None
+    orchestration_notice: Optional[str] = None
 
 
 class AppointmentDecision(str, Enum):

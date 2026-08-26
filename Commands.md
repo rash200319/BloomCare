@@ -1,9 +1,10 @@
 ### Initial setup (one-time)
 
-# 1. Start Docker Desktop, then start PostgreSQL container
+# 1. Start Docker Desktop, then start PostgreSQL and Temporal containers
 cd backend
 docker compose up -d
 cd ..
+docker compose -f infra/temporal/docker-compose.yml up -d
 
 # 2. Create Python virtual environment
 python -m venv .venv
@@ -17,51 +18,52 @@ pip install -r backend/requirements.txt
 # 5. Initialize DB schema + seed demo accounts
 python backend/db/init_db.py
 
-# 6. Install frontend dependencies
+# 6. Confirm backend/.env has TEMPORAL_ENABLED=true (required for appointment
+#    self-service booking + reminders to actually run; see below)
+
+# 7. Install frontend dependencies
 cd frontend
 npm install
 cd ..
 
 
 #### Daily run
-Open two terminals from the repo root (d:\Git\BloomCare2\BloomCare):
+Open three terminals from the repo root (d:\Git\BloomCare2\BloomCare):
 
-## Terminal 1 — Postgres + Backend
+## Terminal 1 — Postgres + Temporal + Backend API
 # Make sure Docker Desktop is running, then:
 cd backend
 docker compose up -d
 cd ..
+docker compose -f infra/temporal/docker-compose.yml up -d
 
 .\.venv\Scripts\Activate.ps1
-python -m uvicorn backend.main:app --host 0.0.0
-(python -m uvicorn backend.main:app --host 127.0.0.1 --port 8001 --reload
-)
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8001 --reload
 
-## Terminal 2 — Frontend
+## Terminal 2 — Temporal worker (required for patient self-service bookings
+## and reminders; frontline-staff-created appointments don't need it)
+.\.venv\Scripts\Activate.ps1
+python -m backend.orchestration.appointments.worker
+# Note: this process does NOT auto-reload. If you edit anything under
+# backend/orchestration/appointments/ (workflow.py, activities.py,
+# contracts.py), stop and restart this terminal, or it will keep silently
+# running the old code.
+
+## Terminal 3 — Frontend
 cd frontend
 npm run dev
-Then open http://localhost:3000 (backend Swagger docs at http://127.0.0.1:8001/docs).
+Then open http://localhost:3000 (backend Swagger docs at http://127.0.0.1:8001/docs,
+Temporal UI at http://localhost:8088).
+
+The asynchronous patient booking API is `POST /api/v1/appointment-operations`.
+Without Terminal 2 running, that endpoint still returns 202 Accepted, but the
+booking sits queued and unprocessed — no validation, no appointment, no
+reminders — until a worker is running to pick it up.
 
 
 ### To stop everything
-# Ctrl+C in each terminal to stop uvicorn / npm run dev, then:
+# Ctrl+C in each terminal to stop uvicorn / the worker / npm run dev, then:
 cd backend
 docker compose down     # stops Postgres container (keeps data)
-
-
-### Temporal appointment orchestration
-
-Start the local Temporal service and UI from the repository root:
-
-```powershell
-docker compose -f infra/temporal/docker-compose.yml up -d
-```
-
-Set `TEMPORAL_ENABLED=true` in `backend/.env`, then start the separate worker:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-python -m backend.orchestration.appointments.worker
-```
-
-Temporal UI is available at http://localhost:8088. The asynchronous patient API is `POST /api/v1/appointment-operations`.
+cd ..
+docker compose -f infra/temporal/docker-compose.yml down   # stops Temporal (keeps data)

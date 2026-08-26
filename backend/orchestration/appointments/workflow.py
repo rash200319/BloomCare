@@ -41,6 +41,8 @@ class AppointmentBookingWorkflow:
         self._schedule_version = 0
         self._rescheduling = False
         self._operation_id = ""
+        self._decision_actor_role: str | None = None
+        self._decision_actor_user_id: str | None = None
 
     def _retry_policy(self) -> RetryPolicy:
         return RetryPolicy(
@@ -97,7 +99,12 @@ class AppointmentBookingWorkflow:
         decision = self._decision or "EXPIRE"
         state = await self._activity(
             finalize_booking_decision,
-            FinalizeDecisionInput(input.operation_id, decision),
+            FinalizeDecisionInput(
+                input.operation_id,
+                decision,
+                self._decision_actor_role,
+                self._decision_actor_user_id,
+            ),
         )
         self._decision_processed = True
         if state != "CONFIRMED":
@@ -156,7 +163,12 @@ class AppointmentBookingWorkflow:
                     break
                 state = await self._activity(
                     finalize_booking_decision,
-                    FinalizeDecisionInput(input.operation_id, self._decision or "CANCEL"),
+                    FinalizeDecisionInput(
+                        input.operation_id,
+                        self._decision or "CANCEL",
+                        self._decision_actor_role,
+                        self._decision_actor_user_id,
+                    ),
                 )
                 self._decision_processed = True
                 self._phase = state
@@ -179,7 +191,12 @@ class AppointmentBookingWorkflow:
                 continue
             state = await self._activity(
                 finalize_booking_decision,
-                FinalizeDecisionInput(input.operation_id, self._decision or "COMPLETE"),
+                FinalizeDecisionInput(
+                    input.operation_id,
+                    self._decision or "COMPLETE",
+                    self._decision_actor_role,
+                    self._decision_actor_user_id,
+                ),
             )
             self._decision_processed = True
             self._phase = state
@@ -203,6 +220,8 @@ class AppointmentBookingWorkflow:
             raise ValueError("Completion is only allowed after confirmation")
         self._decision_processed = False
         self._decision = decision
+        self._decision_actor_role = command.actor_role
+        self._decision_actor_user_id = command.actor_user_id
         await workflow.wait_condition(lambda: self._decision_processed)
         return f"{decision} applied"
 

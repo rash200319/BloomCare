@@ -210,6 +210,21 @@ def finalize_booking_decision(input: FinalizeDecisionInput) -> str:
             appointment.reason_for_cancellation = operation.decision_reason or (
                 "Confirmation window expired" if decision == "EXPIRE" else "Cancelled"
             )
+            # cancelled_by_id is a users.id FK, but a Temporal cancellation may
+            # come from a patient (no users row) or the workflow's own
+            # auto-expire timer (no actor at all). Attribute via
+            # cancelled_by_role in those cases, matching the existing
+            # created_by_id/created_by_role pattern. See
+            # chk_cancelled_appointment_audit, which requires one or the other.
+            if decision == "EXPIRE":
+                appointment.cancelled_by_role = "SYSTEM_EXPIRE"
+            elif input.actor_role and input.actor_role.upper() != "PATIENT" and input.actor_user_id:
+                appointment.cancelled_by_id = input.actor_user_id
+                appointment.cancelled_by_role = input.actor_role.upper()
+            elif input.actor_role:
+                appointment.cancelled_by_role = input.actor_role.upper()
+            else:
+                appointment.cancelled_by_role = "UNKNOWN"
             operation.status = "EXPIRED" if decision == "EXPIRE" else "CANCELLED"
             operation.completed_at = now
             SlotReservationService.release_for_operation(db, operation.id)

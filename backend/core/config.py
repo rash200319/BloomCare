@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     TEMPORAL_MAX_ACTIVITY_ATTEMPTS: int = 5
     TEMPORAL_ACTIVITY_TIMEOUT_SECONDS: int = 30
 
+    # After this many failed dispatch attempts (capped exponential backoff,
+    # ~5 min between later attempts), the outbox relay gives up on a booking
+    # operation instead of retrying forever, and marks it FAILED so the
+    # patient sees a clear error rather than silent limbo.
+    WORKFLOW_OUTBOX_MAX_ATTEMPTS: int = 20
+
     APPOINTMENT_CONFIRMATION_TIMEOUT_HOURS: int = 24
     APPOINTMENT_REMINDER_HOURS: str = "24,2"
     APPOINTMENT_RESERVATION_TTL_MINUTES: int = 15

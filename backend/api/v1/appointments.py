@@ -227,8 +227,14 @@ async def update_appointment_status(
             raise HTTPException(status_code=400, detail="Unsupported orchestrated status transition")
         operation.decision_reason = getattr(status_update, "notes", None)
         db.commit()
+        actor_role = AppointmentService._normalize_role(getattr(current_user, "role", ""))
+        actor_user_id = (
+            None if actor_role == UserRole.PATIENT.value else str(getattr(current_user, "id", "")) or None
+        )
         try:
-            await submit_booking_decision(operation.workflow_id, command)
+            await submit_booking_decision(
+                operation.workflow_id, command, actor_role=actor_role, actor_user_id=actor_user_id
+            )
         except Exception as exc:
             raise HTTPException(
                 status_code=503,
@@ -340,8 +346,14 @@ async def delete_appointment(
             raise HTTPException(status_code=409, detail="Appointment orchestration record is missing")
         operation.decision_reason = "Cancelled through appointment API"
         db.commit()
+        actor_role = AppointmentService._normalize_role(getattr(current_user, "role", ""))
+        actor_user_id = (
+            None if actor_role == UserRole.PATIENT.value else str(getattr(current_user, "id", "")) or None
+        )
         try:
-            await submit_booking_decision(operation.workflow_id, "CANCEL")
+            await submit_booking_decision(
+                operation.workflow_id, "CANCEL", actor_role=actor_role, actor_user_id=actor_user_id
+            )
         except Exception as exc:
             raise HTTPException(status_code=503, detail=f"Unable to cancel workflow: {exc}") from exc
         db.expire_all()

@@ -16,6 +16,10 @@ class OperationRef:
 @dataclass
 class BookingDecisionCommand:
     decision: str
+    # Populated when a human submits the decision (CANCEL/CONFIRM/COMPLETE via
+    # the API). Absent for the workflow's own auto-expire timeout.
+    actor_role: str | None = None
+    actor_user_id: str | None = None
 
 
 @dataclass
@@ -38,6 +42,8 @@ class RescheduleActivityInput:
 class FinalizeDecisionInput:
     operation_id: str
     decision: str
+    actor_role: str | None = None
+    actor_user_id: str | None = None
 
 
 @dataclass

@@ -122,7 +122,12 @@ async def decide_booking_operation(
     try:
         from backend.orchestration.appointments.temporal_client import submit_booking_decision
 
-        message = await submit_booking_decision(operation.workflow_id, decision)
+        # Patient ids live in a separate table, not users.id, so only a
+        # staff/admin/specialist actor carries a usable actor_user_id.
+        actor_user_id = None if role == UserRole.PATIENT.value else str(getattr(current_user, "id", "")) or None
+        message = await submit_booking_decision(
+            operation.workflow_id, decision, actor_role=role, actor_user_id=actor_user_id
+        )
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Unable to submit workflow decision: {exc}") from exc
 
