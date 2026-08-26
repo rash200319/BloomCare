@@ -15,10 +15,10 @@ RUN pip install -r requirements.txt
 
 COPY backend ./backend
 COPY models ./models
-COPY start.sh Procfile railpack.json .python-version ./
+COPY run.py start.sh Procfile railpack.json .python-version ./
 RUN chmod +x start.sh
 
 EXPOSE 8000
 
-# Expands Railway's PORT inside the shell (literal $PORT breaks uvicorn).
-CMD ["./start.sh"]
+# No $PORT in the argv — run.py reads PORT from the environment.
+CMD ["python", "run.py"]
