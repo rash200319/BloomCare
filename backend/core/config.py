@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "bloomcare_db"
     POSTGRES_PORT: str = "5432"
 
+    # Railway Postgres plugin (and similar hosts) inject DATABASE_URL / POSTGRES_URL.
+    DATABASE_URL: Optional[str] = None
+    POSTGRES_URL: Optional[str] = None
+
     OPENAI_API_KEY: Optional[str] = None
     BLOOMCARE_OPENAI_MODEL: str = "gpt-4o"
     BLOOMCARE_MOCK_LLM: bool = True
@@ -53,6 +57,14 @@ class Settings(BaseSettings):
 
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
+        for raw in (self.DATABASE_URL, self.POSTGRES_URL):
+            if raw and raw.strip():
+                uri = raw.strip()
+                # SQLAlchemy expects postgresql://; Railway often provides postgres://
+                if uri.startswith("postgres://"):
+                    uri = "postgresql://" + uri[len("postgres://"):]
+                return uri
+
         server = self.POSTGRES_SERVER.strip()
         user = self.POSTGRES_USER.strip()
         password = self.POSTGRES_PASSWORD.strip()

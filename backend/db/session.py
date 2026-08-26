@@ -28,19 +28,26 @@ logger = logging.getLogger(__name__)
 
 def _create_engine_with_fallback():
     primary_uri = settings.SQLALCHEMY_DATABASE_URI
+    is_postgres = primary_uri.startswith("postgresql:") or primary_uri.startswith("postgres:")
 
     try:
+        connect_args = {}
+        if is_postgres:
+            connect_args = {
+                "connect_timeout": 2,
+                "options": '-csearch_path="BloomCare",public',
+            }
+        elif primary_uri.startswith("sqlite:"):
+            connect_args = {"check_same_thread": False}
+
         engine = create_engine(
             primary_uri,
             pool_pre_ping=True,
-            connect_args={
-                "connect_timeout": 2,
-                "options": '-csearch_path="BloomCare",public',
-            },
+            connect_args=connect_args,
         )
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        logger.info("Connected to PostgreSQL: %s", primary_uri)
+        logger.info("Connected to database: %s", primary_uri.split("@")[-1] if "@" in primary_uri else primary_uri)
         return engine
     except SQLAlchemyError as exc:
         project_root = Path(__file__).resolve().parents[2]
