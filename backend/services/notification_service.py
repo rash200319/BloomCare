@@ -3,12 +3,15 @@ Notification Service
 Handles creating, retrieving, and managing notifications for users
 """
 from datetime import datetime, timezone
+import logging
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import joinedload
 from backend.models.appointment import Appointment
 from backend.models.notification import Notification
 from backend.schemas.notification import NotificationCreate, NotificationResponse, NotificationListResponse
+
+logger = logging.getLogger(__name__)
 
 
 class NotificationService:
@@ -74,20 +77,20 @@ class NotificationService:
         notification_in: NotificationCreate,
     ) -> NotificationResponse:
         """Create a new notification"""
-        import sys
-        print(f"[CREATE-NOTIF] Creating notification of type: {notification_in.notification_type}", file=sys.stderr)
         notification = Notification(
             recipient_id=notification_in.recipient_id,
+            recipient_type=notification_in.recipient_type,
             appointment_id=notification_in.appointment_id,
             notification_type=notification_in.notification_type,
             title=notification_in.title,
             message=notification_in.message,
             related_data=notification_in.related_data,
+            deduplication_key=notification_in.deduplication_key,
         )
         db.add(notification)
         db.commit()
         db.refresh(notification)
-        print(f"[CREATE-NOTIF] Notification created with ID: {notification.id}, type: {notification.notification_type}", file=sys.stderr)
+        logger.info("Created notification id=%s type=%s", notification.id, notification.notification_type)
         return NotificationResponse.from_orm(notification)
 
     @staticmethod
@@ -100,8 +103,6 @@ class NotificationService:
         appointment_date: datetime,
     ) -> NotificationResponse:
         """Create a notification for appointment confirmation"""
-        import sys
-        print(f"[CONFIRM-NOTIF] Starting confirmation notification for recipient: {recipient_id}, appointment: {appointment_id}", file=sys.stderr)
         notification_create = NotificationCreate(
             recipient_id=recipient_id,
             appointment_id=appointment_id,
@@ -114,9 +115,7 @@ class NotificationService:
                 "appointment_date": appointment_date.isoformat(),
             },
         )
-        print(f"[CONFIRM-NOTIF] Calling create_notification with type: {notification_create.notification_type}", file=sys.stderr)
         result = NotificationService.create_notification(db, notification_create)
-        print(f"[CONFIRM-NOTIF] Confirmation notification created successfully: {result.id}", file=sys.stderr)
         return result
 
     @staticmethod
@@ -130,10 +129,7 @@ class NotificationService:
         reason: str = None,
     ) -> NotificationResponse:
         """Create a notification for appointment cancellation"""
-        import sys
-        print(f"[CANCEL-NOTIF] Starting cancellation notification for recipient: {recipient_id}, appointment: {appointment_id}", file=sys.stderr)
         reason_text = f" - {reason}" if reason else ""
-        print(f"[CANCEL-NOTIF] Reason text: {reason_text}", file=sys.stderr)
         notification_create = NotificationCreate(
             recipient_id=recipient_id,
             appointment_id=appointment_id,
@@ -147,9 +143,7 @@ class NotificationService:
                 "cancellation_reason": reason,
             },
         )
-        print(f"[CANCEL-NOTIF] Calling create_notification with type: {notification_create.notification_type}", file=sys.stderr)
         result = NotificationService.create_notification(db, notification_create)
-        print(f"[CANCEL-NOTIF] Cancellation notification created successfully: {result.id}", file=sys.stderr)
         return result
 
     @staticmethod
@@ -162,8 +156,6 @@ class NotificationService:
         is_read: bool | None = None,
     ) -> NotificationListResponse:
         """Get notifications for a user"""
-        import sys
-        print(f"[GET-NOTIF] Fetching notifications for user: {user_id}, limit: {limit}, offset: {offset}, unread_only: {unread_only}, is_read: {is_read}", file=sys.stderr)
         appointment_ids_query = db.query(Appointment.id).filter(
             Appointment.created_by_id == user_id
         )
@@ -195,10 +187,6 @@ class NotificationService:
                 Notification.is_read == False,
             )
         ).count()
-
-        print(f"[GET-NOTIF] Found {len(notifications)} notifications (total: {total}, unread: {unread_count})", file=sys.stderr)
-        for n in notifications:
-            print(f"[GET-NOTIF]   - Type: {n.notification_type}, Title: {n.title}, Read: {n.is_read}", file=sys.stderr)
 
         return NotificationListResponse(
             notifications=[NotificationResponse.from_orm(n) for n in notifications],

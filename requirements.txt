@@ -15,3 +15,4 @@ scikit-learn==1.7.2
 joblib==1.4.2
 openai==1.57.0
 pydantic[email]>=2.7.0,<3.0.0
+temporalio==1.32.0

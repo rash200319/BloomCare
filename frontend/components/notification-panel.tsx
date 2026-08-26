@@ -21,7 +21,14 @@ import { cn } from "@/lib/utils"
 interface Notification {
   id: string
   appointment_id: string
-  notification_type: "APPOINTMENT_CONFIRMED" | "APPOINTMENT_CANCELLED" | "APPOINTMENT_COMPLETED" | "ESCALATION_ALERT"
+  notification_type:
+    | "BOOKING_REQUESTED"
+    | "BOOKING_CONFIRMATION_REQUIRED"
+    | "APPOINTMENT_CONFIRMED"
+    | "APPOINTMENT_CANCELLED"
+    | "APPOINTMENT_COMPLETED"
+    | "APPOINTMENT_REMINDER"
+    | "ESCALATION_ALERT"
   title: string
   message: string
   is_read: boolean

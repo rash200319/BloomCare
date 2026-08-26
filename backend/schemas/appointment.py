@@ -93,6 +93,8 @@ class AppointmentResponse(BaseModel):
         None, description="Queue number for the day")
     status: str = Field(..., description="Appointment status: SCHEDULED, COMPLETED, CANCELLED, PENDING, or CONFIRMED")
     notes: Optional[str] = None
+    booking_operation_id: Optional[UUID] = None
+    schedule_version: int = 1
 
     # Status transition audit trail
     completed_by_id: Optional[UUID] = Field(

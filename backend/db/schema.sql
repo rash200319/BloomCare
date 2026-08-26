@@ -245,7 +245,9 @@ CREATE TABLE IF NOT EXISTS appointments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
     specialist_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    created_by_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    -- Nullable for patient self-service bookings; the booking operation stores
+    -- the authenticated patient responsible for those appointments.
+    created_by_id UUID REFERENCES users(id) ON DELETE RESTRICT,
     created_by_role VARCHAR(50) NOT NULL DEFAULT 'FRONTLINE_STAFF',
     appointment_type VARCHAR(100) NOT NULL DEFAULT 'PRENATAL_CHECKUP',
     appointment_date TIMESTAMPTZ NOT NULL,
@@ -339,6 +341,9 @@ CREATE TABLE IF NOT EXISTS notifications (
         'APPOINTMENT_COMPLETED',
         'APPOINTMENT_PENDING',
         'APPOINTMENT_SCHEDULED',
+        'APPOINTMENT_REMINDER',
+        'BOOKING_REQUESTED',
+        'BOOKING_CONFIRMATION_REQUIRED',
         'ESCALATION_ALERT'
     )),
     

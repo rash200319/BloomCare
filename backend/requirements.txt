@@ -13,3 +13,4 @@ joblib==1.4.2
 shap==0.46.0
 openai==1.57.0
 pydantic[email]>=2.7.0,<3.0.0
+temporalio==1.32.0

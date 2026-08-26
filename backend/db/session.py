@@ -9,7 +9,8 @@ from backend.db.base import Base
 from backend.models import (
     User, Patient, Stage1Screening, Stage2Diagnostic,
     ScreeningReport, Appointment, Prescription, SyncQueueLog, OTPRecord, Notification,
-    AuditEvent,
+    AuditEvent, AppointmentBookingOperation, AppointmentSlotReservation,
+    WorkflowOutbox, NotificationDelivery,
 )
 
 logger = logging.getLogger(__name__)
@@ -159,6 +160,12 @@ def _ensure_appointments_table(engine) -> None:
                 conn.execute(text(
                     "ALTER TABLE IF EXISTS appointments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP"
                 ))
+                conn.execute(text(
+                    "ALTER TABLE IF EXISTS appointments ADD COLUMN IF NOT EXISTS booking_operation_id VARCHAR(36)"
+                ))
+                conn.execute(text(
+                    "ALTER TABLE IF EXISTS appointments ADD COLUMN IF NOT EXISTS schedule_version INTEGER DEFAULT 1"
+                ))
             elif dialect == "sqlite":
                 conn.exec_driver_sql(
                     """
@@ -196,6 +203,8 @@ def _ensure_appointments_table(engine) -> None:
                     "reason_for_cancellation": "ALTER TABLE appointments ADD COLUMN reason_for_cancellation VARCHAR(255)",
                     "created_at": "ALTER TABLE appointments ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP",
                     "updated_at": "ALTER TABLE appointments ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP",
+                    "booking_operation_id": "ALTER TABLE appointments ADD COLUMN booking_operation_id VARCHAR(36)",
+                    "schedule_version": "ALTER TABLE appointments ADD COLUMN schedule_version INTEGER DEFAULT 1",
                 }
                 for column_name, ddl in missing_additions.items():
                     if column_name not in existing:
@@ -211,12 +220,19 @@ def _ensure_notifications_table(engine) -> None:
             dialect = engine.dialect.name
             if dialect == "postgresql":
                 Notification.__table__.create(bind=conn, checkfirst=True)
+                conn.execute(text(
+                    "ALTER TABLE IF EXISTS notifications ADD COLUMN IF NOT EXISTS recipient_type VARCHAR(30) DEFAULT 'STAFF'"
+                ))
+                conn.execute(text(
+                    "ALTER TABLE IF EXISTS notifications ADD COLUMN IF NOT EXISTS deduplication_key VARCHAR(255)"
+                ))
             elif dialect == "sqlite":
                 conn.exec_driver_sql(
                     """
                     CREATE TABLE IF NOT EXISTS notifications (
                         id VARCHAR(36) PRIMARY KEY,
                         recipient_id VARCHAR(36) NOT NULL,
+                        recipient_type VARCHAR(30) NOT NULL DEFAULT 'STAFF',
                         appointment_id VARCHAR(36),
                         notification_type VARCHAR(50) NOT NULL,
                         title VARCHAR(255) NOT NULL,
@@ -224,12 +240,44 @@ def _ensure_notifications_table(engine) -> None:
                         is_read BOOLEAN DEFAULT 0,
                         read_at DATETIME,
                         related_data TEXT,
+                        deduplication_key VARCHAR(255),
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                     """
                 )
+                columns = conn.exec_driver_sql("PRAGMA table_info(notifications)").fetchall()
+                existing = {row[1] for row in columns}
+                if "recipient_type" not in existing:
+                    conn.exec_driver_sql(
+                        "ALTER TABLE notifications ADD COLUMN recipient_type VARCHAR(30) DEFAULT 'STAFF'"
+                    )
+                if "deduplication_key" not in existing:
+                    conn.exec_driver_sql(
+                        "ALTER TABLE notifications ADD COLUMN deduplication_key VARCHAR(255)"
+                    )
     except SQLAlchemyError as exc:
         logger.warning("Unable to ensure notifications table: %s", exc)
+
+
+def _ensure_orchestration_tables(engine) -> None:
+    """Create orchestration tables for local/demo installs.
+
+    Production PostgreSQL deployments should apply the checked-in SQL migration
+    so the overlap exclusion constraint is installed as well.
+    """
+    try:
+        Base.metadata.create_all(
+            bind=engine,
+            tables=[
+                AppointmentBookingOperation.__table__,
+                AppointmentSlotReservation.__table__,
+                WorkflowOutbox.__table__,
+                NotificationDelivery.__table__,
+            ],
+            checkfirst=True,
+        )
+    except SQLAlchemyError as exc:
+        logger.warning("Unable to ensure appointment orchestration tables: %s", exc)
 
 
 def _create_engine_with_fallback():
@@ -301,6 +349,7 @@ _ensure_stage2_audit_columns(engine)
 _ensure_patient_compat_columns(engine)
 _ensure_appointments_table(engine)
 _ensure_notifications_table(engine)
+_ensure_orchestration_tables(engine)
 _ensure_audit_events_table(engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

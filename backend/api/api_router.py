@@ -4,13 +4,18 @@ from backend.api.v1 import (
     auth, patients, triage, diagnose, appointments, assistant, reports, longitudinal,
     staff_management, patient_management, dashboard, insights, differential,
     prescriptions, notifications, staff_notifications,
-    admin_analytics, specialist
+    admin_analytics, specialist, appointment_operations
 )
 
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 api_router.include_router(patients.router, prefix="/patients", tags=["Patients"])
 api_router.include_router(appointments.router, prefix="/appointments", tags=["Appointments"])
+api_router.include_router(
+    appointment_operations.router,
+    prefix="/appointment-operations",
+    tags=["Appointment Orchestration"],
+)
 api_router.include_router(prescriptions.router, prefix="/prescriptions", tags=["Prescriptions"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(staff_notifications.router, prefix="/staff", tags=["Staff Notifications"])

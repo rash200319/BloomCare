@@ -38,6 +38,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { getWeeklyInsight } from "@/lib/weekly-insights"
 import ProfileSettingsDialog from "./profile-settings-dialog"
+import PatientAppointmentRequest from "./patient-appointment-request"
 import {
   LineChart,
   Line,
@@ -1216,6 +1217,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
 
           {/* Appointments Tab */}
           <TabsContent value="appointments" className="space-y-8 animate-in fade-in duration-500">
+            <PatientAppointmentRequest />
             <div className="space-y-6">
               {upcomingAppointments.map((appointment) => (
                 <Card key={appointment.id} className="border-0 glass shadow-xl shadow-slate-200/50 overflow-hidden group hover:translate-x-2 transition-transform rounded-[24px]">

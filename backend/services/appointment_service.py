@@ -293,6 +293,8 @@ class AppointmentService:
             queue_number=appointment.queue_number,
             status=AppointmentService._normalize_status(appointment.status),
             notes=appointment.notes,
+            booking_operation_id=getattr(appointment, "booking_operation_id", None),
+            schedule_version=int(getattr(appointment, "schedule_version", 1) or 1),
             created_at=appointment.created_at,
             updated_at=appointment.updated_at,
             patient_risk_level=patient_risk_level,

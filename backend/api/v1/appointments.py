@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from backend.core.deps import get_current_user, get_current_active_user, get_db
 from backend.models.appointment import Appointment
+from backend.models.appointment_operation import AppointmentBookingOperation
 from backend.models.patient import Patient
 from backend.models.user import User, UserRole
 from backend.schemas.appointment import (
@@ -146,6 +147,15 @@ def update_appointment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    existing = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if existing and getattr(existing, "booking_operation_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This appointment is managed by Temporal. Use the status decision endpoint; "
+                "rescheduling will be enabled through appointment operations."
+            ),
+        )
     result = AppointmentService.update_appointment(
         db, appointment_id, appointment_in, current_user)
     return result.appointment
@@ -157,7 +167,7 @@ def update_appointment(
     summary="Update Appointment Status",
     description="Update appointment status - specialists can update their own assignments",
 )
-def update_appointment_status(
+async def update_appointment_status(
     appointment_id: str,
     status_update: AppointmentUpdate,
     db: Session = Depends(get_db),
@@ -191,6 +201,42 @@ def update_appointment_status(
         status_update.status)
     AppointmentService._ensure_allowed_status_transition(
         appointment.status, requested_status)
+
+    # Workflow-backed appointments must be changed through Temporal so durable
+    # timers and orchestration state cannot drift from the database.
+    if getattr(appointment, "booking_operation_id", None):
+        from backend.core.config import settings
+        from backend.orchestration.appointments.temporal_client import submit_booking_decision
+
+        if not settings.TEMPORAL_ENABLED:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Temporal appointment orchestration is disabled",
+            )
+        operation = db.query(AppointmentBookingOperation).filter(
+            AppointmentBookingOperation.id == appointment.booking_operation_id
+        ).first()
+        if not operation:
+            raise HTTPException(status_code=409, detail="Appointment orchestration record is missing")
+        command = {
+            "CONFIRMED": "CONFIRM",
+            "CANCELLED": "CANCEL",
+            "COMPLETED": "COMPLETE",
+        }.get(requested_status)
+        if not command:
+            raise HTTPException(status_code=400, detail="Unsupported orchestrated status transition")
+        operation.decision_reason = getattr(status_update, "notes", None)
+        db.commit()
+        try:
+            await submit_booking_decision(operation.workflow_id, command)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Unable to submit workflow decision: {exc}",
+            ) from exc
+        db.expire_all()
+        appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        return AppointmentService._serialize_appointment(db, appointment)
     
     old_status = appointment.status
     appointment.status = requested_status
@@ -265,11 +311,42 @@ def update_appointment_status(
     summary="Cancel Appointment",
     description="Cancel an appointment if you created it or if you are an admin",
 )
-def delete_appointment(
+async def delete_appointment(
     appointment_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if appointment and getattr(appointment, "booking_operation_id", None):
+        from backend.core.config import settings
+        from backend.orchestration.appointments.temporal_client import submit_booking_decision
+
+        if not AppointmentService._can_manage_appointment(current_user, appointment):
+            # Patient-created orchestrated rows have no users-table creator;
+            # assigned specialists and admins may still cancel them.
+            role = AppointmentService._normalize_role(getattr(current_user, "role", ""))
+            allowed = role == UserRole.ADMIN.value or (
+                AppointmentService._is_specialist_role(role)
+                and str(appointment.specialist_id) == str(current_user.id)
+            )
+            if not allowed:
+                raise HTTPException(status_code=403, detail="Not authorized to cancel this appointment")
+        if not settings.TEMPORAL_ENABLED:
+            raise HTTPException(status_code=503, detail="Temporal appointment orchestration is disabled")
+        operation = db.query(AppointmentBookingOperation).filter(
+            AppointmentBookingOperation.id == appointment.booking_operation_id
+        ).first()
+        if not operation:
+            raise HTTPException(status_code=409, detail="Appointment orchestration record is missing")
+        operation.decision_reason = "Cancelled through appointment API"
+        db.commit()
+        try:
+            await submit_booking_decision(operation.workflow_id, "CANCEL")
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Unable to cancel workflow: {exc}") from exc
+        db.expire_all()
+        appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        return AppointmentService._serialize_appointment(db, appointment)
     result = AppointmentService.cancel_appointment(
         db, appointment_id, current_user)
     return result.appointment

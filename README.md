@@ -200,6 +200,8 @@ Additional docs:
 |----------|----------|
 | Backend deep dive | [`backend/README.md`](backend/README.md) |
 | Mobile app README | [`mobile/README.md`](mobile/README.md) |
+| Temporal appointment plan | [`docs/TEMPORAL_APPOINTMENTS.md`](docs/TEMPORAL_APPOINTMENTS.md) |
+| Local Temporal setup | [`infra/temporal/README.md`](infra/temporal/README.md) |
 
 ---
 

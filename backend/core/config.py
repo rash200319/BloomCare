@@ -39,6 +39,21 @@ class Settings(BaseSettings):
     # Opt-in PHI access audit table writes (safe off for demos)
     BLOOMCARE_AUDIT_LOG_ENABLED: bool = False
 
+    # Temporal appointment orchestration. The API remains usable when disabled;
+    # booking operations stay in the outbox until a worker is available.
+    TEMPORAL_ENABLED: bool = False
+    TEMPORAL_ADDRESS: str = "localhost:7233"
+    TEMPORAL_NAMESPACE: str = "default"
+    TEMPORAL_APPOINTMENT_TASK_QUEUE: str = "bloomcare-appointments"
+    TEMPORAL_TLS_ENABLED: bool = False
+    TEMPORAL_API_KEY: Optional[str] = None
+    TEMPORAL_MAX_ACTIVITY_ATTEMPTS: int = 5
+    TEMPORAL_ACTIVITY_TIMEOUT_SECONDS: int = 30
+
+    APPOINTMENT_CONFIRMATION_TIMEOUT_HOURS: int = 24
+    APPOINTMENT_REMINDER_HOURS: str = "24,2"
+    APPOINTMENT_RESERVATION_TTL_MINUTES: int = 15
+
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_USER: str = "bloomcare_user"
     POSTGRES_PASSWORD: str = "bloomcare_pass"
@@ -63,6 +78,15 @@ class Settings(BaseSettings):
     @property
     def is_using_demo_secret(self) -> bool:
         return (self.SECRET_KEY or "").strip() == DEMO_SECRET_KEY
+
+    @property
+    def appointment_reminder_hours(self) -> list[int]:
+        values: list[int] = []
+        for raw in (self.APPOINTMENT_REMINDER_HOURS or "").split(","):
+            raw = raw.strip()
+            if raw:
+                values.append(max(0, int(raw)))
+        return sorted(set(values), reverse=True)
 
     @property
     def is_deployed_environment(self) -> bool:

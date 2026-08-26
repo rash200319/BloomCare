@@ -8,3 +8,7 @@ from .sync_log import SyncQueueLog
 from .otp import OTPRecord
 from .notification import Notification
 from .audit import AuditEvent
+from .appointment_operation import AppointmentBookingOperation
+from .appointment_slot_reservation import AppointmentSlotReservation
+from .workflow_outbox import WorkflowOutbox
+from .notification_delivery import NotificationDelivery
