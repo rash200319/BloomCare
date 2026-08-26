@@ -15,45 +15,39 @@ class SlotUnavailableError(ValueError):
 
 
 class SlotReservationService:
-    """Database-backed specialist interval reservations."""
+    """Database-backed specialist interval reservations.
+
+    Two call shapes exist because two appointment-creation flows exist.
+    Temporal's asynchronous flow reserves a slot first (``reserve``) and
+    creates the appointment in a later, separate activity. The synchronous
+    staff-booking flow creates the appointment immediately in one request, so
+    it only needs the lock-and-check step (``check_and_lock_for_direct_booking``)
+    immediately before its own INSERT, in the same transaction. Both paths
+    share the same specialist-scoped advisory lock and the same conflict
+    check, so neither can see a slot as free that the other is mid-booking.
+    """
 
     @staticmethod
-    def reserve(
-        db: Session,
-        *,
-        operation_id: str,
-        specialist_id: str,
-        starts_at: datetime,
-        duration_minutes: int,
-        schedule_version: int,
-        ttl_minutes: int,
-        exclude_operation_id: str | None = None,
-        exclude_appointment_id: str | None = None,
-        flush: bool = True,
-    ) -> AppointmentSlotReservation:
-        existing = (
-            db.query(AppointmentSlotReservation)
-            .filter(
-                AppointmentSlotReservation.operation_id == operation_id,
-                AppointmentSlotReservation.schedule_version == schedule_version,
-            )
-            .first()
-        )
-        if existing:
-            return existing
-
-        if starts_at.tzinfo is None:
-            starts_at = starts_at.replace(tzinfo=timezone.utc)
-        ends_at = starts_at + timedelta(minutes=duration_minutes)
-
-        # Serialize reservations for one specialist on PostgreSQL. SQLite is a
-        # demo fallback and cannot provide the same cross-process guarantee.
+    def _acquire_specialist_lock(db: Session, specialist_id: str) -> None:
+        # Serializes reservations for one specialist on PostgreSQL. SQLite is
+        # a demo fallback and cannot provide the same cross-process guarantee.
         if db.bind is not None and db.bind.dialect.name == "postgresql":
             db.execute(
                 text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
                 {"key": f"appointment-slot:{specialist_id}"},
             )
 
+    @staticmethod
+    def _raise_if_conflicting(
+        db: Session,
+        *,
+        specialist_id: str,
+        starts_at: datetime,
+        ends_at: datetime,
+        exclude_operation_id: str | None = None,
+        exclude_appointment_id: str | None = None,
+    ) -> None:
+        """Must be called after `_acquire_specialist_lock` for the same specialist."""
         now = datetime.now(timezone.utc)
         expired = (
             db.query(AppointmentSlotReservation)
@@ -84,8 +78,8 @@ class SlotReservationService:
         if conflict:
             raise SlotUnavailableError("The selected specialist slot is no longer available")
 
-        # Reservations introduced by Temporal must also respect appointments
-        # created through BloomCare's legacy staff/mobile endpoints.
+        # Every path (Temporal's async reservations and direct staff bookings)
+        # must also respect appointments created through the other path.
         appointment_query = db.query(Appointment).filter(
             Appointment.specialist_id == specialist_id,
             Appointment.status.notin_(["CANCELLED", "COMPLETED"]),
@@ -100,6 +94,74 @@ class SlotReservationService:
             existing_end = existing_start + timedelta(minutes=appointment.duration_minutes or 30)
             if starts_at < existing_end and ends_at > existing_start:
                 raise SlotUnavailableError("The selected specialist slot is already booked")
+
+    @staticmethod
+    def check_and_lock_for_direct_booking(
+        db: Session,
+        *,
+        specialist_id: str,
+        starts_at: datetime,
+        duration_minutes: int,
+        exclude_appointment_id: str | None = None,
+    ) -> None:
+        """For synchronous bookings that INSERT an Appointment directly.
+
+        Raises SlotUnavailableError if the slot conflicts with an active
+        Temporal reservation or another appointment. The caller must create
+        the Appointment row (and commit) before this transaction ends, or the
+        advisory lock releases with nothing to show for having held it.
+        """
+        if starts_at.tzinfo is None:
+            starts_at = starts_at.replace(tzinfo=timezone.utc)
+        ends_at = starts_at + timedelta(minutes=duration_minutes)
+
+        SlotReservationService._acquire_specialist_lock(db, specialist_id)
+        SlotReservationService._raise_if_conflicting(
+            db,
+            specialist_id=specialist_id,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            exclude_appointment_id=exclude_appointment_id,
+        )
+
+    @staticmethod
+    def reserve(
+        db: Session,
+        *,
+        operation_id: str,
+        specialist_id: str,
+        starts_at: datetime,
+        duration_minutes: int,
+        schedule_version: int,
+        ttl_minutes: int,
+        exclude_operation_id: str | None = None,
+        exclude_appointment_id: str | None = None,
+        flush: bool = True,
+    ) -> AppointmentSlotReservation:
+        existing = (
+            db.query(AppointmentSlotReservation)
+            .filter(
+                AppointmentSlotReservation.operation_id == operation_id,
+                AppointmentSlotReservation.schedule_version == schedule_version,
+            )
+            .first()
+        )
+        if existing:
+            return existing
+
+        if starts_at.tzinfo is None:
+            starts_at = starts_at.replace(tzinfo=timezone.utc)
+        ends_at = starts_at + timedelta(minutes=duration_minutes)
+
+        SlotReservationService._acquire_specialist_lock(db, specialist_id)
+        SlotReservationService._raise_if_conflicting(
+            db,
+            specialist_id=specialist_id,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            exclude_operation_id=exclude_operation_id,
+            exclude_appointment_id=exclude_appointment_id,
+        )
 
         reservation = AppointmentSlotReservation(
             id=str(uuid.uuid4()),

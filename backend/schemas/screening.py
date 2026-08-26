@@ -171,6 +171,14 @@ class LanguageExplanation(BaseModel):
 class AssistantResponse(BaseModel):
     patient_id: str
     dominant_condition: str
+    overall_severity_score: float
+    explanations: List[LanguageExplanation]   # English, Sinhala, Tamil
+    generated_at: str
+    model_used: str
+    disclaimer: str = (
+        "This AI-generated explanation is a clinical decision support tool. "
+        "Final medical decisions must be made by a qualified healthcare professional."
+    )
 
 
 class Stage2RecommendationResponse(BaseModel):

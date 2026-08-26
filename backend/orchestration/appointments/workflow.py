@@ -156,6 +156,16 @@ class AppointmentBookingWorkflow:
                             schedule_version=active_version,
                         ),
                     )
+                    await self._activity(
+                        send_booking_notification,
+                        NotificationInput(
+                            input.operation_id,
+                            "APPOINTMENT_REMINDER",
+                            "SPECIALIST",
+                            occurrence=f"{hours_before}h",
+                            schedule_version=active_version,
+                        ),
+                    )
                     continue
 
                 if self._schedule_version != active_version:

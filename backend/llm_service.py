@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 import openai
 from openai import AsyncOpenAI
 
-from .models import (
+from backend.schemas.screening import (
     AssistantResponse,
     ConditionType,
     DiagnoseMLOutput,

@@ -442,7 +442,11 @@ def send_booking_notification(input: NotificationInput) -> bool:
         if input.notification_type == "BOOKING_CONFIRMATION_REQUIRED":
             message = f"Please review the appointment request for {patient.full_name} on {when}."
         elif input.notification_type == "APPOINTMENT_REMINDER":
-            message = f"Reminder: the appointment with {specialist.full_name} is scheduled for {when}."
+            message = (
+                f"Reminder: you have an upcoming appointment with {patient.full_name} on {when}."
+                if recipient_type == "SPECIALIST"
+                else f"Reminder: the appointment with {specialist.full_name} is scheduled for {when}."
+            )
         elif input.notification_type == "APPOINTMENT_RESCHEDULED":
             message = (
                 f"The appointment for {patient.full_name} has been moved to {when}."

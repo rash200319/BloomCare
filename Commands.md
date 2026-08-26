@@ -43,11 +43,15 @@ python -m uvicorn backend.main:app --host 127.0.0.1 --port 8001 --reload
 ## Terminal 2 — Temporal worker (required for patient self-service bookings
 ## and reminders; frontline-staff-created appointments don't need it)
 .\.venv\Scripts\Activate.ps1
-python -m backend.orchestration.appointments.worker
-# Note: this process does NOT auto-reload. If you edit anything under
-# backend/orchestration/appointments/ (workflow.py, activities.py,
-# contracts.py), stop and restart this terminal, or it will keep silently
-# running the old code.
+python -m backend.orchestration.appointments.worker --reload
+# --reload watches the backend/ directory and restarts the worker on file
+# changes (same watchfiles package uvicorn's own --reload uses). Without it,
+# editing workflow.py/activities.py/contracts.py has zero effect on a
+# running worker -- it keeps executing whatever was loaded at startup until
+# manually restarted. Drop --reload for a production-style single run.
+#
+# TEMPORAL_ENABLED=false in backend/.env now makes this refuse to start
+# (logs an error, exits 1) instead of silently orchestrating anyway.
 
 ## Terminal 3 — Frontend
 cd frontend

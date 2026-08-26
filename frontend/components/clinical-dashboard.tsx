@@ -211,10 +211,16 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
   const [doctorAppointments, setDoctorAppointments] = useState<any[]>([])
   const [isLoadingDoctorSchedule, setIsLoadingDoctorSchedule] = useState(false)
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<string>("")
+  const [bookingSourceFilter, setBookingSourceFilter] = useState<"ALL" | "ONLINE" | "STAFF">("ALL")
   const [todayAppointments, setTodayAppointments] = useState<any[]>([])
   const [isLoadingTodayAppointments, setIsLoadingTodayAppointments] = useState(false)
   const [sidebarViewMode, setSidebarViewMode] = useState<"escalated" | "today">("escalated")
   const [selectedDoctorFilter, setSelectedDoctorFilter] = useState<string | null>(null)
+  const todayDateString = () => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  }
+  const [scheduleLookupDate, setScheduleLookupDate] = useState<string>(todayDateString())
 
   useEffect(() => {
     const profile = localStorage.getItem('bloomcare_user_profile')
@@ -260,30 +266,29 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
     }
   }
 
-  const loadTodayAppointments = async () => {
+  const loadTodayAppointments = async (dateString?: string) => {
     setIsLoadingTodayAppointments(true)
     try {
       // Query without status filter to get all appointments, then filter locally
       const response = await apiRequest(`/appointments`)
       if (response.ok) {
         const data = await response.json()
-        // Filter to only today's appointments that are PENDING or CONFIRMED
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        const tomorrow = new Date(today)
-        tomorrow.setDate(tomorrow.getDate() + 1)
+        // Filter to the looked-up date's appointments that are PENDING or CONFIRMED
+        const [y, m, d] = (dateString || scheduleLookupDate).split("-").map(Number)
+        const lookupDate = new Date(y, (m || 1) - 1, d || 1)
+        lookupDate.setHours(0, 0, 0, 0)
 
         const todayApts = Array.isArray(data) ? data.filter((apt: any) => {
           const aptDate = new Date(apt.appointment_date)
           aptDate.setHours(0, 0, 0, 0)
           const isPendingOrConfirmed = apt.status === "PENDING" || apt.status === "SCHEDULED" || apt.status === "CONFIRMED"
-          return aptDate.getTime() === today.getTime() && isPendingOrConfirmed
+          return aptDate.getTime() === lookupDate.getTime() && isPendingOrConfirmed
         }).sort((a: any, b: any) => new Date(a.appointment_date).getTime() - new Date(b.appointment_date).getTime()) : []
 
         setTodayAppointments(todayApts)
       }
     } catch (error) {
-      console.error("Failed to load today's appointments:", error)
+      console.error("Failed to load appointments for the selected date:", error)
     } finally {
       setIsLoadingTodayAppointments(false)
     }
@@ -605,6 +610,13 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.id.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  const visibleAppointments = useMemo(() => {
+    if (bookingSourceFilter === "ALL") return doctorAppointments
+    return doctorAppointments.filter((apt: any) =>
+      bookingSourceFilter === "ONLINE" ? apt.created_by_role === "PATIENT" : apt.created_by_role !== "PATIENT"
+    )
+  }, [doctorAppointments, bookingSourceFilter])
 
   const filteredTodayAppointments = useMemo(() => {
     let filtered = todayAppointments
@@ -1112,7 +1124,9 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
               ) : (
                 <>
                   <Calendar className="w-4 h-4 text-primary" />
-                  {getText("Today's Appointments", "අද දින ප්‍රකාශන", "இன்றைய நியமனங்கள්")}
+                  {scheduleLookupDate === todayDateString()
+                    ? getText("Today's Appointments", "අද දින ප්‍රකාශන", "இன்றைய நியமனங்கள்")
+                    : `Appointments — ${new Date(scheduleLookupDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`}
                 </>
               )}            </h2>
             <div className="relative">
@@ -1148,7 +1162,8 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
               <button
                 onClick={() => {
                   setSidebarViewMode("today")
-                  loadTodayAppointments()
+                  setScheduleLookupDate(todayDateString())
+                  loadTodayAppointments(todayDateString())
                 }}
                 className={cn(
                   "flex-1 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all",
@@ -1162,7 +1177,26 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
               </button>
             </div>
 
-            {/* Doctor Filter for Today's Appointments */}
+            {/* Date-wise appointment lookup: pick any date, not just today */}
+            {sidebarViewMode === "today" && (
+              <div className="mb-3">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-2">
+                  Date
+                </label>
+                <input
+                  type="date"
+                  value={scheduleLookupDate}
+                  onChange={(e) => {
+                    const next = e.target.value
+                    setScheduleLookupDate(next)
+                    loadTodayAppointments(next)
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm font-medium text-slate-700 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+            )}
+
+            {/* Doctor Filter for the looked-up date's appointments */}
             {sidebarViewMode === "today" && uniqueDoctorsInToday.length > 0 && (
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-2">
@@ -2270,6 +2304,30 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                     <option value="CANCELLED">Cancelled</option>
                   </select>
                 </div>
+
+                {/* Booking Source Filter: lets a specialist work through one
+                    origin at a time instead of scanning a mixed list. */}
+                <div className="flex items-center gap-1 bg-white/50 rounded-xl p-1 border border-slate-100">
+                  {([
+                    { key: "ALL", label: "All" },
+                    { key: "STAFF", label: "🏥 Staff Booking" },
+                    { key: "ONLINE", label: "🌐 Online Booking" },
+                  ] as const).map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => setBookingSourceFilter(option.key)}
+                      className={cn(
+                        "text-xs font-black uppercase tracking-wider rounded-lg px-3 py-1.5 transition-all",
+                        bookingSourceFilter === option.key
+                          ? "bg-primary text-white shadow-sm"
+                          : "text-slate-500 hover:bg-slate-100"
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {isLoadingDoctorSchedule ? (
@@ -2281,7 +2339,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                     </div>
                   </CardContent>
                 </Card>
-              ) : doctorAppointments.length === 0 ? (
+              ) : visibleAppointments.length === 0 ? (
                 <Card className="border-0 glass shadow-2xl shadow-slate-200/50 rounded-3xl">
                   <CardContent className="p-8 text-center">
                     <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-4" />
@@ -2290,7 +2348,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                 </Card>
               ) : (
                 <div className="grid grid-cols-1 gap-4">
-                  {doctorAppointments.map((apt: any) => (
+                  {visibleAppointments.map((apt: any) => (
                     <Card key={apt.id} className="border-0 glass shadow-xl shadow-slate-200/50 overflow-hidden hover:shadow-2xl transition-all rounded-2xl border-l-4" style={{ borderLeftColor: apt.patient_risk_level === 'escalate' ? '#dc2626' : '#16a34a' }}>
                       <CardContent className="p-6">
                         <div className="flex items-start justify-between gap-4">
@@ -2309,6 +2367,15 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                                   Score: {(apt.patient_risk_score * 100).toFixed(0)}%
                                 </span>
                               )}
+                              {/* Booking Source Badge: staff-booked appointments are often
+                                  same-day/urgent, so they get a more attention-grabbing
+                                  treatment than a routine online self-booking. */}
+                              <Badge className={cn(
+                                "text-xs font-black uppercase tracking-wider rounded-lg",
+                                apt.created_by_role === "PATIENT" ? "bg-slate-100 text-slate-600" : "bg-amber-100 text-amber-700"
+                              )}>
+                                {apt.created_by_role === "PATIENT" ? "🌐 Online Booking" : "🏥 Staff Booking"}
+                              </Badge>
                             </div>
                             <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600 font-bold mb-3">
                               <div className="flex items-center gap-2">

@@ -35,6 +35,7 @@ export interface BookingOperation {
   error_code?: string | null
   error_message?: string | null
   orchestration_notice?: string | null
+  updated_at?: string
 }
 
 export interface BookingCommandResponse {

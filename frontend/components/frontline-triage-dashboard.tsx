@@ -1,13 +1,19 @@
 "use client"
 
 import { getApiBaseCandidates } from "@/lib/api"
+import {
+  enqueueScreening,
+  flushPendingScreenings,
+  getPendingCount,
+  type Stage1ScreeningPayload,
+} from "@/lib/offline-screening-queue"
 
 import { useEffect, useMemo, useState } from "react"
 import {
   Search, Plus, User as UserIcon, Globe, ChevronDown, Heart, Thermometer, Activity, Scale, AlertTriangle, CheckCircle,
   ArrowRight, Phone, Baby, Settings, LogOut, ChevronLeft, Calendar, Clock, LayoutDashboard, ClipboardList, History,
   ShieldCheck, Stethoscope, Loader2, Microscope, Droplets, Dna, Users, Filter, ArrowUpDown, ExternalLink, Eye, ChevronRight,
-  MoreVertical, MapPin, Printer, Bell,
+  MoreVertical, MapPin, Printer, Bell, CloudOff,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -123,40 +129,6 @@ interface RiskResponse {
   observation: string
 }
 
-interface PendingScreening {
-  id: string
-  createdAt: string
-  payload: {
-    patient_unique_id: string | null
-    phone: string | null
-    name: string
-    age: number
-    contact: string | null
-    gestational_age_weeks: number
-    general_risk_flag: "High" | "Low"
-    probability_score: number
-    triggers: string[]
-    screened_at: string
-    systolic: number
-    diastolic: number
-    bmi: number
-    heart_rate: number
-    blood_sugar: number
-    temperature: number
-    hemoglobin: number
-    pcos: number
-    previous_complications: number
-    preexisting_diabetes: number
-    mental_health: number
-    sleep_pattern: number
-    exercise: number
-    education: number
-    map: number
-    bp_status: string
-    observation: string
-  }
-}
-
 interface RiskTrigger {
   metric: string
   value: string
@@ -250,6 +222,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
   const [apiError, setApiError] = useState<string | null>(null)
   const [riskData, setRiskData] = useState<RiskResponse | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [pendingSyncCount, setPendingSyncCount] = useState(0)
   const [registrationError, setRegistrationError] = useState<string | null>(null)
   const [registrationMessage, setRegistrationMessage] = useState<string | null>(null)
   const [isRegisteringPatient, setIsRegisteringPatient] = useState(false)
@@ -969,6 +942,46 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
     }
   }, [])
 
+  // Sync any screenings that were queued locally while offline (see
+  // lib/offline-screening-queue.ts). Runs on mount in case screenings were
+  // queued in a previous session, again immediately on reconnect, and on a
+  // slow interval as a backstop since the 'online' event isn't always
+  // reliable in every browser.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    setPendingSyncCount(getPendingCount())
+
+    const runFlush = () => {
+      flushPendingScreenings().then(({ succeeded, failed, remaining }) => {
+        setPendingSyncCount(remaining)
+        if (succeeded > 0) {
+          setStatusMessage(
+            getText(
+              `${succeeded} queued screening${succeeded === 1 ? "" : "s"} synced.`,
+              `පෝලිමේ තිබූ පරීක්ෂණ ${succeeded}ක් සමමුහූර්ත කරන ලදී.`,
+              `வரிசையிலிருந்த ${succeeded} பரிசோதனை(கள்) ஒத்திசைக்கப்பட்டன.`
+            )
+          )
+        }
+        if (failed.length > 0) {
+          setApiError(
+            `${failed.length} queued screening${failed.length === 1 ? "" : "s"} could not be saved and ${failed.length === 1 ? "was" : "were"} dropped: ${failed[0].message}`
+          )
+        }
+      })
+    }
+
+    runFlush()
+    window.addEventListener("online", runFlush)
+    const interval = window.setInterval(runFlush, 45000)
+
+    return () => {
+      window.removeEventListener("online", runFlush)
+      window.clearInterval(interval)
+    }
+  }, [])
+
   const handleCalculateRisk = async () => {
     setIsLoading(true)
     setApiError(null)
@@ -1022,7 +1035,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
       const vitalsData = buildVitalsInput()
       const offlineResult = getOfflineRisk(vitalsData)
       const generalRiskFlag: "Low" | "High" = offlineResult.risk_level.toLowerCase() === "low" ? "Low" : "High"
-      const payload: PendingScreening["payload"] = {
+      const payload: Stage1ScreeningPayload = {
         patient_unique_id: verifiedPatient.nationalId,
         phone: verifiedPatient.contactNumber || null,
         name: vitalsData.patient_name,
@@ -1052,10 +1065,31 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
         observation: (offlineResult.observation || "Offline model estimate").trim() || "Offline model estimate",
       }
 
-      const syncResponse = await apiRequest("/submit-screening", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      })
+      let syncResponse: Response
+      try {
+        syncResponse = await apiRequest("/submit-screening", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        })
+      } catch {
+        // apiRequest only throws when fetch itself fails (offline, DNS,
+        // connection refused) -- a server-side rejection comes back as a
+        // non-ok Response instead and is handled below, unchanged. This is
+        // specifically the network-loss case, so queue it locally instead
+        // of discarding the screening the worker just captured.
+        enqueueScreening(payload)
+        setPendingSyncCount(getPendingCount())
+        setRiskData(offlineResult)
+        setShowResult(true)
+        setStatusMessage(
+          getText(
+            "No connection right now. This screening was saved on this device and will sync automatically once you're back online.",
+            "දැන් සම්බන්ධතාවයක් නැත. මෙම පරීක්ෂණය මෙම උපකරණයේ සුරකින ලදී; නැවත සම්බන්ධ වූ විට ස්වයංක්‍රීයව සමමුහූර්ත වේ.",
+            "இப்போது இணைப்பு இல்லை. இந்த பரிசோதனை இந்த சாதனத்தில் சேமிக்கப்பட்டது; மீண்டும் இணைந்தவுடன் தானாக ஒத்திசைக்கப்படும்."
+          )
+        )
+        return
+      }
 
       if (!syncResponse.ok) {
         const detail = await syncResponse.json().catch(() => ({} as unknown)) as {
@@ -1137,6 +1171,17 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
               </p>
             </div>
           </div>
+
+          {pendingSyncCount > 0 && (
+            <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 flex items-center gap-1.5 h-8 px-3">
+              <CloudOff className="w-3.5 h-3.5" />
+              {getText(
+                `${pendingSyncCount} pending sync`,
+                `${pendingSyncCount} සමමුහූර්ත වීමට`,
+                `${pendingSyncCount} ஒத்திசைவு நிலுவை`
+              )}
+            </Badge>
+          )}
 
           <div className="h-8 w-px bg-slate-100 hidden sm:block" />
 

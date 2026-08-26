@@ -15,6 +15,7 @@ from backend.models.appointment import Appointment
 from backend.models.patient import Patient
 from backend.models.screening import Stage1Screening, Stage2Diagnostic
 from backend.models.user import User, UserRole
+from backend.services.slot_reservation_service import SlotReservationService, SlotUnavailableError
 from backend.schemas.appointment import (
     AppointmentActionResponse,
     AppointmentCreate,
@@ -447,33 +448,24 @@ class AppointmentService:
                 detail="Appointment date must be in the future",
             )
 
-        # Check for double booking by fetching appointments in a time window
-        new_appointment_end = appointment_date + \
-            timedelta(minutes=appointment_in.duration_minutes)
-
-        existing_appointments = db.query(Appointment).filter(
-            and_(
-                Appointment.specialist_id == specialist.id,
-                Appointment.status != "CANCELLED",
+        # Check for double booking against both other direct appointments and
+        # any in-flight Temporal reservation for this specialist, under the
+        # same specialist-scoped lock the async booking flow uses. Without
+        # this, a staff booking made while a patient's self-service request
+        # is mid-flight (slot reserved, appointment not yet created) would
+        # see no conflict and double-book the slot.
+        try:
+            SlotReservationService.check_and_lock_for_direct_booking(
+                db,
+                specialist_id=specialist.id,
+                starts_at=appointment_date,
+                duration_minutes=appointment_in.duration_minutes,
             )
-        ).all()
-
-        # Check for overlaps in Python
-        for existing in existing_appointments:
-            # Ensure existing appointment date is timezone-aware (SQLite returns naive datetimes)
-            existing_apt_date = existing.appointment_date
-            if existing_apt_date.tzinfo is None:
-                existing_apt_date = existing_apt_date.replace(
-                    tzinfo=timezone.utc)
-
-            existing_end = existing_apt_date + \
-                timedelta(minutes=existing.duration_minutes)
-            # Check if new appointment overlaps with existing: new_start < existing_end AND new_end > existing_start
-            if appointment_date < existing_end and new_appointment_end > existing_apt_date:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="This time slot is already booked for the specialist",
-                )
+        except SlotUnavailableError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
 
         # Get next queue number for the day
         # Create timezone-aware start and end of day
@@ -580,33 +572,25 @@ class AppointmentService:
                 detail="Appointment date must be in the future",
             )
 
-        # Check for double booking using SQLite-compatible query
-        appointment_date_str = apt_date.isoformat()
-        appointment_end = apt_date + timedelta(minutes=duration_minutes)
-        appointment_end_str = appointment_end.isoformat()
-
-        overlapping = db.execute(
-            text(
-                """
-                SELECT COUNT(*) FROM appointments
-                WHERE specialist_id = :specialist_id
-                AND status NOT IN ('CANCELLED', 'COMPLETED')
-                AND appointment_date < :end_time
-                AND datetime(appointment_date, '+' || duration_minutes || ' minutes') > :start_time
-                """
-            ),
-            {
-                "specialist_id": str(specialist.id),
-                "start_time": appointment_date_str,
-                "end_time": appointment_end_str,
-            },
-        ).scalar()
-
-        if overlapping and overlapping > 0:
+        # Check for double booking against both other direct appointments and
+        # any in-flight Temporal reservation for this specialist (see
+        # create_appointment for why both matter). This replaces a raw SQL
+        # query that used SQLite-only date syntax and raised a 500 on
+        # PostgreSQL for every call.
+        try:
+            SlotReservationService.check_and_lock_for_direct_booking(
+                db,
+                specialist_id=specialist.id,
+                starts_at=apt_date,
+                duration_minutes=duration_minutes,
+            )
+        except SlotUnavailableError as exc:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="This time slot is already booked for the specialist",
-            )
+                detail=str(exc),
+            ) from exc
+
+        appointment_date_str = apt_date.isoformat()
 
         # Get queue number for the day (SQLite-compatible)
         queue_number = db.execute(

@@ -7,10 +7,7 @@ from backend.core.config import settings
 from backend.schemas.screening import AssistantRequest, AssistantResponse
 from backend.models.user import User
 
-try:
-    from backend.services.llm_service import generate_mock_explanation, generate_multilingual_explanation
-except ImportError:
-    pass
+from backend.llm_service import generate_mock_explanation, generate_multilingual_explanation
 
 logger = logging.getLogger(__name__)
 
