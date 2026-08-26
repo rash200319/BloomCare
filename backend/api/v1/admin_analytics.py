@@ -2,11 +2,13 @@
 Admin Analytics API Endpoints
 Exposes AdminService metrics for the admin dashboard.
 """
-
+#api router is used to define the api endpoints for the admin analytics
+#depends is used to inject the dependencies into the api endpoints
+#http exception is used to handle the http exceptions
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session #session is used to interact with the database
 from typing import Dict, Any, List
-import logging
+import logging # logging is used to log the events and errors in the code
 
 from backend.core.deps import get_db, get_current_active_user
 from backend.models.user import User
@@ -77,7 +79,7 @@ def get_dashboard_metrics(
     current_user: User = Depends(get_current_active_user),
 ) -> Dict[str, Any]:
     """
-    📊 Dashboard Top-Row Metrics
+    Dashboard Top-Row Metrics
     Returns aggregated KPIs for admin dashboard top row.
     
     Authorized: ADMIN, CLINICAL_SPECIALIST
@@ -109,7 +111,7 @@ def get_case_trends(
     current_user: User = Depends(get_current_active_user),
 ) -> Dict[str, Any]:
     """
-    📈 Case Trends Over Time
+    Case Trends Over Time
     Returns time-series data for "Cases over Time" and "Prevalence by Condition" charts.
     
     Query params:
@@ -152,7 +154,7 @@ def get_top_risk_drivers(
     current_user: User = Depends(get_current_active_user),
 ) -> Dict[str, Any]:
     """
-    🏆 Top Risk Drivers
+    Top Risk Drivers
     Returns the top reasons patients are flagged as high-risk.
     Example: "40% due to BP, 30% due to BMI, 20% due to Age..."
     
@@ -188,7 +190,7 @@ def get_referral_efficiency(
     current_user: User = Depends(get_current_active_user),
 ) -> Dict[str, Any]:
     """
-    🏥 Referral Efficiency KPI
+    Referral Efficiency KPI
     Tracks flow from Stage 1 (Community) → Stage 2 (Specialist).
     Returns conversion rates, days to referral, and pending cases.
     
@@ -210,7 +212,7 @@ def get_specialist_workload(
     current_user: User = Depends(get_current_active_user),
 ) -> Dict[str, Any]:
     """
-    👨‍⚕️ Specialist Workload Distribution
+    Specialist Workload Distribution
     Shows case counts, primary conditions, and severity metrics per specialist.
     Used for load-balancing and capacity planning.
     
@@ -245,7 +247,7 @@ def get_cost_impact(
     current_user: User = Depends(get_current_active_user),
 ) -> Dict[str, Any]:
     """
-    💰 Cost Impact & ROI Estimate
+    Cost Impact & ROI Estimate
     Returns estimated cost savings from early detection and AI optimization.
     Shows prevented cases, cost per case avoided, and total program ROI.
     

@@ -15,9 +15,10 @@ RUN pip install -r requirements.txt
 
 COPY backend ./backend
 COPY models ./models
-COPY Procfile railpack.json .python-version ./
+COPY start.sh Procfile railpack.json .python-version ./
+RUN chmod +x start.sh
 
 EXPOSE 8000
 
-# Railway injects PORT; default 8000 for local `docker run`.
-CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Expands Railway's PORT inside the shell (literal $PORT breaks uvicorn).
+CMD ["./start.sh"]

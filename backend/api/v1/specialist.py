@@ -83,7 +83,7 @@ def get_pending_evaluations(
     current_user: User = Depends(get_current_active_user),
 ) -> dict[str, Any]:
     """
-    📋 Fetch pending evaluations for the current specialist
+    Fetch pending evaluations for the current specialist
     
     Returns:
         List of patients awaiting specialist evaluation with Stage 1 context
@@ -169,7 +169,7 @@ def submit_diagnostic_evaluation(
     current_user: User = Depends(get_current_active_user),
 ) -> DifferentialEvaluationResponse:
     """
-    🔬 Submit Stage 2 diagnostic evaluation results
+    Submit Stage 2 diagnostic evaluation results
     
     Process:
         1. Run AI model on inputs (PE, GDM, PTB probabilities)
@@ -298,7 +298,7 @@ def get_evaluation_details(
     current_user: User = Depends(get_current_active_user),
 ) -> dict[str, Any]:
     """
-    📊 Fetch complete diagnostic evaluation with SHAP explainability charts
+    Fetch complete diagnostic evaluation with SHAP explainability charts
     
     Returns:
         Complete stage2_diagnostic record with:
