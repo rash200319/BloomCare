@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -12,6 +12,7 @@ from backend.models.appointment_operation import AppointmentBookingOperation
 from backend.models.patient import Patient
 from backend.models.user import User, UserRole
 from backend.models.workflow_outbox import WorkflowOutbox
+from backend.core.config import settings
 from backend.schemas.appointment_operation import (
     AppointmentBookingRequest,
     AppointmentOperationAccepted,
@@ -146,12 +147,29 @@ class AppointmentOrchestrationService:
         return operation
 
     @staticmethod
-    def to_response(operation: AppointmentBookingOperation) -> AppointmentOperationResponse:
+    def to_response(
+        operation: AppointmentBookingOperation,
+        db: Session | None = None,
+    ) -> AppointmentOperationResponse:
+        patient_name = None
+        specialist_name = None
+        if db is not None:
+            patient = db.query(Patient).filter(Patient.id == operation.patient_id).first()
+            specialist = db.query(User).filter(User.id == operation.specialist_id).first()
+            patient_name = patient.full_name if patient else None
+            specialist_name = specialist.full_name if specialist else None
+        confirmation_deadline = operation.confirmation_deadline
+        if confirmation_deadline is None and operation.created_at is not None:
+            confirmation_deadline = operation.created_at + timedelta(
+                hours=settings.APPOINTMENT_CONFIRMATION_TIMEOUT_HOURS
+            )
         return AppointmentOperationResponse(
             operation_id=operation.id,
             workflow_id=operation.workflow_id,
             patient_id=operation.patient_id,
             specialist_id=operation.specialist_id,
+            patient_name=patient_name,
+            specialist_name=specialist_name,
             appointment_id=operation.appointment_id,
             appointment_date=operation.appointment_date,
             duration_minutes=operation.duration_minutes,
@@ -159,6 +177,8 @@ class AppointmentOrchestrationService:
             status=operation.status,
             schedule_version=operation.schedule_version,
             decision_reason=operation.decision_reason,
+            reschedule_reason=operation.reschedule_reason,
+            confirmation_deadline=confirmation_deadline,
             error_code=operation.error_code,
             error_message=operation.error_message,
             created_at=operation.created_at,
@@ -175,4 +195,3 @@ class AppointmentOrchestrationService:
             appointment_id=operation.appointment_id,
             status_url=f"/api/v1/appointment-operations/{operation.id}",
         )
-

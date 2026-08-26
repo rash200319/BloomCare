@@ -43,6 +43,8 @@ class AppointmentOperationResponse(BaseModel):
     workflow_id: str
     patient_id: str
     specialist_id: str
+    patient_name: Optional[str] = None
+    specialist_name: Optional[str] = None
     appointment_id: Optional[str] = None
     appointment_date: datetime
     duration_minutes: int
@@ -50,6 +52,8 @@ class AppointmentOperationResponse(BaseModel):
     status: BookingOperationStatus
     schedule_version: int
     decision_reason: Optional[str] = None
+    reschedule_reason: Optional[str] = None
+    confirmation_deadline: Optional[datetime] = None
     error_code: Optional[str] = None
     error_message: Optional[str] = None
     created_at: datetime

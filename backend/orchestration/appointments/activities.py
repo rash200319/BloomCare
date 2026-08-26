@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, func
+from sqlalchemy.exc import IntegrityError
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
@@ -21,6 +22,8 @@ from backend.orchestration.appointments.contracts import (
     FinalizeDecisionInput,
     NotificationInput,
     OperationRef,
+    RescheduleActivityInput,
+    RescheduleResult,
 )
 from backend.schemas.notification import NotificationCreate
 from backend.services.appointment_service import AppointmentService
@@ -177,6 +180,9 @@ def create_reserved_appointment(input: OperationRef) -> str:
             reservation.appointment_id = appointment.id
             reservation.expires_at = None
         operation.appointment_id = appointment.id
+        operation.confirmation_deadline = datetime.now(timezone.utc) + timedelta(
+            hours=settings.APPOINTMENT_CONFIRMATION_TIMEOUT_HOURS
+        )
         operation.status = "AWAITING_CONFIRMATION"
         db.commit()
         return str(appointment.id)
@@ -239,10 +245,142 @@ def get_booking_timing(input: OperationRef) -> BookingTiming:
 
 
 @activity.defn
+def reschedule_booking(input: RescheduleActivityInput) -> RescheduleResult:
+    """Atomically replace a booked slot without exposing an unreserved gap."""
+    db = SessionLocal()
+    try:
+        operation = _operation(db, input.operation_id)
+        if operation.status in {"COMPLETED", "CANCELLED", "REJECTED", "EXPIRED", "FAILED"}:
+            raise ApplicationError(
+                f"Booking operation is already final: {operation.status}",
+                non_retryable=True,
+                type="OPERATION_FINAL",
+            )
+        appointment = db.query(Appointment).filter(
+            Appointment.id == operation.appointment_id
+        ).first()
+        if not appointment:
+            raise ApplicationError(
+                "Appointment has not been created",
+                non_retryable=True,
+                type="APPOINTMENT_NOT_FOUND",
+            )
+
+        starts_at = datetime.fromtimestamp(input.appointment_timestamp, tz=timezone.utc)
+        if operation.schedule_version >= input.target_schedule_version:
+            return RescheduleResult(
+                appointment_timestamp=operation.appointment_date.timestamp(),
+                schedule_version=operation.schedule_version,
+                reminder_hours=settings.appointment_reminder_hours,
+                previous_status=operation.status,
+            )
+        if starts_at <= datetime.now(timezone.utc):
+            raise ApplicationError(
+                "Rescheduled appointment must be in the future",
+                non_retryable=True,
+                type="APPOINTMENT_IN_PAST",
+            )
+        if input.duration_minutes < 15 or input.duration_minutes > 240:
+            raise ApplicationError(
+                "Appointment duration is outside the allowed range",
+                non_retryable=True,
+                type="DURATION_INVALID",
+            )
+
+        previous_status = operation.status
+        next_version = input.target_schedule_version
+        try:
+            # Check and stage the replacement first. The old row is changed to
+            # RELEASED in the same transaction before flush, so PostgreSQL's
+            # overlap constraint never observes a gap or two active versions.
+            replacement = SlotReservationService.reserve(
+                db,
+                operation_id=operation.id,
+                specialist_id=str(operation.specialist_id),
+                starts_at=starts_at,
+                duration_minutes=input.duration_minutes,
+                schedule_version=next_version,
+                ttl_minutes=settings.APPOINTMENT_RESERVATION_TTL_MINUTES,
+                exclude_operation_id=operation.id,
+                exclude_appointment_id=str(appointment.id),
+                flush=False,
+            )
+
+            now = datetime.now(timezone.utc)
+            old_reservations = db.query(AppointmentSlotReservation).filter(
+                AppointmentSlotReservation.operation_id == operation.id,
+                AppointmentSlotReservation.status == "ACTIVE",
+                AppointmentSlotReservation.schedule_version != next_version,
+            ).all()
+            for old in old_reservations:
+                old.status = "RELEASED"
+                old.released_at = now
+
+            day_start = starts_at.replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day_start.replace(hour=23, minute=59, second=59, microsecond=999999)
+            appointment.queue_number = (
+                db.query(func.count(Appointment.id))
+                .filter(
+                    Appointment.specialist_id == operation.specialist_id,
+                    Appointment.id != appointment.id,
+                    Appointment.appointment_date >= day_start,
+                    Appointment.appointment_date <= day_end,
+                    Appointment.status != "CANCELLED",
+                )
+                .scalar()
+                or 0
+            ) + 1
+            appointment.appointment_date = starts_at
+            appointment.duration_minutes = input.duration_minutes
+            appointment.schedule_version = next_version
+            replacement.appointment_id = appointment.id
+            replacement.expires_at = None
+
+            operation.appointment_date = starts_at
+            operation.duration_minutes = input.duration_minutes
+            operation.schedule_version = next_version
+            operation.reschedule_reason = input.reason
+            operation.error_code = None
+            operation.error_message = None
+            operation.status = (
+                "AWAITING_CONFIRMATION"
+                if previous_status == "AWAITING_CONFIRMATION"
+                else "RESCHEDULED"
+            )
+            db.commit()
+        except (SlotUnavailableError, IntegrityError) as exc:
+            db.rollback()
+            message = "The requested replacement slot is unavailable"
+            operation = _operation(db, input.operation_id)
+            operation.error_code = "RESCHEDULE_SLOT_UNAVAILABLE"
+            operation.error_message = message
+            db.commit()
+            raise ApplicationError(
+                message,
+                non_retryable=True,
+                type="SLOT_UNAVAILABLE",
+            ) from exc
+
+        return RescheduleResult(
+            appointment_timestamp=starts_at.timestamp(),
+            schedule_version=next_version,
+            reminder_hours=settings.appointment_reminder_hours,
+            previous_status=previous_status,
+        )
+    finally:
+        db.close()
+
+
+@activity.defn
 def send_booking_notification(input: NotificationInput) -> bool:
     db = SessionLocal()
     try:
         operation = _operation(db, input.operation_id)
+        if (
+            input.schedule_version is not None
+            and operation.schedule_version != input.schedule_version
+        ):
+            return False
         appointment = db.query(Appointment).filter(Appointment.id == operation.appointment_id).first()
         patient = db.query(Patient).filter(Patient.id == operation.patient_id).first()
         specialist = db.query(User).filter(User.id == operation.specialist_id).first()
@@ -282,6 +420,7 @@ def send_booking_notification(input: NotificationInput) -> bool:
             "APPOINTMENT_CONFIRMED": "Appointment Confirmed",
             "APPOINTMENT_CANCELLED": "Appointment Cancelled",
             "APPOINTMENT_REMINDER": "Appointment Reminder",
+            "APPOINTMENT_RESCHEDULED": "Appointment Rescheduled",
         }
         title = titles.get(input.notification_type, "Appointment Update")
         when = appointment.appointment_date.strftime("%B %d, %Y at %I:%M %p")
@@ -289,6 +428,12 @@ def send_booking_notification(input: NotificationInput) -> bool:
             message = f"Please review the appointment request for {patient.full_name} on {when}."
         elif input.notification_type == "APPOINTMENT_REMINDER":
             message = f"Reminder: the appointment with {specialist.full_name} is scheduled for {when}."
+        elif input.notification_type == "APPOINTMENT_RESCHEDULED":
+            message = (
+                f"The appointment for {patient.full_name} has been moved to {when}."
+                if recipient_type == "SPECIALIST"
+                else f"The appointment with {specialist.full_name} has been moved to {when}."
+            )
         else:
             message = f"Appointment with {specialist.full_name} on {when}: {title}."
 
@@ -327,7 +472,7 @@ def mark_reminders_scheduled(input: OperationRef) -> None:
     db = SessionLocal()
     try:
         operation = _operation(db, input.operation_id)
-        if operation.status == "CONFIRMED":
+        if operation.status in {"CONFIRMED", "RESCHEDULED"}:
             operation.status = "REMINDER_SCHEDULED"
             db.commit()
     finally:

@@ -276,6 +276,29 @@ def _ensure_orchestration_tables(engine) -> None:
             ],
             checkfirst=True,
         )
+        with engine.begin() as conn:
+            if engine.dialect.name == "postgresql":
+                conn.execute(text(
+                    'ALTER TABLE IF EXISTS "BloomCare".appointment_booking_operations '
+                    'ADD COLUMN IF NOT EXISTS reschedule_reason TEXT'
+                ))
+                conn.execute(text(
+                    'ALTER TABLE IF EXISTS "BloomCare".appointment_booking_operations '
+                    'ADD COLUMN IF NOT EXISTS confirmation_deadline TIMESTAMPTZ'
+                ))
+            elif engine.dialect.name == "sqlite":
+                columns = conn.exec_driver_sql(
+                    "PRAGMA table_info(appointment_booking_operations)"
+                ).fetchall()
+                existing = {row[1] for row in columns}
+                if "reschedule_reason" not in existing:
+                    conn.exec_driver_sql(
+                        "ALTER TABLE appointment_booking_operations ADD COLUMN reschedule_reason TEXT"
+                    )
+                if "confirmation_deadline" not in existing:
+                    conn.exec_driver_sql(
+                        "ALTER TABLE appointment_booking_operations ADD COLUMN confirmation_deadline DATETIME"
+                    )
     except SQLAlchemyError as exc:
         logger.warning("Unable to ensure appointment orchestration tables: %s", exc)
 

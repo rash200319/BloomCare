@@ -33,12 +33,14 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { getWeeklyInsight } from "@/lib/weekly-insights"
 import ProfileSettingsDialog from "./profile-settings-dialog"
 import PatientAppointmentRequest from "./patient-appointment-request"
+import { decideBookingOperation } from "@/lib/appointment-orchestration"
 import {
   LineChart,
   Line,
@@ -146,6 +148,7 @@ interface AppointmentItem {
   status?: string | null
   notes?: string | null
   queue_number?: number | null
+  booking_operation_id?: string | null
 }
 
 interface AppointmentViewItem {
@@ -162,6 +165,7 @@ interface AppointmentViewItem {
   notes: string | null
   queue_number: number | null
   appointmentDateValue: number
+  bookingOperationId: string | null
 }
 
 const DEFAULT_PATIENT_DATA: PatientDisplayData = {
@@ -206,6 +210,11 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
   const [screeningHistory, setScreeningHistory] = useState<BackendStage1HistoryItem[]>([])
   const [latestScreenings, setLatestScreenings] = useState<LatestScreeningsPayload | null>(null)
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentViewItem | null>(null)
+  const [cancellingAppointment, setCancellingAppointment] = useState<AppointmentViewItem | null>(null)
+  const [cancellationReason, setCancellationReason] = useState("")
+  const [cancellationError, setCancellationError] = useState<string | null>(null)
+  const [isCancellingAppointment, setIsCancellingAppointment] = useState(false)
+  const [appointmentActionMessage, setAppointmentActionMessage] = useState<string | null>(null)
   const [isAiExplaining, setIsAiExplaining] = useState(false)
   const [aiScreeningMessages, setAiScreeningMessages] = useState<{ screening1: string; screening2: string }>({
     screening1: "",
@@ -751,6 +760,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
       .map((appointment) => {
         const appointmentDate = new Date(appointment.appointment_date)
         if (Number.isNaN(appointmentDate.getTime())) return null
+        if (["CANCELLED", "COMPLETED"].includes((appointment.status || "").toUpperCase())) return null
 
         return {
           id: appointment.id,
@@ -766,12 +776,39 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
           notes: appointment.notes || null,
           queue_number: appointment.queue_number ?? null,
           appointmentDateValue: appointmentDate.getTime(),
+          bookingOperationId: appointment.booking_operation_id || null,
         }
       })
         .filter((appointment): appointment is AppointmentViewItem => appointment !== null)
 
       .sort((left, right) => left.appointmentDateValue - right.appointmentDateValue)
   }, [appointments])
+
+  const cancelAppointment = async () => {
+    if (!cancellingAppointment?.bookingOperationId) return
+    if (!cancellationReason.trim()) {
+      setCancellationError("Please provide a cancellation reason.")
+      return
+    }
+    setIsCancellingAppointment(true)
+    setCancellationError(null)
+    try {
+      const response = await decideBookingOperation(
+        cancellingAppointment.bookingOperationId,
+        "CANCEL",
+        cancellationReason,
+      )
+      setAppointments((current) => current.filter((item) => item.id !== cancellingAppointment.id))
+      setSelectedAppointment((current) => current?.id === cancellingAppointment.id ? null : current)
+      setAppointmentActionMessage(`Appointment cancelled. Temporal status: ${response.status}.`)
+      setCancellingAppointment(null)
+      setCancellationReason("")
+    } catch (cause) {
+      setCancellationError(cause instanceof Error ? cause.message : "Unable to cancel appointment.")
+    } finally {
+      setIsCancellingAppointment(false)
+    }
+  }
 
   const insightFactIcons = [Droplets, Heart, Pill]
   const healthTips = weeklyInsight.facts.map((fact, index) => ({
@@ -1218,6 +1255,11 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
           {/* Appointments Tab */}
           <TabsContent value="appointments" className="space-y-8 animate-in fade-in duration-500">
             <PatientAppointmentRequest />
+            {appointmentActionMessage && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-700" role="status">
+                {appointmentActionMessage}
+              </div>
+            )}
             <div className="space-y-6">
               {upcomingAppointments.map((appointment) => (
                 <Card key={appointment.id} className="border-0 glass shadow-xl shadow-slate-200/50 overflow-hidden group hover:translate-x-2 transition-transform rounded-[24px]">
@@ -1252,6 +1294,19 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                              {appointment.status}
                           </Badge>
                        </div>
+                        {appointment.bookingOperationId && !["cancelled", "completed"].includes(appointment.status) && (
+                          <Button
+                            variant="destructive"
+                            className="rounded-xl"
+                            onClick={() => {
+                              setCancellationError(null)
+                              setCancellationReason("")
+                              setCancellingAppointment(appointment)
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        )}
                         <Button
                           size="icon"
                           className="w-12 h-12 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition-colors"
@@ -1410,6 +1465,54 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(cancellingAppointment)}
+        onOpenChange={(open) => {
+          if (!open && !isCancellingAppointment) {
+            setCancellingAppointment(null)
+            setCancellationReason("")
+            setCancellationError(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg rounded-3xl border-0 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black text-slate-900">Cancel Appointment</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              Tell the care team why you need to cancel. Temporal will apply the decision and stop pending reminders.
+            </p>
+            <Textarea
+              value={cancellationReason}
+              onChange={(event) => setCancellationReason(event.target.value)}
+              placeholder="Cancellation reason"
+              maxLength={1000}
+              rows={4}
+              disabled={isCancellingAppointment}
+            />
+            {cancellationError && <p className="text-sm font-semibold text-rose-600">{cancellationError}</p>}
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                disabled={isCancellingAppointment}
+                onClick={() => setCancellingAppointment(null)}
+              >
+                Keep appointment
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={isCancellingAppointment || !cancellationReason.trim()}
+                onClick={() => void cancelAppointment()}
+              >
+                {isCancellingAppointment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Confirm cancellation
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

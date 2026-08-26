@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -15,6 +16,7 @@ from backend.schemas.appointment_operation import (
     AppointmentDecisionRequest,
     AppointmentOperationAccepted,
     AppointmentOperationResponse,
+    AppointmentRescheduleRequest,
     AppointmentWorkflowCommandResponse,
 )
 from backend.services.appointment_orchestration_service import AppointmentOrchestrationService
@@ -63,7 +65,7 @@ def get_booking_operation(
     operation = AppointmentOrchestrationService.get_authorized_operation(
         db, operation_id, current_user
     )
-    return AppointmentOrchestrationService.to_response(operation)
+    return AppointmentOrchestrationService.to_response(operation, db)
 
 
 @router.get(
@@ -88,7 +90,7 @@ def list_booking_operations(
     if operation_status:
         query = query.filter(AppointmentBookingOperation.status == operation_status.strip().upper())
     operations = query.order_by(AppointmentBookingOperation.created_at.desc()).limit(limit).all()
-    return [AppointmentOrchestrationService.to_response(item) for item in operations]
+    return [AppointmentOrchestrationService.to_response(item, db) for item in operations]
 
 
 @router.post(
@@ -131,3 +133,56 @@ async def decide_booking_operation(
         message=message,
     )
 
+
+@router.post(
+    "/{operation_id}/reschedule",
+    response_model=AppointmentWorkflowCommandResponse,
+    summary="Atomically reschedule an orchestrated appointment",
+)
+async def reschedule_booking_operation(
+    operation_id: str,
+    payload: AppointmentRescheduleRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    operation = AppointmentOrchestrationService.get_authorized_operation(
+        db, operation_id, current_user
+    )
+    role = AppointmentOrchestrationService._role_name(current_user)
+    if role not in {UserRole.PATIENT.value, UserRole.ADMIN.value} and not AppointmentService._is_specialist_role(role):
+        raise HTTPException(status_code=403, detail="Not authorized to reschedule this appointment")
+    if not settings.TEMPORAL_ENABLED:
+        raise HTTPException(status_code=503, detail="Temporal appointment orchestration is disabled")
+
+    appointment_date = payload.appointment_date
+    if appointment_date.tzinfo is None:
+        appointment_date = appointment_date.replace(tzinfo=timezone.utc)
+    duration_minutes = payload.duration_minutes or operation.duration_minutes
+    try:
+        from backend.orchestration.appointments.temporal_client import submit_booking_reschedule
+
+        message = await submit_booking_reschedule(
+            operation.workflow_id,
+            appointment_timestamp=appointment_date.timestamp(),
+            duration_minutes=duration_minutes,
+            reason=payload.reason,
+        )
+    except Exception as exc:
+        detail = str(exc)
+        conflict_markers = (
+            "SLOT_UNAVAILABLE",
+            "replacement slot is unavailable",
+            "Rescheduling is not allowed",
+            "already final",
+            "must be in the future",
+        )
+        if any(marker.lower() in detail.lower() for marker in conflict_markers):
+            raise HTTPException(status_code=409, detail=detail) from exc
+        raise HTTPException(status_code=503, detail=f"Unable to reschedule appointment: {detail}") from exc
+
+    db.refresh(operation)
+    return AppointmentWorkflowCommandResponse(
+        operation_id=operation.id,
+        status=operation.status,
+        message=message,
+    )

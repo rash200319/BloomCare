@@ -19,6 +19,22 @@ class BookingDecisionCommand:
 
 
 @dataclass
+class BookingRescheduleCommand:
+    appointment_timestamp: float
+    duration_minutes: int
+    reason: str | None = None
+
+
+@dataclass
+class RescheduleActivityInput:
+    operation_id: str
+    appointment_timestamp: float
+    duration_minutes: int
+    target_schedule_version: int
+    reason: str | None = None
+
+
+@dataclass
 class FinalizeDecisionInput:
     operation_id: str
     decision: str
@@ -30,6 +46,7 @@ class NotificationInput:
     notification_type: str
     recipient_type: str
     occurrence: str = "once"
+    schedule_version: int | None = None
 
 
 @dataclass
@@ -38,3 +55,11 @@ class BookingTiming:
     schedule_version: int
     reminder_hours: list[int]
     confirmation_timeout_seconds: int
+
+
+@dataclass
+class RescheduleResult:
+    appointment_timestamp: float
+    schedule_version: int
+    reminder_hours: list[int]
+    previous_status: str

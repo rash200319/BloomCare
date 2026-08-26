@@ -27,6 +27,9 @@ class SlotReservationService:
         duration_minutes: int,
         schedule_version: int,
         ttl_minutes: int,
+        exclude_operation_id: str | None = None,
+        exclude_appointment_id: str | None = None,
+        flush: bool = True,
     ) -> AppointmentSlotReservation:
         existing = (
             db.query(AppointmentSlotReservation)
@@ -67,29 +70,29 @@ class SlotReservationService:
             reservation.status = "EXPIRED"
             reservation.released_at = now
 
-        conflict = (
-            db.query(AppointmentSlotReservation)
-            .filter(
-                AppointmentSlotReservation.specialist_id == specialist_id,
-                AppointmentSlotReservation.status == "ACTIVE",
-                AppointmentSlotReservation.starts_at < ends_at,
-                AppointmentSlotReservation.ends_at > starts_at,
-            )
-            .first()
+        conflict_query = db.query(AppointmentSlotReservation).filter(
+            AppointmentSlotReservation.specialist_id == specialist_id,
+            AppointmentSlotReservation.status == "ACTIVE",
+            AppointmentSlotReservation.starts_at < ends_at,
+            AppointmentSlotReservation.ends_at > starts_at,
         )
+        if exclude_operation_id:
+            conflict_query = conflict_query.filter(
+                AppointmentSlotReservation.operation_id != exclude_operation_id
+            )
+        conflict = conflict_query.first()
         if conflict:
             raise SlotUnavailableError("The selected specialist slot is no longer available")
 
         # Reservations introduced by Temporal must also respect appointments
         # created through BloomCare's legacy staff/mobile endpoints.
-        appointments = (
-            db.query(Appointment)
-            .filter(
-                Appointment.specialist_id == specialist_id,
-                Appointment.status.notin_(["CANCELLED", "COMPLETED"]),
-            )
-            .all()
+        appointment_query = db.query(Appointment).filter(
+            Appointment.specialist_id == specialist_id,
+            Appointment.status.notin_(["CANCELLED", "COMPLETED"]),
         )
+        if exclude_appointment_id:
+            appointment_query = appointment_query.filter(Appointment.id != exclude_appointment_id)
+        appointments = appointment_query.all()
         for appointment in appointments:
             existing_start = appointment.appointment_date
             if existing_start.tzinfo is None:
@@ -109,7 +112,8 @@ class SlotReservationService:
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes),
         )
         db.add(reservation)
-        db.flush()
+        if flush:
+            db.flush()
         return reservation
 
     @staticmethod
@@ -126,4 +130,3 @@ class SlotReservationService:
         for reservation in reservations:
             reservation.status = "RELEASED"
             reservation.released_at = now
-

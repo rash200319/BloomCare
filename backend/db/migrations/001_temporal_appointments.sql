@@ -33,6 +33,7 @@ ALTER TABLE "BloomCare".notifications
         'APPOINTMENT_PENDING',
         'APPOINTMENT_SCHEDULED',
         'APPOINTMENT_REMINDER',
+        'APPOINTMENT_RESCHEDULED',
         'BOOKING_REQUESTED',
         'BOOKING_CONFIRMATION_REQUIRED',
         'ESCALATION_ALERT'
@@ -56,6 +57,8 @@ CREATE TABLE IF NOT EXISTS "BloomCare".appointment_booking_operations (
     status VARCHAR(50) NOT NULL DEFAULT 'REQUESTED',
     schedule_version INTEGER NOT NULL DEFAULT 1,
     decision_reason TEXT,
+    reschedule_reason TEXT,
+    confirmation_deadline TIMESTAMPTZ,
     error_code VARCHAR(100),
     error_message TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -63,6 +66,10 @@ CREATE TABLE IF NOT EXISTS "BloomCare".appointment_booking_operations (
     completed_at TIMESTAMPTZ,
     CONSTRAINT uq_booking_patient_idempotency UNIQUE (patient_id, idempotency_key)
 );
+
+ALTER TABLE "BloomCare".appointment_booking_operations
+    ADD COLUMN IF NOT EXISTS reschedule_reason TEXT,
+    ADD COLUMN IF NOT EXISTS confirmation_deadline TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS "BloomCare".appointment_slot_reservations (
     id VARCHAR(36) PRIMARY KEY,

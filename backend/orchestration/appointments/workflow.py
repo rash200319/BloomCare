@@ -13,15 +13,18 @@ with workflow.unsafe.imports_passed_through():
         get_booking_timing,
         mark_reminders_scheduled,
         reserve_booking_slot,
+        reschedule_booking,
         send_booking_notification,
         validate_booking,
     )
     from backend.orchestration.appointments.contracts import (
         BookingDecisionCommand,
+        BookingRescheduleCommand,
         BookingWorkflowInput,
         FinalizeDecisionInput,
         NotificationInput,
         OperationRef,
+        RescheduleActivityInput,
     )
 
 
@@ -35,6 +38,9 @@ class AppointmentBookingWorkflow:
         self._phase = "STARTING"
         self._max_activity_attempts = 5
         self._activity_timeout_seconds = 30
+        self._schedule_version = 0
+        self._rescheduling = False
+        self._operation_id = ""
 
     def _retry_policy(self) -> RetryPolicy:
         return RetryPolicy(
@@ -55,6 +61,7 @@ class AppointmentBookingWorkflow:
 
     @workflow.run
     async def run(self, input: BookingWorkflowInput) -> str:
+        self._operation_id = input.operation_id
         self._max_activity_attempts = max(1, input.max_activity_attempts)
         self._activity_timeout_seconds = max(1, input.activity_timeout_seconds)
         ref = OperationRef(operation_id=input.operation_id)
@@ -77,6 +84,7 @@ class AppointmentBookingWorkflow:
         )
 
         timing = await self._activity(get_booking_timing, ref)
+        self._schedule_version = timing.schedule_version
         self._phase = "AWAITING_CONFIRMATION"
         try:
             await workflow.wait_condition(
@@ -107,51 +115,80 @@ class AppointmentBookingWorkflow:
         await self._activity(mark_reminders_scheduled, ref)
         self._decision = None
         self._phase = "REMINDER_SCHEDULED"
+        timing = await self._activity(get_booking_timing, ref)
+        self._schedule_version = timing.schedule_version
 
-        for hours_before in timing.reminder_hours:
-            reminder_at = datetime.fromtimestamp(
-                timing.appointment_timestamp, tz=timezone.utc
-            ) - timedelta(hours=hours_before)
-            delay = reminder_at - workflow.now()
-            if delay.total_seconds() <= 0:
-                continue
-            try:
-                await workflow.wait_condition(
-                    lambda: self._decision in {"CANCEL", "COMPLETE"},
-                    timeout=delay,
+        # Each successful reschedule changes _schedule_version, waking any old
+        # timer and rebuilding every reminder from the replacement date.
+        while True:
+            active_version = timing.schedule_version
+            schedule_changed = False
+            for hours_before in timing.reminder_hours:
+                reminder_at = datetime.fromtimestamp(
+                    timing.appointment_timestamp, tz=timezone.utc
+                ) - timedelta(hours=hours_before)
+                delay = reminder_at - workflow.now()
+                if delay.total_seconds() <= 0:
+                    continue
+                try:
+                    await workflow.wait_condition(
+                        lambda: (
+                            self._decision in {"CANCEL", "COMPLETE"}
+                            or self._schedule_version != active_version
+                        ),
+                        timeout=delay,
+                    )
+                except asyncio.TimeoutError:
+                    await self._activity(
+                        send_booking_notification,
+                        NotificationInput(
+                            input.operation_id,
+                            "APPOINTMENT_REMINDER",
+                            "PATIENT",
+                            occurrence=f"{hours_before}h",
+                            schedule_version=active_version,
+                        ),
+                    )
+                    continue
+
+                if self._schedule_version != active_version:
+                    schedule_changed = True
+                    break
+                state = await self._activity(
+                    finalize_booking_decision,
+                    FinalizeDecisionInput(input.operation_id, self._decision or "CANCEL"),
                 )
-            except asyncio.TimeoutError:
-                await self._activity(
-                    send_booking_notification,
-                    NotificationInput(
-                        input.operation_id,
-                        "APPOINTMENT_REMINDER",
-                        "PATIENT",
-                        occurrence=f"{hours_before}h",
-                    ),
-                )
+                self._decision_processed = True
+                self._phase = state
+                return state
+
+            if schedule_changed:
+                timing = await self._activity(get_booking_timing, ref)
                 continue
 
+            self._phase = "AWAITING_COMPLETION"
+            await workflow.wait_condition(
+                lambda: (
+                    self._decision in {"CANCEL", "COMPLETE"}
+                    or self._schedule_version != active_version
+                )
+            )
+            if self._schedule_version != active_version:
+                timing = await self._activity(get_booking_timing, ref)
+                self._phase = "REMINDER_SCHEDULED"
+                continue
             state = await self._activity(
                 finalize_booking_decision,
-                FinalizeDecisionInput(input.operation_id, self._decision or "CANCEL"),
+                FinalizeDecisionInput(input.operation_id, self._decision or "COMPLETE"),
             )
             self._decision_processed = True
             self._phase = state
             return state
 
-        self._phase = "AWAITING_COMPLETION"
-        await workflow.wait_condition(lambda: self._decision in {"CANCEL", "COMPLETE"})
-        state = await self._activity(
-            finalize_booking_decision,
-            FinalizeDecisionInput(input.operation_id, self._decision or "COMPLETE"),
-        )
-        self._decision_processed = True
-        self._phase = state
-        return state
-
     @workflow.update
     async def decide(self, command: BookingDecisionCommand) -> str:
+        if self._rescheduling:
+            await workflow.wait_condition(lambda: not self._rescheduling)
         decision = command.decision.strip().upper()
         if decision not in {"CONFIRM", "CANCEL", "COMPLETE"}:
             raise ValueError("Decision must be CONFIRM, CANCEL, or COMPLETE")
@@ -168,6 +205,50 @@ class AppointmentBookingWorkflow:
         self._decision = decision
         await workflow.wait_condition(lambda: self._decision_processed)
         return f"{decision} applied"
+
+    @workflow.update
+    async def reschedule(self, command: BookingRescheduleCommand) -> str:
+        if self._phase not in {
+            "AWAITING_CONFIRMATION",
+            "CONFIRMED",
+            "REMINDER_SCHEDULED",
+            "AWAITING_COMPLETION",
+        }:
+            raise ValueError(f"Rescheduling is not allowed while workflow is {self._phase}")
+        if self._decision is not None:
+            raise ValueError("A booking decision is already being processed")
+        if self._rescheduling:
+            raise ValueError("A reschedule request is already being processed")
+
+        self._rescheduling = True
+        try:
+            result = await self._activity(
+                reschedule_booking,
+                RescheduleActivityInput(
+                    operation_id=self._operation_id,
+                    appointment_timestamp=command.appointment_timestamp,
+                    duration_minutes=command.duration_minutes,
+                    target_schedule_version=self._schedule_version + 1,
+                    reason=command.reason,
+                ),
+            )
+            self._schedule_version = result.schedule_version
+            for recipient_type in ("PATIENT", "SPECIALIST"):
+                await self._activity(
+                    send_booking_notification,
+                    NotificationInput(
+                        self._operation_id,
+                        "APPOINTMENT_RESCHEDULED",
+                        recipient_type,
+                        schedule_version=result.schedule_version,
+                    ),
+                )
+            if result.previous_status != "AWAITING_CONFIRMATION":
+                await self._activity(mark_reminders_scheduled, OperationRef(self._operation_id))
+                self._phase = "REMINDER_SCHEDULED"
+            return f"Appointment rescheduled (schedule version {result.schedule_version})"
+        finally:
+            self._rescheduling = False
 
     @workflow.query
     def state(self) -> str:

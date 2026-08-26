@@ -56,3 +56,24 @@ async def submit_booking_decision(workflow_id: str, decision: str) -> str:
         BookingDecisionCommand(decision=decision),
     )
 
+
+async def submit_booking_reschedule(
+    workflow_id: str,
+    *,
+    appointment_timestamp: float,
+    duration_minutes: int,
+    reason: str | None,
+) -> str:
+    from backend.orchestration.appointments.contracts import BookingRescheduleCommand
+    from backend.orchestration.appointments.workflow import AppointmentBookingWorkflow
+
+    client = await get_temporal_client()
+    handle = client.get_workflow_handle(workflow_id)
+    return await handle.execute_update(
+        AppointmentBookingWorkflow.reschedule,
+        BookingRescheduleCommand(
+            appointment_timestamp=appointment_timestamp,
+            duration_minutes=duration_minutes,
+            reason=reason,
+        ),
+    )

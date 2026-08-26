@@ -13,6 +13,7 @@ from backend.orchestration.appointments.activities import (
     get_booking_timing,
     mark_reminders_scheduled,
     reserve_booking_slot,
+    reschedule_booking,
     send_booking_notification,
     validate_booking,
 )
@@ -41,6 +42,7 @@ async def main() -> None:
                 activities=[
                     validate_booking,
                     reserve_booking_slot,
+                    reschedule_booking,
                     create_reserved_appointment,
                     finalize_booking_decision,
                     get_booking_timing,
@@ -58,4 +60,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-

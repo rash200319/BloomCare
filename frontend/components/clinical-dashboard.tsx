@@ -38,6 +38,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import ProfileSettingsDialog from "./profile-settings-dialog"
+import SpecialistBookingRequests from "./specialist-booking-requests"
 import {
   BarChart,
   Bar,
@@ -2251,6 +2252,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
             </TabsContent>
 
             <TabsContent value="schedule" className="space-y-6">
+              <SpecialistBookingRequests />
               {/* Appointment Status Filter */}
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-2 bg-white/50 rounded-xl px-4 py-2 border border-slate-100">

@@ -19,12 +19,14 @@ Implemented in the first vertical slice:
 - [x] Durable confirmation timeout and 24/2-hour reminder timers
 - [x] Existing specialist status endpoint bridge for workflow-backed appointments
 - [x] Patient request form and operation-status polling
+- [x] Atomic rescheduling with schedule-versioned timer recalculation
+- [x] Patient cancellation dialog with reason and Temporal status update
+- [x] Specialist Booking Requests view with deadlines, decisions, and errors
 - [x] Local Temporal Compose stack and separate worker deployment command
 - [x] API, persistence, overlap, notification, and time-skipping workflow tests
 
 Planned follow-up work:
 
-- [ ] Atomic rescheduling with timer recalculation
 - [ ] SMS, email, or push provider activities
 - [ ] Mobile/offline booking migration to asynchronous operation IDs
 - [ ] Encrypted Temporal payload codec and production observability
@@ -190,6 +192,8 @@ backend/
 frontend/
   lib/appointment-orchestration.ts
   components/appointment-operation-status.tsx
+  components/patient-appointment-request.tsx
+  components/specialist-booking-requests.tsx
 infra/temporal/
   docker-compose.yml
 ```

@@ -30,10 +30,11 @@ class AppointmentBookingOperation(Base):
     status = Column(String(50), nullable=False, default="REQUESTED", index=True)
     schedule_version = Column(Integer, nullable=False, default=1)
     decision_reason = Column(Text, nullable=True)
+    reschedule_reason = Column(Text, nullable=True)
+    confirmation_deadline = Column(DateTime(timezone=True), nullable=True)
     error_code = Column(String(100), nullable=True)
     error_message = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
-

@@ -10,11 +10,14 @@ from temporalio.worker import Worker
 
 from backend.orchestration.appointments.contracts import (
     BookingDecisionCommand,
+    BookingRescheduleCommand,
     BookingTiming,
     BookingWorkflowInput,
     FinalizeDecisionInput,
     NotificationInput,
     OperationRef,
+    RescheduleActivityInput,
+    RescheduleResult,
 )
 from backend.orchestration.appointments.workflow import AppointmentBookingWorkflow
 
@@ -64,6 +67,16 @@ async def mock_mark_reminders_scheduled(_input: OperationRef) -> None:
     return None
 
 
+@activity.defn(name="reschedule_booking")
+async def mock_reschedule_booking(input: RescheduleActivityInput) -> RescheduleResult:
+    return RescheduleResult(
+        appointment_timestamp=input.appointment_timestamp,
+        schedule_version=input.target_schedule_version,
+        reminder_hours=[24, 2],
+        previous_status="AWAITING_CONFIRMATION",
+    )
+
+
 @pytest.mark.asyncio
 async def test_workflow_durably_expires_without_human_confirmation():
     try:
@@ -84,6 +97,7 @@ async def test_workflow_durably_expires_without_human_confirmation():
                 mock_get_booking_timing,
                 mock_finalize_booking_decision,
                 mock_mark_reminders_scheduled,
+                mock_reschedule_booking,
             ],
         ):
             result = await environment.client.execute_workflow(
@@ -115,6 +129,7 @@ async def test_workflow_accepts_human_confirmation_and_completion_updates():
                 mock_get_booking_timing,
                 mock_finalize_booking_decision,
                 mock_mark_reminders_scheduled,
+                mock_reschedule_booking,
             ],
         ):
             handle = await environment.client.start_workflow(
@@ -130,6 +145,16 @@ async def test_workflow_accepts_human_confirmation_and_completion_updates():
                 await asyncio.sleep(0.01)
             else:
                 pytest.fail("Workflow did not reach confirmation state")
+
+            reschedule_message = await handle.execute_update(
+                AppointmentBookingWorkflow.reschedule,
+                BookingRescheduleCommand(
+                    appointment_timestamp=(datetime.now(timezone.utc) + timedelta(days=3)).timestamp(),
+                    duration_minutes=45,
+                    reason="Patient requested a later date",
+                ),
+            )
+            assert "schedule version 2" in reschedule_message
 
             message = await handle.execute_update(
                 AppointmentBookingWorkflow.decide,
