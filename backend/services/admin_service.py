@@ -448,7 +448,7 @@ class AdminService:
     @staticmethod
     def get_specialist_workload(db: Session) -> List[SpecialistWorkload]:
         """
-        🏥 KPI: Specialist Workload Distribution
+        KPI: Specialist Workload Distribution
         Aggregates stage2_recommendations by specialist to show workload.
         """
         try:
@@ -563,7 +563,7 @@ class AdminService:
     @staticmethod
     def get_cost_impact_estimate(db: Session) -> Dict[str, Any]:
         """
-        💰 KPI: Cost Savings Estimate
+        KPI: Cost Savings Estimate
         Estimates cost savings from early detection and prevention.
         Based on: (High-Risk Cases Detected) × (Average Cost Avoidance per Case)
         """

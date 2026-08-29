@@ -260,8 +260,8 @@ Initialize schema / seed (Postgres):
 
 ```bash
 python backend/db/init_db.py
-# Optional: upgrade legacy OBSERTITIAN rows → CLINICAL_SPECIALIST
-python backend/db/migrate_roles.py
+# Optional full demo dataset (after schema):
+#   psql -d bloomcare_db -f backend/db/seeds.sql
 ```
 
 If PostgreSQL is not running, the backend automatically falls back to SQLite at  
@@ -585,7 +585,6 @@ npm run typecheck
 ```bash
 python -m uvicorn backend.main:app --host 0.0.0.0 --port 8001 --reload
 python backend/db/init_db.py
-python backend/db/migrate_roles.py   # optional Postgres role upgrade
 pip install -r backend/requirements-dev.txt
 python -m pytest backend/tests -v
 ```
@@ -652,7 +651,7 @@ Suggested demo walkthrough (interview):
 | LLM / assistant errors | Set `BLOOMCARE_MOCK_LLM=true` for local development |
 | `ModuleNotFoundError: backend` | Run uvicorn from the repo root, not from inside `backend/` |
 | Port conflicts | Change uvicorn port and update frontend/mobile env vars to match |
-| Legacy `OBSERTITIAN` role errors | Run `python backend/db/migrate_roles.py` on Postgres |
+| Legacy `OBSERTITIAN` role errors | Re-run `python backend/db/init_db.py` (migrates roles) |
 
 ---
 
@@ -710,6 +709,8 @@ Access / audit / integrity / transmission map: [`docs/CONTROL_MAPPING.md`](docs/
 
 ## Related Documentation
 
+- [`docs/OOP_AND_DESIGN_PATTERNS.md`](docs/OOP_AND_DESIGN_PATTERNS.md) — OOP + design patterns with why/where (interview study guide)
+- [`docs/INTERVIEW_README.md`](docs/INTERVIEW_README.md) — complete interview prep
 - [`SECURITY.md`](SECURITY.md) — vulnerability reporting + pen-test readiness checklist
 - [`docs/CONTROL_MAPPING.md`](docs/CONTROL_MAPPING.md) — access / audit / integrity / transmission map
 - [`backend/README.md`](backend/README.md) — API, ML pipeline, and backend ops

@@ -1,16 +1,289 @@
+"""Authentication and password management service."""
+from sqlalchemy import String, cast
 from sqlalchemy.orm import Session
-from backend.core.security import verify_password
-from backend.models.user import User
+from fastapi import HTTPException, status
+
+from backend.models.user import User, UserRole
+from backend.models.patient import Patient
+from backend.core.security import get_password_hash, verify_password
+from backend.services.password_helpers import validate_password_strength
 
 
-def authenticate(db: Session, email: str, password: str) -> User | None:
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        return None
-    if not verify_password(password, user.hashed_password):
-        return None
-    return user
+class AuthService:
+    """Service for authentication and password management."""
 
+    @staticmethod
+    def _validate_password_setup(password: str, confirm_password: str) -> None:
+        if password != confirm_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password and confirm password do not match",
+            )
+        if not validate_password_strength(password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password must be at least 8 characters with uppercase, lowercase, digit, and special character",
+            )
 
-def get_by_email(db: Session, email: str) -> User | None:
-    return db.query(User).filter(User.email == email).first()
+    @staticmethod
+    def authenticate_patient(db: Session, national_id: str, password: str) -> Patient:
+        """Authenticate patient using national_id + password from patients table."""
+        patient = db.query(Patient).filter(
+            Patient.national_id == national_id).first()
+        if not patient or not verify_password(password, patient.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return patient
+
+    @staticmethod
+    def authenticate_staff(db: Session, email: str, password: str) -> User:
+        """Authenticate frontline staff or doctor using email + password."""
+        user = db.query(User).filter(
+            User.email == email,
+            cast(User.role, String).in_(["FRONTLINE_STAFF", "CLINICAL_SPECIALIST", "DOCTOR", "ADMIN"]),
+        ).first()
+        if not user or not verify_password(password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return user
+
+    @staticmethod
+    def setup_patient_first_login_password(
+        db: Session,
+        national_id: str,
+        temporary_password: str,
+        password: str,
+        confirm_password: str,
+    ) -> dict:
+        """Set first-login password; requires the issued temporary password."""
+        patient = db.query(Patient).filter(
+            Patient.national_id == national_id).first()
+        if not patient:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Patient account not found")
+        if not patient.first_time_login:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Password already set")
+        if not verify_password(temporary_password, patient.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid temporary password",
+            )
+
+        AuthService._validate_password_setup(password, confirm_password)
+        patient.hashed_password = get_password_hash(password)
+        patient.first_time_login = False
+        patient.token_version = int(getattr(patient, "token_version", 0) or 0) + 1
+        db.commit()
+        return {"message": "Password set successfully"}
+
+    @staticmethod
+    def setup_staff_first_login_password(
+        db: Session,
+        email: str,
+        temporary_password: str,
+        password: str,
+        confirm_password: str,
+    ) -> dict:
+        """Set first-login password; requires the issued temporary password."""
+        user = db.query(User).filter(
+            User.email == email,
+            cast(User.role, String).in_(["FRONTLINE_STAFF", "CLINICAL_SPECIALIST", "DOCTOR", "ADMIN"]),
+        ).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Staff account not found")
+        if not user.first_time_login:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Password already set")
+        if not verify_password(temporary_password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid temporary password",
+            )
+
+        AuthService._validate_password_setup(password, confirm_password)
+        user.hashed_password = get_password_hash(password)
+        user.first_time_login = False
+        user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
+        db.commit()
+        return {"message": "Password set successfully"}
+
+    @staticmethod
+    def change_password(db: Session, user_pk: str, old_password: str, new_password: str) -> dict:
+        """Change password for an authenticated user."""
+        if not validate_password_strength(new_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password must be at least 8 characters with uppercase, lowercase, digit, and special character",
+            )
+
+        user = db.query(User).filter(User.id == user_pk).first()
+        if user:
+            if not verify_password(old_password, user.hashed_password):
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
+
+            user.hashed_password = get_password_hash(new_password)
+            user.first_time_login = False
+            user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
+            db.commit()
+            return {"message": "Password changed successfully"}
+
+        patient = db.query(Patient).filter(Patient.id == user_pk).first()
+        if not patient:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        if not verify_password(old_password, patient.hashed_password):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
+
+        patient.hashed_password = get_password_hash(new_password)
+        patient.first_time_login = False
+        patient.token_version = int(getattr(patient, "token_version", 0) or 0) + 1
+        db.commit()
+        return {"message": "Password changed successfully"}
+
+    @staticmethod
+    def request_patient_password_reset(db: Session, national_id: str) -> dict:
+        """Request password reset OTP for patient using national ID."""
+        from backend.services.otp_service import OTPService
+        from backend.models.otp import OTPType
+
+        patient = db.query(Patient).filter(
+            Patient.national_id == national_id).first()
+        if not patient:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Patient account not found"
+            )
+        if not patient.contact_number:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Patient contact number not configured"
+            )
+
+        plaintext_otp, otp_record = OTPService.create_patient_otp(
+            db,
+            patient_id=str(patient.id),
+            otp_type=OTPType.PASSWORD_RESET,
+            destination=patient.contact_number
+        )
+
+        payload = {
+            "message": "OTP sent to registered phone number",
+            "destination_masked": OTPService.mask_contact(patient.contact_number, "phone"),
+            "expires_in_seconds": 600,
+        }
+        from backend.core.config import settings
+        if settings.BLOOMCARE_EXPOSE_DEMO_OTP:
+            payload["otp_for_testing"] = plaintext_otp
+        return payload
+
+    @staticmethod
+    def verify_and_reset_patient_password(
+        db: Session,
+        national_id: str,
+        otp_code: str,
+        new_password: str,
+        confirm_password: str
+    ) -> dict:
+        """Verify OTP and reset patient password."""
+        from backend.services.otp_service import OTPService
+        from backend.models.otp import OTPType
+
+        # Find patient
+        patient = db.query(Patient).filter(
+            Patient.national_id == national_id).first()
+        if not patient:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Patient account not found"
+            )
+
+        # Verify OTP
+        OTPService.verify_patient_otp(
+            db, str(patient.id), otp_code, OTPType.PASSWORD_RESET)
+
+        # Validate and set new password
+        AuthService._validate_password_setup(new_password, confirm_password)
+        patient.hashed_password = get_password_hash(new_password)
+        patient.first_time_login = False
+        patient.token_version = int(getattr(patient, "token_version", 0) or 0) + 1
+        db.commit()
+
+        return {"message": "Password reset successfully", "password_reset": True}
+
+    @staticmethod
+    def request_staff_password_reset(db: Session, email: str) -> dict:
+        """Request password reset OTP for staff using email."""
+        from backend.services.otp_service import OTPService
+        from backend.models.otp import OTPType
+
+        user = db.query(User).filter(
+            User.email == email,
+            User.role.in_([UserRole.FRONTLINE_STAFF.value,
+                          UserRole.CLINICAL_SPECIALIST.value, UserRole.ADMIN.value])
+        ).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Staff account not found"
+            )
+
+        plaintext_otp, otp_record = OTPService.create_staff_otp(
+            db,
+            staff_id=str(user.id),
+            otp_type=OTPType.PASSWORD_RESET,
+            destination=user.email
+        )
+
+        payload = {
+            "message": "OTP sent to registered email",
+            "destination_masked": OTPService.mask_contact(user.email, "email"),
+            "expires_in_seconds": 600,
+        }
+        from backend.core.config import settings
+        if settings.BLOOMCARE_EXPOSE_DEMO_OTP:
+            payload["otp_for_testing"] = plaintext_otp
+        return payload
+
+    @staticmethod
+    def verify_and_reset_staff_password(
+        db: Session,
+        email: str,
+        otp_code: str,
+        new_password: str,
+        confirm_password: str
+    ) -> dict:
+        """Verify OTP and reset staff password."""
+        from backend.services.otp_service import OTPService
+        from backend.models.otp import OTPType
+
+        # Find staff
+        user = db.query(User).filter(
+            User.email == email,
+            User.role.in_([UserRole.FRONTLINE_STAFF.value,
+                          UserRole.CLINICAL_SPECIALIST.value, UserRole.ADMIN.value])
+        ).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Staff account not found"
+            )
+
+        # Verify OTP
+        OTPService.verify_staff_otp(
+            db, str(user.id), otp_code, OTPType.PASSWORD_RESET)
+
+        # Validate and set new password
+        AuthService._validate_password_setup(new_password, confirm_password)
+        user.hashed_password = get_password_hash(new_password)
+        user.first_time_login = False
+        user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
+        db.commit()
+
+        return {"message": "Password reset successfully", "password_reset": True}

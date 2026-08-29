@@ -4,7 +4,7 @@ from backend.db.base import Base
 
 
 class AuditEvent(Base):
-    """PHI access / security-relevant events (opt-in via BLOOMCARE_AUDIT_LOG_ENABLED)."""
+    """Protected health information access / security-relevant events (opt-in via BLOOMCARE_AUDIT_LOG_ENABLED)."""
 
     __tablename__ = "audit_events"
 
