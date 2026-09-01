@@ -310,6 +310,63 @@ def stage1_history(
     return response_rows
 
 
+def _mark_screening_reviewed(
+    db: Session,
+    screening: Stage1Screening,
+) -> str:
+    now = datetime.now(timezone.utc)
+    screening_id = str(screening.id)
+    try:
+        updated = (
+            db.query(Stage1Screening)
+            .filter(cast(Stage1Screening.id, String) == screening_id)
+            .update({"reviewed_at": now}, synchronize_session="fetch")
+        )
+        if updated != 1:
+            raise HTTPException(status_code=404, detail="Screening not found")
+        db.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unable to save review status: {exc}",
+        ) from exc
+    return now.isoformat()
+
+
+@router.post("/patients/{patient_id}/review")
+def mark_patient_screening_reviewed(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Mark the latest Stage 1 screening for a patient as reviewed."""
+    role = _role_name(current_user)
+    if role not in ["ADMIN", "CLINICAL_SPECIALIST", "DOCTOR"]:
+        raise HTTPException(status_code=403, detail="Not authorized to mark screenings reviewed")
+
+    ensure_patient_access(db, current_user, str(patient_id), action="triage.review")
+
+    screening = (
+        db.query(Stage1Screening)
+        .filter(cast(Stage1Screening.patient_id, String) == str(patient_id))
+        .order_by(Stage1Screening.collected_at.desc(), Stage1Screening.synced_at.desc())
+        .first()
+    )
+    if not screening:
+        raise HTTPException(status_code=404, detail="No screening found for this patient")
+
+    reviewed_at = _mark_screening_reviewed(db, screening)
+    return {
+        "screening_id": str(screening.id),
+        "patient_id": str(patient_id),
+        "reviewed_at": reviewed_at,
+        "status": "completed",
+    }
+
+
 @router.post("/{screening_id}/review")
 def mark_screening_reviewed(
     screening_id: str,
@@ -332,22 +389,9 @@ def mark_screening_reviewed(
             db, current_user, str(screening.patient_id), action="triage.review"
         )
 
-    now = datetime.now(timezone.utc)
-    screening.reviewed_at = now
-    try:
-        db.query(Stage1Screening).filter(
-            cast(Stage1Screening.id, String) == str(screening_id)
-        ).update({"reviewed_at": now}, synchronize_session="fetch")
-        db.commit()
-    except Exception as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unable to save review status: {exc}",
-        ) from exc
-
+    reviewed_at = _mark_screening_reviewed(db, screening)
     return {
         "screening_id": screening_id,
-        "reviewed_at": now.isoformat(),
+        "reviewed_at": reviewed_at,
         "status": "completed",
     }

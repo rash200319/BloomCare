@@ -14,7 +14,7 @@ const ContentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob: https:",
-  "connect-src 'self' https: http://127.0.0.1:* http://localhost:* ws: wss:",
+  "connect-src 'self' https: http://127.0.0.1:* http://localhost:* http://*.up.railway.app https://*.up.railway.app ws: wss:",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
 ].join('; ')

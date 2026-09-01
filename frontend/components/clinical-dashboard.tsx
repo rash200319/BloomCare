@@ -87,6 +87,7 @@ interface BackendStage1History {
 interface EscalatedPatient {
   id: string
   screeningId: string
+  appointmentId?: string | null
   name: string
   age: number
   gestationalWeek: number | null
@@ -504,6 +505,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
         return {
           id: row.patient_id,
           screeningId: row.screening_id,
+          appointmentId: null,
           name: row.patient_name || patient?.full_name || "Unknown Patient",
           age: patient?.age ?? parseDateToAge(patient?.date_of_birth) ?? 0,
           gestationalWeek: row.gestational_age_weeks ?? null,
@@ -876,35 +878,69 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
       return
     }
 
+    setOverviewActionMessage("Saving review...")
+    const errors: string[] = []
+    let saved = false
+
     try {
-      if (activePatient.screeningId) {
+      const patientReview = await apiRequest(`/triage/patients/${activePatient.id}/review`, {
+        method: "POST",
+      })
+      if (patientReview.ok) {
+        saved = true
+      } else if (patientReview.status !== 404) {
+        const body = await patientReview.json().catch(() => ({}))
+        errors.push(typeof body.detail === "string" ? body.detail : "Unable to save screening review")
+      }
+
+      const isRealScreening = Boolean(
+        activePatient.screeningId && activePatient.escalatedFrom !== "Appointment",
+      )
+      if (!saved && isRealScreening) {
         const reviewResponse = await apiRequest(`/triage/${activePatient.screeningId}/review`, {
           method: "POST",
         })
-        if (!reviewResponse.ok) {
+        if (reviewResponse.ok) {
+          saved = true
+        } else if (reviewResponse.status !== 404) {
           const body = await reviewResponse.json().catch(() => ({}))
-          throw new Error(typeof body.detail === "string" ? body.detail : "Unable to save review")
+          errors.push(typeof body.detail === "string" ? body.detail : "Unable to save screening review")
         }
       }
 
-      const appointmentsResponse = await apiRequest("/appointments")
-      if (appointmentsResponse.ok) {
+      const appointmentIds = new Set<string>()
+      if (activePatient.appointmentId) {
+        appointmentIds.add(activePatient.appointmentId)
+      }
+
+      const appointmentsResponse = await apiRequest("/appointments").catch(() => null)
+      if (appointmentsResponse?.ok) {
         const appointments = await appointmentsResponse.json().catch(() => [])
-        const openAppointments = Array.isArray(appointments)
-          ? appointments.filter((apt: any) => {
-              const samePatient = String(apt.patient_id) === String(activePatient.id)
-              const openStatus = ["PENDING", "SCHEDULED", "CONFIRMED"].includes(String(apt.status || "").toUpperCase())
-              return samePatient && openStatus
-            })
-          : []
-        await Promise.all(
-          openAppointments.map((apt: any) =>
-            apiRequest(`/appointments/${apt.id}/status`, {
-              method: "PATCH",
-              body: JSON.stringify({ status: "COMPLETED" }),
-            }),
-          ),
-        )
+        if (Array.isArray(appointments)) {
+          for (const apt of appointments) {
+            const samePatient = String(apt.patient_id) === String(activePatient.id)
+            const openStatus = ["PENDING", "SCHEDULED", "CONFIRMED"].includes(String(apt.status || "").toUpperCase())
+            if (samePatient && openStatus && apt.id) {
+              appointmentIds.add(String(apt.id))
+            }
+          }
+        }
+      }
+
+      const appointmentResults = await Promise.all(
+        Array.from(appointmentIds).map((appointmentId) =>
+          apiRequest(`/appointments/${appointmentId}/status`, {
+            method: "PATCH",
+            body: JSON.stringify({ status: "COMPLETED" }),
+          }).catch(() => null),
+        ),
+      )
+      if (appointmentResults.some((response) => response?.ok)) {
+        saved = true
+      }
+
+      if (!saved) {
+        throw new Error(errors[0] || "Unable to save review. Check that the backend API is reachable over HTTPS.")
       }
 
       setEscalatedPatients((current) =>
@@ -1316,7 +1352,8 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                   // Create a pseudo-patient object for display
                   const pseudoPatient: EscalatedPatient = {
                     id: apt.patient_id,
-                    screeningId: apt.id,
+                    screeningId: "",
+                    appointmentId: apt.id,
                     name: apt.patient_name || "Unknown Patient",
                     age: 0,
                     gestationalWeek: null,
@@ -1339,7 +1376,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                 }}
                 className={cn(
                   "w-full p-4 rounded-xl mb-3 text-left transition-all relative overflow-hidden group",
-                  selectedPatient?.screeningId === apt.id
+                  selectedPatient?.appointmentId === apt.id
                     ? "bg-white shadow-xl shadow-slate-200/50 border-2 border-primary"
                     : "hover:bg-slate-50 border-2 border-transparent"
                 )}

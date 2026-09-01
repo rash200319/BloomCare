@@ -11,16 +11,31 @@ function normalizeBase(url: string): string {
   return url.trim().replace(/\/+$/, "")
 }
 
+function preferHttpsForRemote(url: string): string {
+  const normalized = normalizeBase(url)
+  try {
+    const parsed = new URL(normalized)
+    const isLocal = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1"
+    if (!isLocal && parsed.protocol === "http:") {
+      parsed.protocol = "https:"
+      return normalizeBase(parsed.toString())
+    }
+  } catch {
+    return normalized
+  }
+  return normalized
+}
+
 /** Backend origin without /api/v1 (e.g. http://127.0.0.1:8001). */
 export function getBackendOrigin(): string {
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL
   if (backend && backend.trim()) {
-    return normalizeBase(backend)
+    return preferHttpsForRemote(backend)
   }
 
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL
   if (apiBase && apiBase.trim()) {
-    return normalizeBase(apiBase.replace(/\/api\/v1\/?$/i, ""))
+    return preferHttpsForRemote(apiBase.replace(/\/api\/v1\/?$/i, ""))
   }
 
   return DEFAULT_ORIGIN
@@ -30,12 +45,12 @@ export function getBackendOrigin(): string {
 export function getApiBase(): string {
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL
   if (apiBase && apiBase.trim()) {
-    return normalizeBase(apiBase)
+    return preferHttpsForRemote(apiBase)
   }
 
   const legacy = process.env.NEXT_PUBLIC_API_BASE
   if (legacy && legacy.trim()) {
-    return normalizeBase(legacy)
+    return preferHttpsForRemote(legacy)
   }
 
   return `${getBackendOrigin()}/api/v1`
