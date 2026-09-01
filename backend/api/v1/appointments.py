@@ -193,19 +193,27 @@ def update_appointment_status(
         appointment.status, requested_status)
     
     old_status = appointment.status
+    actor_id = str(getattr(current_user, "id", "") or "") or None
     appointment.status = requested_status
 
     if requested_status == "CANCELLED":
         cancellation_reason = getattr(status_update, "notes", None)
         if cancellation_reason:
             appointment.reason_for_cancellation = cancellation_reason
-        appointment.cancelled_by_id = getattr(current_user, "id", None)
+        appointment.cancelled_by_id = actor_id
         appointment.cancelled_at = datetime.now(timezone.utc)
     elif requested_status == "COMPLETED":
-        appointment.completed_by_id = getattr(current_user, "id", None)
+        appointment.completed_by_id = actor_id
         appointment.completed_at = datetime.now(timezone.utc)
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unable to save appointment status: {exc}",
+        ) from exc
     db.refresh(appointment)
 
     # Create notifications for status changes

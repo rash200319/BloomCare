@@ -58,10 +58,11 @@ class AppointmentRules:
 
     ALL_APPOINTMENT_TYPES = STANDARD_APPOINTMENT_TYPES | SPECIALIST_APPOINTMENT_TYPES
 
+    # Doctors complete visits from PENDING/SCHEDULED without a required CONFIRMED step.
     STATUS_FLOW = {
-        "PENDING": {"CONFIRMED", "CANCELLED"},
-        "CONFIRMED": {"COMPLETED", "CANCELLED"},
-        "COMPLETED": {"CANCELLED"},
+        "PENDING": {"CONFIRMED", "COMPLETED", "CANCELLED"},
+        "CONFIRMED": {"PENDING", "COMPLETED", "CANCELLED"},
+        "COMPLETED": set(),
         "CANCELLED": set(),
     }
 
@@ -300,6 +301,11 @@ class AppointmentRules:
             queue_number=appointment.queue_number,
             status=_AS()._normalize_status(appointment.status),
             notes=appointment.notes,
+            completed_by_id=getattr(appointment, "completed_by_id", None),
+            completed_at=getattr(appointment, "completed_at", None),
+            cancelled_by_id=getattr(appointment, "cancelled_by_id", None),
+            cancelled_at=getattr(appointment, "cancelled_at", None),
+            reason_for_cancellation=getattr(appointment, "reason_for_cancellation", None),
             created_at=appointment.created_at,
             updated_at=appointment.updated_at,
             patient_risk_level=patient_risk_level,
