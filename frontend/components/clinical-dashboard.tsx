@@ -469,9 +469,10 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
     setIsLoadingCases(true)
     setCasesError(null)
     try {
-      const [historyRes, patientsRes] = await Promise.all([
+      const [historyRes, patientsRes, appointmentsRes] = await Promise.all([
         apiRequest("/triage/history?limit=500"),
         apiRequest("/patients/?limit=500"),
+        apiRequest("/appointments?limit=500"),
       ])
 
       if (!historyRes.ok) {
@@ -483,7 +484,25 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
 
       const historyRows = (await historyRes.json()) as BackendStage1History[]
       const patientRows = (await patientsRes.json()) as BackendPatient[]
+      const appointmentRows = appointmentsRes.ok
+        ? ((await appointmentsRes.json().catch(() => [])) as Array<{
+            id?: string
+            patient_id?: string
+            status?: string
+          }>)
+        : []
       const patientsById = new Map(patientRows.map((patient) => [patient.id, patient]))
+      const openStatuses = new Set(["PENDING", "SCHEDULED", "CONFIRMED"])
+      const appointmentsByPatient = new Map<string, Array<{ id?: string; status?: string }>>()
+      if (Array.isArray(appointmentRows)) {
+        for (const apt of appointmentRows) {
+          const patientId = String(apt.patient_id || "")
+          if (!patientId) continue
+          const existing = appointmentsByPatient.get(patientId) || []
+          existing.push(apt)
+          appointmentsByPatient.set(patientId, existing)
+        }
+      }
 
       const highRiskRows = historyRows.filter((row) => {
         const score = typeof row.edge_risk_score === "number" ? row.edge_risk_score : 0
@@ -506,10 +525,18 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
 
       const mappedCases: EscalatedPatient[] = Array.from(latestByPatient.values()).map((row) => {
         const patient = patientsById.get(row.patient_id)
+        const patientAppointments = appointmentsByPatient.get(String(row.patient_id)) || []
+        const openAppointment = patientAppointments.find((apt) =>
+          openStatuses.has(String(apt.status || "").toUpperCase()),
+        )
+        const completedAppointment = patientAppointments.find(
+          (apt) => String(apt.status || "").toUpperCase() === "COMPLETED",
+        )
+        const isCompleted = Boolean(completedAppointment) && !openAppointment
         return {
           id: row.patient_id,
           screeningId: row.screening_id,
-          appointmentId: null,
+          appointmentId: openAppointment?.id || completedAppointment?.id || null,
           name: row.patient_name || patient?.full_name || "Unknown Patient",
           age: patient?.age ?? parseDateToAge(patient?.date_of_birth) ?? 0,
           gestationalWeek: row.gestational_age_weeks ?? null,
@@ -518,7 +545,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
           riskScore: typeof row.edge_risk_score === "number" ? row.edge_risk_score : 0,
           riskLevel: "high",
           primaryRisk: "High Risk",
-          status: row.reviewed_at ? "completed" : "pending",
+          status: isCompleted ? "completed" : "pending",
           collectedAt: row.collected_at || null,
           vitals: {
             systolic: row.systolic ?? null,
@@ -530,13 +557,14 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
         }
       })
 
+      const pendingCases = mappedCases.filter((entry) => entry.status === "pending")
       setEscalatedPatients(mappedCases)
       setSelectedPatient((current) => {
         if (current) {
-          const stillPresent = mappedCases.find((entry) => entry.id === current.id)
-          if (stillPresent) return stillPresent
+          const stillPending = pendingCases.find((entry) => entry.id === current.id)
+          if (stillPending) return stillPending
         }
-        return mappedCases[0] ?? null
+        return pendingCases[0] ?? null
       })
     } catch (error) {
       setCasesError(error instanceof Error ? error.message : "Unable to load escalated cases")
@@ -623,8 +651,9 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
 
   const filteredPatients = escalatedPatients.filter(
     (p) =>
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.id.toLowerCase().includes(searchQuery.toLowerCase())
+      p.status === "pending" &&
+      (p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.id.toLowerCase().includes(searchQuery.toLowerCase())),
   )
 
   const filteredTodayAppointments = useMemo(() => {
@@ -932,17 +961,17 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
         throw new Error(await readDetail(response, "Unable to update appointment"))
       }
 
-      setEscalatedPatients((current) =>
-        current.map((patient) =>
-          patient.id === activePatient.id
-            ? { ...patient, status: "completed", appointmentId }
-            : patient,
-        ),
-      )
-      setSelectedPatient((current) =>
-        current ? { ...current, status: "completed", appointmentId } : current,
-      )
+      setEscalatedPatients((current) => current.filter((patient) => patient.id !== activePatient.id))
+      setSelectedPatient((current) => {
+        if (current?.id !== activePatient.id) return current
+        return (
+          escalatedPatients.find(
+            (patient) => patient.id !== activePatient.id && patient.status === "pending",
+          ) ?? null
+        )
+      })
       setOverviewActionMessage("Appointment marked as reviewed")
+      await loadEscalatedCases()
       await loadDoctorAppointments()
       await loadTodayAppointments()
     } catch (error) {
