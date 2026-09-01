@@ -12,30 +12,28 @@ function normalizeBase(url: string): string {
 }
 
 function preferHttpsForRemote(url: string): string {
-  const normalized = normalizeBase(url)
   try {
-    const parsed = new URL(normalized)
+    const parsed = new URL(url.trim())
     const isLocal = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1"
     if (!isLocal && parsed.protocol === "http:") {
       parsed.protocol = "https:"
-      return normalizeBase(parsed.toString())
     }
+    return parsed.toString()
   } catch {
-    return normalized
+    return url.trim()
   }
-  return normalized
 }
 
 /** Backend origin without /api/v1 (e.g. http://127.0.0.1:8001). */
 export function getBackendOrigin(): string {
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL
   if (backend && backend.trim()) {
-    return preferHttpsForRemote(backend)
+    return normalizeBase(preferHttpsForRemote(backend))
   }
 
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL
   if (apiBase && apiBase.trim()) {
-    return preferHttpsForRemote(apiBase.replace(/\/api\/v1\/?$/i, ""))
+    return normalizeBase(preferHttpsForRemote(apiBase.replace(/\/api\/v1\/?$/i, "")))
   }
 
   return DEFAULT_ORIGIN
@@ -45,12 +43,12 @@ export function getBackendOrigin(): string {
 export function getApiBase(): string {
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL
   if (apiBase && apiBase.trim()) {
-    return preferHttpsForRemote(apiBase)
+    return normalizeBase(preferHttpsForRemote(apiBase))
   }
 
   const legacy = process.env.NEXT_PUBLIC_API_BASE
   if (legacy && legacy.trim()) {
-    return preferHttpsForRemote(legacy)
+    return normalizeBase(preferHttpsForRemote(legacy))
   }
 
   return `${getBackendOrigin()}/api/v1`
@@ -64,8 +62,11 @@ export function getApiBaseCandidates(): string[] {
 export const BACKEND_URL = getBackendOrigin()
 export const API_V1_BASE = getApiBase()
 
-/** Join a client path onto the API base. Collection paths get a trailing slash
- *  so FastAPI does not 307 to http:// behind Railway (mixed content). */
+/** Join a client path onto the API base. Only list collections get a trailing
+ *  slash. Action routes like /evaluate-differential must stay unslashed or
+ *  FastAPI 307s to http:// behind Railway (mixed content). */
+const TRAILING_SLASH_PATHS = new Set(["/appointments", "/patients", "/notifications"])
+
 export function toApiUrl(path: string, base: string = getApiBase()): string {
   if (path.startsWith("http")) {
     return preferHttpsForRemote(path)
@@ -73,10 +74,12 @@ export function toApiUrl(path: string, base: string = getApiBase()): string {
 
   const [rawPath, query] = path.split("?")
   let pathname = rawPath.startsWith("/") ? rawPath : `/${rawPath}`
-  if (/^\/[A-Za-z0-9_-]+$/.test(pathname)) {
+  if (TRAILING_SLASH_PATHS.has(pathname)) {
     pathname = `${pathname}/`
   }
-  return `${normalizeBase(base)}${pathname}${query ? `?${query}` : ""}`
+  return preferHttpsForRemote(
+    `${normalizeBase(base)}${pathname}${query ? `?${query}` : ""}`,
+  )
 }
 
 export function getAccessToken(): string | null {
