@@ -194,27 +194,69 @@ def update_appointment_status(
     
     old_status = appointment.status
     actor_id = str(getattr(current_user, "id", "") or "") or None
-    appointment.status = requested_status
+    now = datetime.now(timezone.utc)
+    values: dict[str, Any] = {
+        "status": requested_status,
+        "updated_at": now,
+    }
 
     if requested_status == "CANCELLED":
         cancellation_reason = getattr(status_update, "notes", None)
         if cancellation_reason:
-            appointment.reason_for_cancellation = cancellation_reason
-        appointment.cancelled_by_id = actor_id
-        appointment.cancelled_at = datetime.now(timezone.utc)
+            values["reason_for_cancellation"] = cancellation_reason
+        values["cancelled_by_id"] = actor_id
+        values["cancelled_at"] = now
     elif requested_status == "COMPLETED":
-        appointment.completed_by_id = actor_id
-        appointment.completed_at = datetime.now(timezone.utc)
+        if not actor_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot complete an appointment without an authenticated user id",
+            )
+        values["completed_by_id"] = actor_id
+        values["completed_at"] = now
 
     try:
+        updated_count = (
+            db.query(Appointment)
+            .filter(Appointment.id == appointment_id)
+            .update(values, synchronize_session="fetch")
+        )
+        if updated_count != 1:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Appointment '{appointment_id}' not found",
+            )
         db.commit()
+    except HTTPException:
+        raise
     except Exception as exc:
         db.rollback()
+        # Older local DBs may lack audit columns; still persist the status itself.
+        try:
+            updated_count = (
+                db.query(Appointment)
+                .filter(Appointment.id == appointment_id)
+                .update({"status": requested_status}, synchronize_session="fetch")
+            )
+            if updated_count != 1:
+                raise exc
+            db.commit()
+        except HTTPException:
+            raise
+        except Exception:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unable to save appointment status: {exc}",
+            ) from exc
+
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appointment:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unable to save appointment status: {exc}",
-        ) from exc
-    db.refresh(appointment)
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Appointment '{appointment_id}' not found",
+        )
 
     # Create notifications for status changes
     from backend.services.notification_service import NotificationService

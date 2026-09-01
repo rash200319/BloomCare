@@ -60,7 +60,8 @@ class AppointmentRules:
 
     # Doctors complete visits from PENDING/SCHEDULED without a required CONFIRMED step.
     STATUS_FLOW = {
-        "PENDING": {"CONFIRMED", "COMPLETED", "CANCELLED"},
+        "PENDING": {"CONFIRMED", "SCHEDULED", "COMPLETED", "CANCELLED"},
+        "SCHEDULED": {"PENDING", "CONFIRMED", "COMPLETED", "CANCELLED"},
         "CONFIRMED": {"PENDING", "COMPLETED", "CANCELLED"},
         "COMPLETED": set(),
         "CANCELLED": set(),
@@ -299,7 +300,7 @@ class AppointmentRules:
             appointment_date=appointment.appointment_date,
             duration_minutes=appointment.duration_minutes,
             queue_number=appointment.queue_number,
-            status=_AS()._normalize_status(appointment.status),
+            status=(appointment.status or "PENDING").strip().upper(),
             notes=appointment.notes,
             completed_by_id=getattr(appointment, "completed_by_id", None),
             completed_at=getattr(appointment, "completed_at", None),

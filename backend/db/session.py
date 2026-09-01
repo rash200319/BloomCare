@@ -88,7 +88,58 @@ def _create_engine_with_fallback():
         return engine
 
 
+def _ensure_runtime_compat_columns(engine) -> None:
+    """Add columns used by status/review persistence on older local SQLite DBs."""
+    dialect = engine.dialect.name
+    try:
+        with engine.begin() as conn:
+            if dialect == "postgresql":
+                conn.execute(text(
+                    'ALTER TABLE IF EXISTS "BloomCare".appointments ADD COLUMN IF NOT EXISTS completed_by_id UUID'
+                ))
+                conn.execute(text(
+                    'ALTER TABLE IF EXISTS "BloomCare".appointments ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ'
+                ))
+                conn.execute(text(
+                    'ALTER TABLE IF EXISTS "BloomCare".appointments ADD COLUMN IF NOT EXISTS cancelled_by_id UUID'
+                ))
+                conn.execute(text(
+                    'ALTER TABLE IF EXISTS "BloomCare".appointments ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ'
+                ))
+                conn.execute(text(
+                    'ALTER TABLE IF EXISTS "BloomCare".appointments ADD COLUMN IF NOT EXISTS reason_for_cancellation VARCHAR(255)'
+                ))
+                conn.execute(text(
+                    'ALTER TABLE IF EXISTS "BloomCare".stage1_screenings ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ'
+                ))
+            elif dialect == "sqlite":
+                appointment_cols = {
+                    row[1] for row in conn.exec_driver_sql("PRAGMA table_info(appointments)").fetchall()
+                }
+                sqlite_appointment_additions = {
+                    "completed_by_id": "ALTER TABLE appointments ADD COLUMN completed_by_id VARCHAR(36)",
+                    "completed_at": "ALTER TABLE appointments ADD COLUMN completed_at DATETIME",
+                    "cancelled_by_id": "ALTER TABLE appointments ADD COLUMN cancelled_by_id VARCHAR(36)",
+                    "cancelled_at": "ALTER TABLE appointments ADD COLUMN cancelled_at DATETIME",
+                    "reason_for_cancellation": "ALTER TABLE appointments ADD COLUMN reason_for_cancellation VARCHAR(255)",
+                }
+                for column_name, ddl in sqlite_appointment_additions.items():
+                    if column_name not in appointment_cols:
+                        conn.exec_driver_sql(ddl)
+
+                screening_cols = {
+                    row[1] for row in conn.exec_driver_sql("PRAGMA table_info(stage1_screenings)").fetchall()
+                }
+                if "reviewed_at" not in screening_cols:
+                    conn.exec_driver_sql(
+                        "ALTER TABLE stage1_screenings ADD COLUMN reviewed_at DATETIME"
+                    )
+    except SQLAlchemyError as exc:
+        logger.warning("Unable to ensure runtime compatibility columns: %s", exc)
+
+
 engine = _create_engine_with_fallback()
+_ensure_runtime_compat_columns(engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 try:

@@ -81,6 +81,7 @@ interface BackendStage1History {
   edge_risk_score?: number | null
   risk_label?: string | null
   edge_risk_classification?: string | null
+  reviewed_at?: string | null
 }
 
 interface EscalatedPatient {
@@ -300,6 +301,15 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
         body: JSON.stringify({ status: newStatus }),
       })
       if (response.ok) {
+        const updated = await response.json().catch(() => null)
+        if (updated?.id) {
+          setDoctorAppointments((current) =>
+            current.map((apt) => (apt.id === updated.id ? { ...apt, ...updated } : apt)),
+          )
+          setTodayAppointments((current) =>
+            current.map((apt) => (apt.id === updated.id ? { ...apt, ...updated } : apt)),
+          )
+        }
         await loadDoctorAppointments()
         await loadTodayAppointments()
         return
@@ -398,6 +408,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
     for (const base of candidates) {
       try {
         const response = await fetch(`${base}${path}`, {
+          cache: "no-store",
           ...init,
           headers,
         })
@@ -501,7 +512,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
           riskScore: typeof row.edge_risk_score === "number" ? row.edge_risk_score : 0,
           riskLevel: "high",
           primaryRisk: "High Risk",
-          status: "pending",
+          status: row.reviewed_at ? "completed" : "pending",
           collectedAt: row.collected_at || null,
           vitals: {
             systolic: row.systolic ?? null,
@@ -859,21 +870,58 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
     }
   }
 
-  const handleMarkAsReviewed = () => {
+  const handleMarkAsReviewed = async () => {
     if (!activePatient?.id) {
       setOverviewActionMessage("Select a patient first")
       return
     }
 
-    setEscalatedPatients((current) =>
-      current.map((patient) =>
-        patient.id === activePatient.id
-          ? { ...patient, status: "completed" }
-          : patient,
-      ),
-    )
-    setSelectedPatient((current) => (current ? { ...current, status: "completed" } : current))
-    setOverviewActionMessage("Case marked as Reviewed")
+    try {
+      if (activePatient.screeningId) {
+        const reviewResponse = await apiRequest(`/triage/${activePatient.screeningId}/review`, {
+          method: "POST",
+        })
+        if (!reviewResponse.ok) {
+          const body = await reviewResponse.json().catch(() => ({}))
+          throw new Error(typeof body.detail === "string" ? body.detail : "Unable to save review")
+        }
+      }
+
+      const appointmentsResponse = await apiRequest("/appointments")
+      if (appointmentsResponse.ok) {
+        const appointments = await appointmentsResponse.json().catch(() => [])
+        const openAppointments = Array.isArray(appointments)
+          ? appointments.filter((apt: any) => {
+              const samePatient = String(apt.patient_id) === String(activePatient.id)
+              const openStatus = ["PENDING", "SCHEDULED", "CONFIRMED"].includes(String(apt.status || "").toUpperCase())
+              return samePatient && openStatus
+            })
+          : []
+        await Promise.all(
+          openAppointments.map((apt: any) =>
+            apiRequest(`/appointments/${apt.id}/status`, {
+              method: "PATCH",
+              body: JSON.stringify({ status: "COMPLETED" }),
+            }),
+          ),
+        )
+      }
+
+      setEscalatedPatients((current) =>
+        current.map((patient) =>
+          patient.id === activePatient.id
+            ? { ...patient, status: "completed" }
+            : patient,
+        ),
+      )
+      setSelectedPatient((current) => (current ? { ...current, status: "completed" } : current))
+      setOverviewActionMessage("Case marked as Reviewed")
+      await loadEscalatedCases()
+      await loadDoctorAppointments()
+      await loadTodayAppointments()
+    } catch (error) {
+      setOverviewActionMessage(error instanceof Error ? error.message : "Unable to mark case as reviewed")
+    }
   }
 
   const handleEvaluateDifferential = async () => {

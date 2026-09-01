@@ -22,6 +22,7 @@ class Stage1Screening(Base):
     worker_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"))
     encounter_id = Column(String)
     gestational_age_weeks = Column(Integer, nullable=False)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
 
     # Vitals
     age = Column(Integer)

@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from typing import List, Any
 import logging
 from sqlalchemy import String, cast
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import json
 import uuid
@@ -292,6 +292,7 @@ def stage1_history(
                 "blood_sugar": float(screening.Blood_sugar) if screening.Blood_sugar is not None else None,
                 "edge_risk_score": float(screening.edge_risk_score) if screening.edge_risk_score is not None else 0.0,
                 "edge_risk_classification": risk_value,
+                "reviewed_at": screening.reviewed_at.isoformat() if getattr(screening, "reviewed_at", None) else None,
                 "risk_label": (
                     "high"
                     if risk_value == RiskTier.ESCALATE.value
@@ -307,3 +308,46 @@ def stage1_history(
         )
 
     return response_rows
+
+
+@router.post("/{screening_id}/review")
+def mark_screening_reviewed(
+    screening_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Persist specialist review so Completed survives refresh."""
+    role = _role_name(current_user)
+    if role not in ["ADMIN", "CLINICAL_SPECIALIST", "DOCTOR"]:
+        raise HTTPException(status_code=403, detail="Not authorized to mark screenings reviewed")
+
+    screening = db.query(Stage1Screening).filter(
+        cast(Stage1Screening.id, String) == str(screening_id)
+    ).first()
+    if not screening:
+        raise HTTPException(status_code=404, detail="Screening not found")
+
+    if screening.patient_id:
+        ensure_patient_access(
+            db, current_user, str(screening.patient_id), action="triage.review"
+        )
+
+    now = datetime.now(timezone.utc)
+    screening.reviewed_at = now
+    try:
+        db.query(Stage1Screening).filter(
+            cast(Stage1Screening.id, String) == str(screening_id)
+        ).update({"reviewed_at": now}, synchronize_session="fetch")
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unable to save review status: {exc}",
+        ) from exc
+
+    return {
+        "screening_id": screening_id,
+        "reviewed_at": now.isoformat(),
+        "status": "completed",
+    }
