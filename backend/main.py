@@ -74,14 +74,16 @@ def _cors_origins() -> list[str]:
     return defaults + [o.strip() for o in extra.split(",") if o.strip()]
 
 
-# Configure CORS to allow frontend requests
+# Browser clients use Bearer tokens, not cookies. Wildcard origin avoids
+# CORS failures when Railway returns error responses.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins(),
+    allow_origins=["*"],
     allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|.*\.vercel\.app|.*\.up\.railway\.app|bloomcare\.rashmip\.me)(:\d+)?$",
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
