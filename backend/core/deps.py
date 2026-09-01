@@ -124,7 +124,7 @@ def can_access_patient(db: Session, current_user: User, patient_id: str) -> bool
     - FRONTLINE_STAFF: assigned_worker_id match only
     """
     role = _role_name(current_user)
-    if role in {"ADMIN", "CLINICAL_SPECIALIST"}:
+    if role in {"ADMIN", "CLINICAL_SPECIALIST", "DOCTOR"}:
         return True
     if role == "PATIENT":
         return str(current_user.id) == str(patient_id)

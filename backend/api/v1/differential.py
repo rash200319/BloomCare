@@ -5,15 +5,54 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sklearn import __version__ as sklearn_version
 
-from backend.core.deps import get_current_active_user, get_db
+from pydantic import BaseModel, Field
+
+from backend.core.deps import ensure_patient_access, get_current_active_user, get_db
 from backend.models.patient import Patient as DBPatient
 from backend.models.screening import Stage1Screening, Stage2Diagnostic
 from backend.models.user import User
 from backend.schemas.differential import DifferentialEvaluationRequest, DifferentialEvaluationResponse
 from backend.services.differential_service import evaluate_differential
+from backend.services.screening_review import find_screening_for_review, mark_screening_reviewed
 
 
 router = APIRouter()
+
+
+class ReviewScreeningRequest(BaseModel):
+    patient_id: str = Field(..., min_length=1)
+    screening_id: str | None = None
+
+
+def _role_name(user: User) -> str:
+    return user.role.value if hasattr(user.role, "value") else str(user.role)
+
+
+@router.post("/review-screening")
+@router.post("/review-screening/")
+def review_screening_endpoint(
+    payload: ReviewScreeningRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Mark a Stage 1 screening reviewed. Lives next to /evaluate-differential so
+    the doctor dashboard button uses the same API host/path style as diagnosis."""
+    if _role_name(current_user) not in ["ADMIN", "CLINICAL_SPECIALIST", "DOCTOR"]:
+        raise HTTPException(status_code=403, detail="Not authorized to mark screenings reviewed")
+
+    ensure_patient_access(db, current_user, str(payload.patient_id), action="triage.review")
+    screening = find_screening_for_review(
+        db,
+        patient_id=payload.patient_id,
+        screening_id=payload.screening_id,
+    )
+    reviewed_at = mark_screening_reviewed(db, screening)
+    return {
+        "screening_id": str(screening.id),
+        "patient_id": str(payload.patient_id),
+        "reviewed_at": reviewed_at,
+        "status": "completed",
+    }
 
 
 @router.post("/evaluate-differential", response_model=DifferentialEvaluationResponse)

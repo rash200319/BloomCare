@@ -879,32 +879,53 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
     }
 
     setOverviewActionMessage("Saving review...")
-    const errors: string[] = []
-    let saved = false
+
+    const readDetail = async (response: Response, fallback: string) => {
+      const body = await response.json().catch(() => ({} as { detail?: unknown }))
+      return typeof body.detail === "string" ? body.detail : fallback
+    }
 
     try {
-      const patientReview = await apiRequest(`/triage/patients/${activePatient.id}/review`, {
-        method: "POST",
-      })
-      if (patientReview.ok) {
-        saved = true
-      } else if (patientReview.status !== 404) {
-        const body = await patientReview.json().catch(() => ({}))
-        errors.push(typeof body.detail === "string" ? body.detail : "Unable to save screening review")
-      }
-
       const isRealScreening = Boolean(
         activePatient.screeningId && activePatient.escalatedFrom !== "Appointment",
       )
-      if (!saved && isRealScreening) {
-        const reviewResponse = await apiRequest(`/triage/${activePatient.screeningId}/review`, {
-          method: "POST",
+      const reviewAttempts: Array<{ path: string; init?: RequestInit }> = [
+        {
+          path: "/review-screening",
+          init: {
+            method: "POST",
+            body: JSON.stringify({
+              patient_id: activePatient.id,
+              screening_id: isRealScreening ? activePatient.screeningId : null,
+            }),
+          },
+        },
+        {
+          path: `/triage/patients/${activePatient.id}/review`,
+          init: { method: "POST" },
+        },
+      ]
+      if (isRealScreening) {
+        reviewAttempts.push({
+          path: `/triage/${activePatient.screeningId}/review`,
+          init: { method: "POST" },
         })
-        if (reviewResponse.ok) {
+      }
+
+      let saved = false
+      let lastReviewError = ""
+      for (const attempt of reviewAttempts) {
+        const response = await apiRequest(attempt.path, attempt.init)
+        if (response.ok) {
           saved = true
-        } else if (reviewResponse.status !== 404) {
-          const body = await reviewResponse.json().catch(() => ({}))
-          errors.push(typeof body.detail === "string" ? body.detail : "Unable to save screening review")
+          break
+        }
+        lastReviewError = await readDetail(
+          response,
+          `Unable to save review (${response.status})`,
+        )
+        if (response.status !== 404 && response.status !== 405) {
+          throw new Error(lastReviewError)
         }
       }
 
@@ -927,7 +948,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
         }
       }
 
-      const appointmentResults = await Promise.all(
+      await Promise.all(
         Array.from(appointmentIds).map((appointmentId) =>
           apiRequest(`/appointments/${appointmentId}/status`, {
             method: "PATCH",
@@ -935,12 +956,9 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
           }).catch(() => null),
         ),
       )
-      if (appointmentResults.some((response) => response?.ok)) {
-        saved = true
-      }
 
       if (!saved) {
-        throw new Error(errors[0] || "Unable to save review. Check that the backend API is reachable over HTTPS.")
+        throw new Error(lastReviewError || "Unable to save review")
       }
 
       setEscalatedPatients((current) =>

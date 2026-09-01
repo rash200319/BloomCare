@@ -4,7 +4,7 @@ import logging
 from sqlalchemy import String, cast
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
+from datetime import datetime
 import hashlib
 import json
 import uuid
@@ -15,6 +15,10 @@ from backend.models.sync_log import SyncQueueLog
 from backend.models.screening import PatientReport, Stage1Screening
 from backend.models.patient import Patient as DBPatient
 from backend.models.user import User
+from backend.services.screening_review import (
+    find_screening_for_review,
+    mark_screening_reviewed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -310,33 +314,8 @@ def stage1_history(
     return response_rows
 
 
-def _mark_screening_reviewed(
-    db: Session,
-    screening: Stage1Screening,
-) -> str:
-    now = datetime.now(timezone.utc)
-    screening_id = str(screening.id)
-    try:
-        updated = (
-            db.query(Stage1Screening)
-            .filter(cast(Stage1Screening.id, String) == screening_id)
-            .update({"reviewed_at": now}, synchronize_session="fetch")
-        )
-        if updated != 1:
-            raise HTTPException(status_code=404, detail="Screening not found")
-        db.commit()
-    except HTTPException:
-        raise
-    except Exception as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unable to save review status: {exc}",
-        ) from exc
-    return now.isoformat()
-
-
 @router.post("/patients/{patient_id}/review")
+@router.post("/patients/{patient_id}/review/")
 def mark_patient_screening_reviewed(
     patient_id: str,
     db: Session = Depends(get_db),
@@ -348,17 +327,8 @@ def mark_patient_screening_reviewed(
         raise HTTPException(status_code=403, detail="Not authorized to mark screenings reviewed")
 
     ensure_patient_access(db, current_user, str(patient_id), action="triage.review")
-
-    screening = (
-        db.query(Stage1Screening)
-        .filter(cast(Stage1Screening.patient_id, String) == str(patient_id))
-        .order_by(Stage1Screening.collected_at.desc(), Stage1Screening.synced_at.desc())
-        .first()
-    )
-    if not screening:
-        raise HTTPException(status_code=404, detail="No screening found for this patient")
-
-    reviewed_at = _mark_screening_reviewed(db, screening)
+    screening = find_screening_for_review(db, patient_id=str(patient_id))
+    reviewed_at = mark_screening_reviewed(db, screening)
     return {
         "screening_id": str(screening.id),
         "patient_id": str(patient_id),
@@ -368,7 +338,8 @@ def mark_patient_screening_reviewed(
 
 
 @router.post("/{screening_id}/review")
-def mark_screening_reviewed(
+@router.post("/{screening_id}/review/")
+def mark_screening_reviewed_endpoint(
     screening_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
@@ -378,18 +349,13 @@ def mark_screening_reviewed(
     if role not in ["ADMIN", "CLINICAL_SPECIALIST", "DOCTOR"]:
         raise HTTPException(status_code=403, detail="Not authorized to mark screenings reviewed")
 
-    screening = db.query(Stage1Screening).filter(
-        cast(Stage1Screening.id, String) == str(screening_id)
-    ).first()
-    if not screening:
-        raise HTTPException(status_code=404, detail="Screening not found")
-
+    screening = find_screening_for_review(db, screening_id=str(screening_id))
     if screening.patient_id:
         ensure_patient_access(
             db, current_user, str(screening.patient_id), action="triage.review"
         )
 
-    reviewed_at = _mark_screening_reviewed(db, screening)
+    reviewed_at = mark_screening_reviewed(db, screening)
     return {
         "screening_id": screening_id,
         "reviewed_at": reviewed_at,

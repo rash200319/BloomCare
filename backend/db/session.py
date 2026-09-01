@@ -112,6 +112,9 @@ def _ensure_runtime_compat_columns(engine) -> None:
                 conn.execute(text(
                     'ALTER TABLE IF EXISTS "BloomCare".stage1_screenings ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ'
                 ))
+                conn.execute(text(
+                    "ALTER TABLE IF EXISTS stage1_screenings ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ"
+                ))
             elif dialect == "sqlite":
                 appointment_cols = {
                     row[1] for row in conn.exec_driver_sql("PRAGMA table_info(appointments)").fetchall()
