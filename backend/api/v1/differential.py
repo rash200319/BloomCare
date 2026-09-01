@@ -29,7 +29,6 @@ def _role_name(user: User) -> str:
 
 
 @router.post("/review-screening")
-@router.post("/review-screening/")
 def review_screening_endpoint(
     payload: ReviewScreeningRequest,
     db: Session = Depends(get_db),

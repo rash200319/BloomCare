@@ -408,11 +408,15 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
 
     for (const base of candidates) {
       try {
-        const response = await fetch(toApiUrl(path, base), {
-          cache: "no-store",
+        const requestInit: RequestInit = {
           ...init,
           headers,
-        })
+        }
+        const method = String(init?.method || "GET").toUpperCase()
+        if (method === "GET" || method === "HEAD") {
+          requestInit.cache = "no-store"
+        }
+        const response = await fetch(toApiUrl(path, base), requestInit)
         if (response.status === 404) {
           lastNotFoundResponse = response
           continue
@@ -889,43 +893,33 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
       const isRealScreening = Boolean(
         activePatient.screeningId && activePatient.escalatedFrom !== "Appointment",
       )
-      const reviewAttempts: Array<{ path: string; init?: RequestInit }> = [
-        {
-          path: "/review-screening",
-          init: {
-            method: "POST",
-            body: JSON.stringify({
-              patient_id: activePatient.id,
-              screening_id: isRealScreening ? activePatient.screeningId : null,
-            }),
-          },
-        },
-        {
-          path: `/triage/patients/${activePatient.id}/review`,
-          init: { method: "POST" },
-        },
-      ]
-      if (isRealScreening) {
-        reviewAttempts.push({
-          path: `/triage/${activePatient.screeningId}/review`,
-          init: { method: "POST" },
-        })
-      }
+      const reviewPayload = JSON.stringify({
+        patient_id: activePatient.id,
+        screening_id: isRealScreening ? activePatient.screeningId : null,
+      })
+      const reviewResponse = await apiRequest("/triage/history", {
+        method: "POST",
+        body: reviewPayload,
+      })
 
-      let saved = false
-      let lastReviewError = ""
-      for (const attempt of reviewAttempts) {
-        const response = await apiRequest(attempt.path, attempt.init)
-        if (response.ok) {
+      let saved = reviewResponse.ok
+      let lastReviewError = saved
+        ? ""
+        : await readDetail(reviewResponse, `Unable to save review (${reviewResponse.status})`)
+
+      if (!saved && (reviewResponse.status === 404 || reviewResponse.status === 405)) {
+        const fallbackResponse = await apiRequest("/review-screening", {
+          method: "POST",
+          body: reviewPayload,
+        })
+        if (fallbackResponse.ok) {
           saved = true
-          break
-        }
-        lastReviewError = await readDetail(
-          response,
-          `Unable to save review (${response.status})`,
-        )
-        if (response.status !== 404 && response.status !== 405) {
-          throw new Error(lastReviewError)
+          lastReviewError = ""
+        } else {
+          lastReviewError = await readDetail(
+            fallbackResponse,
+            lastReviewError || `Unable to save review (${fallbackResponse.status})`,
+          )
         }
       }
 

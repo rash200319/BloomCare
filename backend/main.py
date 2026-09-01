@@ -18,6 +18,7 @@ app = FastAPI(
     docs_url=_docs_url,
     redoc_url=_redoc_url,
     openapi_url=_openapi_url,
+    redirect_slashes=False,
 )
 
 try:

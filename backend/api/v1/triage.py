@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from typing import List, Any
 import logging
+from pydantic import BaseModel, Field
 from sqlalchemy import String, cast
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -25,8 +26,40 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+class ReviewScreeningRequest(BaseModel):
+    patient_id: str = Field(..., min_length=1)
+    screening_id: str | None = None
+
+
 def _role_name(user: User) -> str:
     return user.role.value if hasattr(user.role, "value") else str(user.role)
+
+
+def _apply_screening_review(
+    db: Session,
+    current_user: User,
+    *,
+    patient_id: str,
+    screening_id: str | None = None,
+) -> dict[str, str]:
+    role = _role_name(current_user)
+    if role not in ["ADMIN", "CLINICAL_SPECIALIST", "DOCTOR"]:
+        raise HTTPException(status_code=403, detail="Not authorized to mark screenings reviewed")
+
+    if patient_id:
+        ensure_patient_access(db, current_user, str(patient_id), action="triage.review")
+    screening = find_screening_for_review(
+        db,
+        patient_id=str(patient_id),
+        screening_id=screening_id,
+    )
+    reviewed_at = mark_screening_reviewed(db, screening)
+    return {
+        "screening_id": str(screening.id),
+        "patient_id": str(patient_id),
+        "reviewed_at": reviewed_at,
+        "status": "completed",
+    }
 
 
 def compute_hash(payload: dict) -> str:
@@ -314,50 +347,43 @@ def stage1_history(
     return response_rows
 
 
+@router.post("/history")
+def mark_history_reviewed(
+    payload: ReviewScreeningRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """POST on the same path the dashboard already GETs. Production returned 405
+    because /triage/history existed as GET-only."""
+    return _apply_screening_review(
+        db,
+        current_user,
+        patient_id=payload.patient_id,
+        screening_id=payload.screening_id,
+    )
+
+
 @router.post("/patients/{patient_id}/review")
-@router.post("/patients/{patient_id}/review/")
 def mark_patient_screening_reviewed(
     patient_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """Mark the latest Stage 1 screening for a patient as reviewed."""
-    role = _role_name(current_user)
-    if role not in ["ADMIN", "CLINICAL_SPECIALIST", "DOCTOR"]:
-        raise HTTPException(status_code=403, detail="Not authorized to mark screenings reviewed")
-
-    ensure_patient_access(db, current_user, str(patient_id), action="triage.review")
-    screening = find_screening_for_review(db, patient_id=str(patient_id))
-    reviewed_at = mark_screening_reviewed(db, screening)
-    return {
-        "screening_id": str(screening.id),
-        "patient_id": str(patient_id),
-        "reviewed_at": reviewed_at,
-        "status": "completed",
-    }
+    return _apply_screening_review(db, current_user, patient_id=str(patient_id))
 
 
 @router.post("/{screening_id}/review")
-@router.post("/{screening_id}/review/")
 def mark_screening_reviewed_endpoint(
     screening_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """Persist specialist review so Completed survives refresh."""
-    role = _role_name(current_user)
-    if role not in ["ADMIN", "CLINICAL_SPECIALIST", "DOCTOR"]:
-        raise HTTPException(status_code=403, detail="Not authorized to mark screenings reviewed")
-
     screening = find_screening_for_review(db, screening_id=str(screening_id))
-    if screening.patient_id:
-        ensure_patient_access(
-            db, current_user, str(screening.patient_id), action="triage.review"
-        )
-
-    reviewed_at = mark_screening_reviewed(db, screening)
-    return {
-        "screening_id": screening_id,
-        "reviewed_at": reviewed_at,
-        "status": "completed",
-    }
+    return _apply_screening_review(
+        db,
+        current_user,
+        patient_id=str(screening.patient_id or ""),
+        screening_id=str(screening_id),
+    )
