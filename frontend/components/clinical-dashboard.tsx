@@ -882,51 +882,71 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
       return
     }
 
-    setOverviewActionMessage("Saving review...")
+    setOverviewActionMessage("Updating appointment...")
 
     const readDetail = async (response: Response, fallback: string) => {
       const body = await response.json().catch(() => ({} as { detail?: unknown }))
-      return typeof body.detail === "string" ? body.detail : fallback
+      if (typeof body.detail === "string") return body.detail
+      return fallback
+    }
+
+    const setStatus = async (appointmentId: string, status: string) => {
+      return apiRequest(`/appointments/${appointmentId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      })
     }
 
     try {
-      const isRealScreening = Boolean(
-        activePatient.screeningId && activePatient.escalatedFrom !== "Appointment",
-      )
-      const reviewParams = new URLSearchParams({
-        patient_id: String(activePatient.id),
-        mark_reviewed: "true",
-        limit: "5",
-      })
-      if (isRealScreening) {
-        reviewParams.set("screening_id", String(activePatient.screeningId))
+      let appointmentId = activePatient.appointmentId || null
+      if (!appointmentId) {
+        const listResponse = await apiRequest("/appointments")
+        if (!listResponse.ok) {
+          throw new Error("Unable to load appointments")
+        }
+        const appointments = await listResponse.json().catch(() => [])
+        const openStatuses = new Set(["PENDING", "SCHEDULED", "CONFIRMED"])
+        const match = Array.isArray(appointments)
+          ? appointments.find((apt: { id?: string; patient_id?: string; status?: string }) => {
+              const samePatient = String(apt.patient_id) === String(activePatient.id)
+              const open = openStatuses.has(String(apt.status || "").toUpperCase())
+              return samePatient && open && apt.id
+            })
+          : null
+        appointmentId = match?.id || null
       }
 
-      const reviewResponse = await apiRequest(`/triage/history?${reviewParams.toString()}`)
-      if (!reviewResponse.ok) {
-        throw new Error(await readDetail(reviewResponse, `Unable to save review (${reviewResponse.status})`))
+      if (!appointmentId) {
+        throw new Error("No appointment found for this patient")
       }
 
-      const reviewRows = await reviewResponse.json().catch(() => [])
-      const saved = Array.isArray(reviewRows) && reviewRows.some((row: { reviewed_at?: string | null }) => Boolean(row?.reviewed_at))
-      if (!saved) {
-        throw new Error("Review did not save. Redeploy the Railway API from latest GitHub main.")
+      let response = await setStatus(appointmentId, "COMPLETED")
+      if (!response.ok && response.status === 400) {
+        const confirmResponse = await setStatus(appointmentId, "CONFIRMED")
+        if (confirmResponse.ok) {
+          response = await setStatus(appointmentId, "COMPLETED")
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(await readDetail(response, "Unable to update appointment"))
       }
 
       setEscalatedPatients((current) =>
         current.map((patient) =>
           patient.id === activePatient.id
-            ? { ...patient, status: "completed" }
+            ? { ...patient, status: "completed", appointmentId }
             : patient,
         ),
       )
-      setSelectedPatient((current) => (current ? { ...current, status: "completed" } : current))
-      setOverviewActionMessage("Case marked as Reviewed")
-      await loadEscalatedCases()
+      setSelectedPatient((current) =>
+        current ? { ...current, status: "completed", appointmentId } : current,
+      )
+      setOverviewActionMessage("Appointment marked as reviewed")
       await loadDoctorAppointments()
       await loadTodayAppointments()
     } catch (error) {
-      setOverviewActionMessage(error instanceof Error ? error.message : "Unable to mark case as reviewed")
+      setOverviewActionMessage(error instanceof Error ? error.message : "Unable to update appointment")
     }
   }
 
