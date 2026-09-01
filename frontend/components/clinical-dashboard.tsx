@@ -893,66 +893,24 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
       const isRealScreening = Boolean(
         activePatient.screeningId && activePatient.escalatedFrom !== "Appointment",
       )
-      const reviewPayload = JSON.stringify({
-        patient_id: activePatient.id,
-        screening_id: isRealScreening ? activePatient.screeningId : null,
+      const reviewParams = new URLSearchParams({
+        patient_id: String(activePatient.id),
+        mark_reviewed: "true",
+        limit: "5",
       })
-      const reviewResponse = await apiRequest("/triage/history", {
-        method: "POST",
-        body: reviewPayload,
-      })
-
-      let saved = reviewResponse.ok
-      let lastReviewError = saved
-        ? ""
-        : await readDetail(reviewResponse, `Unable to save review (${reviewResponse.status})`)
-
-      if (!saved && (reviewResponse.status === 404 || reviewResponse.status === 405)) {
-        const fallbackResponse = await apiRequest("/review-screening", {
-          method: "POST",
-          body: reviewPayload,
-        })
-        if (fallbackResponse.ok) {
-          saved = true
-          lastReviewError = ""
-        } else {
-          lastReviewError = await readDetail(
-            fallbackResponse,
-            lastReviewError || `Unable to save review (${fallbackResponse.status})`,
-          )
-        }
+      if (isRealScreening) {
+        reviewParams.set("screening_id", String(activePatient.screeningId))
       }
 
-      const appointmentIds = new Set<string>()
-      if (activePatient.appointmentId) {
-        appointmentIds.add(activePatient.appointmentId)
+      const reviewResponse = await apiRequest(`/triage/history?${reviewParams.toString()}`)
+      if (!reviewResponse.ok) {
+        throw new Error(await readDetail(reviewResponse, `Unable to save review (${reviewResponse.status})`))
       }
 
-      const appointmentsResponse = await apiRequest("/appointments").catch(() => null)
-      if (appointmentsResponse?.ok) {
-        const appointments = await appointmentsResponse.json().catch(() => [])
-        if (Array.isArray(appointments)) {
-          for (const apt of appointments) {
-            const samePatient = String(apt.patient_id) === String(activePatient.id)
-            const openStatus = ["PENDING", "SCHEDULED", "CONFIRMED"].includes(String(apt.status || "").toUpperCase())
-            if (samePatient && openStatus && apt.id) {
-              appointmentIds.add(String(apt.id))
-            }
-          }
-        }
-      }
-
-      await Promise.all(
-        Array.from(appointmentIds).map((appointmentId) =>
-          apiRequest(`/appointments/${appointmentId}/status`, {
-            method: "PATCH",
-            body: JSON.stringify({ status: "COMPLETED" }),
-          }).catch(() => null),
-        ),
-      )
-
+      const reviewRows = await reviewResponse.json().catch(() => [])
+      const saved = Array.isArray(reviewRows) && reviewRows.some((row: { reviewed_at?: string | null }) => Boolean(row?.reviewed_at))
       if (!saved) {
-        throw new Error(lastReviewError || "Unable to save review")
+        throw new Error("Review did not save. Redeploy the Railway API from latest GitHub main.")
       }
 
       setEscalatedPatients((current) =>

@@ -273,10 +273,28 @@ def triage_sync(
 def stage1_history(
     patient_id: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
+    mark_reviewed: bool = Query(default=False),
+    screening_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    """Return Stage 1 screening history with patient context for web dashboard views."""
+    """Return Stage 1 screening history with patient context for web dashboard views.
+
+    Production only allows GET on this path. Mark as Reviewed therefore uses
+    mark_reviewed=true on the same GET the dashboard already calls.
+    """
+    if mark_reviewed:
+        if not patient_id:
+            raise HTTPException(
+                status_code=400,
+                detail="patient_id is required to mark a screening reviewed",
+            )
+        _apply_screening_review(
+            db,
+            current_user,
+            patient_id=str(patient_id),
+            screening_id=screening_id,
+        )
     rows = (
         db.query(Stage1Screening, DBPatient)
         .outerjoin(DBPatient, Stage1Screening.patient_id == DBPatient.id)
