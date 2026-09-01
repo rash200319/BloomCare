@@ -21,8 +21,13 @@ class Appointment(Base):
     appointment_date = Column(DateTime(timezone=True), nullable=False)
     duration_minutes = Column(Integer, default=30)  # Appointment duration in minutes
     queue_number = Column(Integer, nullable=True)  # Queue number for the day
-    status = Column(String(50), default="PENDING")  # PENDING, CONFIRMED, COMPLETED, CANCELLED
+    status = Column(String(50), default="PENDING")  # PENDING, CONFIRMED, SCHEDULED, COMPLETED, CANCELLED
     notes = Column(Text)
+    completed_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    cancelled_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+    reason_for_cancellation = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 

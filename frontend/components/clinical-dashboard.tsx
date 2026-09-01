@@ -212,6 +212,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<string>("")
   const [todayAppointments, setTodayAppointments] = useState<any[]>([])
   const [isLoadingTodayAppointments, setIsLoadingTodayAppointments] = useState(false)
+  const [appointmentStatusError, setAppointmentStatusError] = useState<string | null>(null)
   const [sidebarViewMode, setSidebarViewMode] = useState<"escalated" | "today">("escalated")
   const [selectedDoctorFilter, setSelectedDoctorFilter] = useState<string | null>(null)
 
@@ -289,6 +290,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
   }
 
   const updateAppointmentStatus = async (appointmentId: string, newStatus: string) => {
+    setAppointmentStatusError(null)
     try {
       const response = await apiRequest(`/appointments/${appointmentId}/status`, {
         method: "PATCH",
@@ -298,14 +300,17 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
         body: JSON.stringify({ status: newStatus }),
       })
       if (response.ok) {
-        // Reload both doctor appointments and today's appointments after status update
         await loadDoctorAppointments()
         await loadTodayAppointments()
-      } else {
-        console.error("Failed to update appointment status:", response.statusText)
+        return
       }
+
+      const body = await response.json().catch(() => ({}))
+      const detail = typeof body.detail === "string" ? body.detail : `Failed to update status (${response.status})`
+      setAppointmentStatusError(detail)
     } catch (error) {
-      console.error("Failed to update appointment status:", error)
+      const message = error instanceof Error ? error.message : "Failed to update appointment status"
+      setAppointmentStatusError(message)
     }
   }
 
@@ -2269,6 +2274,11 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                   </select>
                 </div>
               </div>
+              {appointmentStatusError && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+                  {appointmentStatusError}
+                </div>
+              )}
 
               {isLoadingDoctorSchedule ? (
                 <Card className="border-0 glass shadow-2xl shadow-slate-200/50 rounded-3xl">
