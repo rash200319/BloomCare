@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -185,6 +186,8 @@ def update_appointment_status(
 
     requested_status = AppointmentService._normalize_status(status_update.status)
     current_status = AppointmentService._normalize_status(appointment.status)
+    actor_id = str(getattr(current_user, "id", "") or "")
+    now = datetime.now(timezone.utc)
 
     # Doctors mark visits reviewed by completing them from any open status.
     if requested_status == "COMPLETED" and current_status in {
@@ -199,6 +202,28 @@ def update_appointment_status(
             appointment.status, requested_status
         )
         appointment.status = requested_status
+
+    # Postgres chk_completed_appointment_audit / chk_cancelled_appointment_audit
+    # require actor + timestamp whenever status is COMPLETED or CANCELLED.
+    if appointment.status == "COMPLETED":
+        if not actor_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot complete an appointment without an authenticated user",
+            )
+        appointment.completed_by_id = actor_id
+        appointment.completed_at = now
+    elif appointment.status == "CANCELLED":
+        if not actor_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot cancel an appointment without an authenticated user",
+            )
+        appointment.cancelled_by_id = actor_id
+        appointment.cancelled_at = now
+        cancellation_reason = getattr(status_update, "notes", None)
+        if cancellation_reason:
+            appointment.reason_for_cancellation = cancellation_reason
 
     try:
         db.commit()
