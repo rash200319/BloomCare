@@ -37,15 +37,23 @@ def ensure_demo_seeds(db: Session) -> None:
             "specialization": None,
         },
         {
-            "email": "obsertitian@bloomcare.health",
+            "email": "obstetrician@bloomcare.health",
             "full_name": "Obstetrician Demo",
             "role": UserRole.CLINICAL_SPECIALIST,
             "specialization": "Obstetrics",
+            # Migrate typo'd demo email from earlier seeds
+            "legacy_emails": ["obsertitian@bloomcare.health"],
         },
     ]
 
     for item in staff:
         user = db.query(User).filter(User.email == item["email"]).first()
+        if user is None:
+            for legacy in item.get("legacy_emails") or []:
+                user = db.query(User).filter(User.email == legacy).first()
+                if user is not None:
+                    user.email = item["email"]
+                    break
         if user is None:
             user = User(
                 id=str(uuid.uuid4()),

@@ -85,8 +85,17 @@ def login_patient(
     credentials: PatientLoginRequest,
     db: Session = Depends(get_db)
 ) -> Any:
-    user = AuthService.authenticate_patient(
-        db, credentials.national_id, credentials.password)
+    from backend.services.login_throttle import LoginThrottle
+
+    LoginThrottle.assert_allowed("patient", credentials.national_id)
+    try:
+        user = AuthService.authenticate_patient(
+            db, credentials.national_id, credentials.password)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            LoginThrottle.record_failure("patient", credentials.national_id)
+        raise
+    LoginThrottle.reset("patient", credentials.national_id)
 
     if not getattr(user, "is_active", True):
         raise HTTPException(
@@ -98,7 +107,10 @@ def login_patient(
         minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return LoginResponse(
         access_token=security.create_access_token(
-            str(user.id), expires_delta=access_token_expires),
+            str(user.id),
+            expires_delta=access_token_expires,
+            token_version=int(getattr(user, "token_version", 0) or 0),
+        ),
         token_type="bearer",
         id=str(user.id),
         full_name=user.full_name,
@@ -117,8 +129,17 @@ def login_staff(
     credentials: StaffLoginRequest,
     db: Session = Depends(get_db)
 ) -> Any:
-    user = AuthService.authenticate_staff(
-        db, credentials.email, credentials.password)
+    from backend.services.login_throttle import LoginThrottle
+
+    LoginThrottle.assert_allowed("staff", credentials.email)
+    try:
+        user = AuthService.authenticate_staff(
+            db, credentials.email, credentials.password)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            LoginThrottle.record_failure("staff", credentials.email)
+        raise
+    LoginThrottle.reset("staff", credentials.email)
 
     if not user.is_active:
         raise HTTPException(
@@ -130,7 +151,10 @@ def login_staff(
         minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return LoginResponse(
         access_token=security.create_access_token(
-            str(user.id), expires_delta=access_token_expires),
+            str(user.id),
+            expires_delta=access_token_expires,
+            token_version=int(getattr(user, "token_version", 0) or 0),
+        ),
         token_type="bearer",
         id=str(user.id),
         full_name=user.full_name,
@@ -149,30 +173,85 @@ def setup_patient_first_login_password(
     payload: FirstLoginPatientSetupRequest,
     db: Session = Depends(get_db)
 ) -> Any:
-    return AuthService.setup_patient_first_login_password(
-        db,
-        payload.national_id,
-        payload.password,
-        payload.confirm_password,
-    )
+    from backend.services.login_throttle import LoginThrottle
+
+    LoginThrottle.assert_allowed("patient-first", payload.national_id)
+    try:
+        result = AuthService.setup_patient_first_login_password(
+            db,
+            payload.national_id,
+            payload.temporary_password,
+            payload.password,
+            payload.confirm_password,
+        )
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            LoginThrottle.record_failure("patient-first", payload.national_id)
+        raise
+    LoginThrottle.reset("patient-first", payload.national_id)
+    return result
 
 
 @router.post(
     "/first-login/staff",
     response_model=dict,
     summary="Staff/Doctor First Login Password Setup",
-    description="Set password on first login using email"
+    description="Set password on first login using email and temporary password"
 )
 def setup_staff_first_login_password(
     payload: FirstLoginStaffSetupRequest,
     db: Session = Depends(get_db)
 ) -> Any:
-    return AuthService.setup_staff_first_login_password(
-        db,
-        payload.email,
-        payload.password,
-        payload.confirm_password,
+    from backend.services.login_throttle import LoginThrottle
+
+    LoginThrottle.assert_allowed("staff-first", payload.email)
+    try:
+        result = AuthService.setup_staff_first_login_password(
+            db,
+            payload.email,
+            payload.temporary_password,
+            payload.password,
+            payload.confirm_password,
+        )
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            LoginThrottle.record_failure("staff-first", payload.email)
+        raise
+    LoginThrottle.reset("staff-first", payload.email)
+    return result
+
+
+@router.post(
+    "/logout-all",
+    response_model=dict,
+    summary="Revoke all sessions",
+    description="Bump token_version so all outstanding JWTs for this account are rejected",
+)
+def logout_all_sessions(
+    current_user: DBUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    role_name = (
+        current_user.role.value
+        if hasattr(current_user.role, "value")
+        else str(current_user.role)
     )
+    if role_name == "PATIENT":
+        patient = db.query(DBPatient).filter(DBPatient.id == current_user.id).first()
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        patient.token_version = int(getattr(patient, "token_version", 0) or 0) + 1
+        db.add(patient)
+        db.commit()
+        return {"message": "All sessions revoked", "token_version": patient.token_version}
+
+    user = db.query(DBUser).filter(DBUser.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
+    db.add(user)
+    db.commit()
+    return {"message": "All sessions revoked", "token_version": user.token_version}
 
 
 @router.post(

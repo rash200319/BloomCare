@@ -1,10 +1,11 @@
 """
 Patient Management API Endpoints
-Admin-only endpoints for creating and managing patients
+Clinic-staff endpoints for creating and managing patients
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from backend.core.deps import get_db
+from backend.core.deps import get_db, get_current_clinic_staff
+from backend.models.user import User
 from backend.schemas.patient import CreatePatientRequest, PatientManagementResponse
 from backend.services.staff_patient_service import PatientService
 
@@ -16,11 +17,12 @@ router = APIRouter()
     response_model=PatientManagementResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create Patient",
-    description="Create a new patient account with first-login required"
+    description="Create a new patient account with first-login required (clinic staff only)",
 )
 def create_patient(
     patient_data: CreatePatientRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_clinic_staff),
 ):
     """
     Create a new patient.
@@ -41,14 +43,15 @@ def create_patient(
     "/patients",
     response_model=list[PatientManagementResponse],
     summary="Get Patients",
-    description="Retrieve patients with optional filters"
+    description="Retrieve patients with optional filters (clinic staff only)",
 )
 def get_patients(
     full_name: str = Query(
         None, description="Filter by full name (partial match)"),
     id: str = Query(
         None, description="Filter by patient primary key"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_clinic_staff),
 ):
     """
     Retrieve patients with optional filters.
@@ -58,14 +61,13 @@ def get_patients(
     - **id**: Exact match on patient primary key
     """
     patients = PatientService.get_patients(db, full_name, id)
-    
-    # If any filter is provided and no results found, return 404
+
     if not patients and any([full_name, id]):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No patients found matching the provided filters"
         )
-    
+
     return patients
 
 
@@ -73,17 +75,18 @@ def get_patients(
     "/by-name/{name}",
     response_model=list[PatientManagementResponse],
     summary="Get Patient by Name",
-    description="Search patients by name (partial match)"
+    description="Search patients by name (partial match) (clinic staff only)",
 )
 def get_patient_by_name(
     name: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_clinic_staff),
 ):
     """
     Get patient details by name.
-    
+
     - **name**: Patient's name (partial match, case-insensitive)
-    
+
     Returns a list of matching patients.
     """
     patients = PatientService.get_patients(db, full_name=name)
@@ -99,17 +102,18 @@ def get_patient_by_name(
     "/by-id/{id}",
     response_model=list[PatientManagementResponse],
     summary="Get Patient by ID",
-    description="Get patient details by patient primary key"
+    description="Get patient details by patient primary key (clinic staff only)",
 )
 def get_patient_by_id(
     id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_clinic_staff),
 ):
     """
     Get patient details by patient ID.
-    
+
     - **id**: Patient primary key
-    
+
     Returns the matching patient if found.
     """
     patients = PatientService.get_patients(db, patient_id=id)

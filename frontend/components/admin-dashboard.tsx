@@ -310,7 +310,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
 
           <div className="hidden lg:flex items-center gap-6 px-4">
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              {getText("Hemas Administration", "හේමාස් පරිපාලනය", "ஹேமாஸ் நிர்வாகம்")}
+              {getText("BloomCare Administration", "BloomCare පරිපාලනය", "BloomCare நிர்வாகம்")}
             </span>
           </div>
         </div>
@@ -477,7 +477,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
               </div>
               <p className="text-3xl font-black text-slate-900 tracking-tight">{activeClinics}</p>
               <div className="flex items-center gap-2 mt-4">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{getText("Hemas Network", "හේමාස් ජාලය", "ஹேமாஸ் நெட்வொர்க்")}</span>
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{getText("BloomCare Network", "BloomCare ජාලය", "BloomCare நெட்வொர்க்")}</span>
               </div>
             </CardContent>
           </Card>

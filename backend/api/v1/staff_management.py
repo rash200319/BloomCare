@@ -5,7 +5,7 @@ Admin-only endpoints for creating and managing staff members
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from backend.core.deps import get_db, get_current_user
+from backend.core.deps import get_db, get_current_user, get_current_admin
 from backend.models.user import User, UserRole
 from backend.schemas.staff import CreateStaffRequest, TemporaryPasswordResponse, StaffResponse
 from backend.schemas.user import UserUpdate, UserDetailResponse
@@ -19,11 +19,12 @@ router = APIRouter()
     response_model=TemporaryPasswordResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create Staff Member",
-    description="Create a new staff member (FRONTLINE_STAFF or CLINICAL_SPECIALIST). Returns temporary password."
+    description="Admin only. Create a new staff member (FRONTLINE_STAFF or CLINICAL_SPECIALIST).",
 )
 def create_staff(
     staff_data: CreateStaffRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
 ):
     """
     Create a new staff member account.
@@ -45,7 +46,7 @@ def create_staff(
     "/staff",
     response_model=list[StaffResponse],
     summary="Get Staff Members",
-    description="Retrieve staff members with optional filters"
+    description="Admin only. Retrieve staff members with optional filters.",
 )
 def get_staff(
     full_name: str = Query(
@@ -53,7 +54,8 @@ def get_staff(
     id: str = Query(None, description="Filter by user primary key"),
     email: str = Query(None, description="Filter by email"),
     role: UserRole = Query(None, description="Filter by role"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
 ):
     """
     Retrieve staff members with optional filters.
@@ -65,14 +67,13 @@ def get_staff(
     - **role**: Filter by role (FRONTLINE_STAFF, CLINICAL_SPECIALIST)
     """
     staff = StaffService.get_staff(db, full_name, id, email, role)
-    
-    # If any filter is provided and no results found, return 404
+
     if not staff and any([full_name, id, email, role]):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No staff members found matching the provided filters"
         )
-    
+
     return staff
 
 
@@ -80,17 +81,18 @@ def get_staff(
     "/by-name/{name}",
     response_model=list[StaffResponse],
     summary="Get Staff by Name",
-    description="Search staff members by name (partial match)"
+    description="Admin only. Search staff members by name (partial match).",
 )
 def get_staff_by_name(
     name: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
 ):
     """
     Get staff member details by name.
-    
+
     - **name**: Staff member's name (partial match, case-insensitive)
-    
+
     Returns a list of matching staff members.
     """
     staff = StaffService.get_staff(db, full_name=name)
@@ -106,17 +108,18 @@ def get_staff_by_name(
     "/by-id/{id}",
     response_model=list[StaffResponse],
     summary="Get Staff by ID",
-    description="Get staff member details by user primary key"
+    description="Admin only. Get staff member details by user primary key.",
 )
 def get_staff_by_id(
     id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
 ):
     """
     Get staff member details by ID.
-    
+
     - **id**: Staff member user primary key
-    
+
     Returns the matching staff member if found.
     """
     staff = StaffService.get_staff(db, user_pk=id)

@@ -159,7 +159,12 @@ export async function loginStaff(email: string, password: string) {
   })
 }
 
-/** Seeded demo accounts (see backend/db/seeds.sql and init_db.py). Password: rash2003 */
+/** Demo accounts — shown only when NEXT_PUBLIC_ENABLE_DEMO_LOGIN is not "false".
+ *  Hospital admin credentials are intentionally omitted from the client.
+ */
+export const DEMO_LOGIN_ENABLED =
+  process.env.NEXT_PUBLIC_ENABLE_DEMO_LOGIN !== "false"
+
 export const DEMO_CREDENTIALS = {
   frontline: {
     label: "Email",
@@ -168,19 +173,15 @@ export const DEMO_CREDENTIALS = {
   },
   doctor: {
     label: "Email",
-    identifier: "obsertitian@bloomcare.health",
-    password: "rash2003",
-  },
-  admin: {
-    label: "Email",
-    identifier: "hospitaladmin@bloomcare.health",
+    identifier: "obstetrician@bloomcare.health",
     password: "rash2003",
   },
   patient: {
     label: "National ID",
-    // seeds.sql uses NIC-900000001V; init_db.py also seeds 199912345678
     identifier: "NIC-900000001V",
     password: "rash2003",
     altIdentifier: "199912345678",
   },
 } as const
+
+export type DemoLoginRole = keyof typeof DEMO_CREDENTIALS

@@ -16,8 +16,10 @@ export default function DemoPage() {
     const doLogin = async () => {
         setError(null);
         try {
-            const res = await loginStaff("frontline.staff@bloomcare.health", "rash2003");
-            setToken(res.access_token || JSON.stringify(res));
+            const res = (await loginStaff("frontline.staff@bloomcare.health", "rash2003")) as {
+                access_token?: string
+            }
+            setToken(res.access_token || JSON.stringify(res))
         } catch (e: any) {
             setError(e?.message || String(e));
         }

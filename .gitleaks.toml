@@ -1,0 +1,22 @@
+# Gitleaks config for BloomCare.
+# Demo credential strings in docs / .env.example are intentional — allowlisted below.
+
+title = "BloomCare gitleaks"
+
+[allowlist]
+description = "Demo / documentation placeholders (not real production secrets)"
+paths = [
+  '''(.*)\.env\.example$''',
+  '''(.*)/CONTROL_MAPPING\.md$''',
+  '''(.*)/SECURITY\.md$''',
+  '''(.*)/README\.md$''',
+  '''frontend/lib/api\.ts$''',
+  '''backend/db/seed_demo\.py$''',
+]
+
+regexes = [
+  '''bloomcare-local-demo-only-change-me''',
+  '''rash2003''',
+  '''your_groq_api_key_here''',
+  '''sk-\.\.\.''',
+]

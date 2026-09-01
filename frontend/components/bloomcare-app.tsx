@@ -7,6 +7,7 @@ import FrontlineTriageDashboard from "./frontline-triage-dashboard"
 import ClinicalDashboard from "./clinical-dashboard"
 import AdminDashboard from "./admin-dashboard"
 import PatientPortal from "./patient-portal"
+import { apiRequest, clearAccessToken, getAccessToken } from "@/lib/api"
 
 type UserRole = "frontline" | "doctor" | "admin" | "patient" | null
 type AppView = "home" | "login" | "dashboard"
@@ -16,10 +17,17 @@ const ROLE_MAP: Record<string, UserRole> = {
   FRONTLINE_STAFF: "frontline",
   DOCTOR: "doctor",
   CLINICAL_SPECIALIST: "doctor",
-  // Legacy seed/DB value — migrate with backend/db/migrate_roles.py
+  // Legacy seed/DB value — migrated by init_db.py
   OBSERTITIAN: "doctor",
   ADMIN: "admin",
   PATIENT: "patient",
+}
+
+function idleTimeoutMs(): number {
+  const raw = process.env.NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES
+  const minutes = raw ? Number(raw) : 0
+  if (!Number.isFinite(minutes) || minutes <= 0) return 0
+  return minutes * 60 * 1000
 }
 
 export default function BloomCareApp() {
@@ -88,13 +96,58 @@ export default function BloomCareApp() {
   }
 
   const handleLogout = () => {
+    const token = getAccessToken()
+    if (token) {
+      // Best-effort server revoke; client always clears local session
+      void apiRequest("/auth/logout-all", {
+        method: "POST",
+        requireAuth: true,
+      }).catch(() => undefined)
+    }
     if (typeof window !== "undefined") {
       window.localStorage.removeItem("bloomcare_access_token")
       window.localStorage.removeItem("bloomcare_user_profile")
     }
+    clearAccessToken()
     setCurrentRole(null)
     setCurrentView("home")
   }
+
+  // Opt-in idle timeout (NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES). Default 0 = disabled for demos.
+  useEffect(() => {
+    const timeout = idleTimeoutMs()
+    if (!timeout || currentView !== "dashboard" || !currentRole) {
+      return
+    }
+
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const bump = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        handleLogout()
+      }, timeout)
+    }
+
+    const events: Array<keyof WindowEventMap> = [
+      "mousemove",
+      "mousedown",
+      "keydown",
+      "touchstart",
+      "scroll",
+    ]
+    bump()
+    for (const event of events) {
+      window.addEventListener(event, bump, { passive: true })
+    }
+    return () => {
+      if (timer) clearTimeout(timer)
+      for (const event of events) {
+        window.removeEventListener(event, bump)
+      }
+    }
+    // handleLogout is stable enough for this effect; re-bind when session view changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentView, currentRole])
 
   const handleNavigateToLogin = () => {
     setCurrentView("login")

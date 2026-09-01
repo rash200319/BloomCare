@@ -28,34 +28,34 @@ const LANGUAGE_LABELS: Record<ChatLanguage, string> = {
 const QUICK_PROMPTS_BY_LANGUAGE: Record<ChatLanguage, string[]> = {
   en: [
     "How do I log in?",
-    "Show me features",
+    "How do demo accounts work?",
+    "What is Stage 1 vs Stage 2?",
+    "How does offline work?",
+    "What do the roles do?",
     "What conditions are monitored?",
-    "Take me to dashboard",
-    "What's here?",
-    "Tell me about BloomCare",
   ],
   si: [
     "ලොගින් කොහොමද?",
-    "විශේෂාංග පෙන්වා දෙන්න",
+    "Demo ගිණුම් කොහොමද?",
+    "Stage 1 සහ Stage 2 වෙනස කුමක්ද?",
+    "Offline වැඩ කරන්නේ කොහොමද?",
+    "කාර්යභාර මොනවද?",
     "කුමන තත්ත්ව නිරීක්ෂණ කරනවා?",
-    "Dashboard එකට ගෙන යන්න",
-    "මෙතැනින් කුමක්ද?",
-    "BloomCare ගැන කියන්න",
   ],
   ta: [
     "உள்நுழைவு எப்படி?",
-    "அம்சங்களைக் காட்டு",
+    "டெமோ கணக்குகள் எப்படி?",
+    "Stage 1 மற்றும் Stage 2 வித்தியாசம்?",
+    "Offline எப்படி வேலை செய்கிறது?",
+    "பாத்திரங்கள் என்ன செய்கின்றன?",
     "எந்த நிலைகள் கண்காணிக்கப்படுகின்றன?",
-    "டாஷ்போர்டுக்கு என்னை அழைத்துச் செல்",
-    "இங்கே என்ன உள்ளது?",
-    "BloomCare பற்றி சொல்",
   ],
 }
 
 const WELCOME_MESSAGES: Record<ChatLanguage, string> = {
-  en: "Hi, I am BloomCare Assistant. I can answer questions about the site and guide you to the right page.",
-  si: "ආයුබෝවන්, මම BloomCare Assistant ය. මට ඔබට පිටුව ගැන ප්‍රශ්න විතරක දිය හැකි අතර ඔබව නිවැරදි පිටුවට ගයිතු දිය හැකිය.",
-  ta: "வணக்கம், நான் BloomCare Assistant. நான் உங்களுக்கு தளம் பற்றிய கேள்விகளுக்கு பதிலளித்து புறங்குறை பக்கத்திற்கு வழிகாட்ட முடியும்.",
+  en: "Hi, I am BloomCare Assistant — a local guide for navigation and product FAQ (no cloud LLM). Ask about login, roles, Stage 1/2, offline sync, or say “what's here?”.",
+  si: "ආයුබෝවන්, මම BloomCare Assistant — navigation සහ නිෂ්පාදන FAQ සඳහා දේශීය මාර්ගෝපදේශකයෙක් (cloud LLM නැත). Login, කාර්යභාර, Stage 1/2, offline sync ගැන අසන්න.",
+  ta: "வணக்கம், நான் BloomCare Assistant — வழிசெலுத்தல் மற்றும் தயாரிப்பு FAQ-க்கான உள்ளூர் வழிகாட்டி (cloud LLM இல்லை). Login, பாத்திரங்கள், Stage 1/2, offline sync பற்றி கேளுங்கள்.",
 }
 
 function dispatchNavigate(target: Exclude<ChatNavigateTo, "none">) {

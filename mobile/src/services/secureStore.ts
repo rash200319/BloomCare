@@ -21,6 +21,7 @@ class SecureStoreService {
   private readonly SESSION_KEY = 'bloomcare_session';
   private readonly TOKEN_KEY = 'bloomcare_auth_token';
   private readonly PIN_KEY = 'bloomcare_user_pin';
+  private readonly PIN_SALT_KEY = 'bloomcare_pin_salt_v2';
 
   /**
    * Save user session with encrypted JWT token
@@ -36,11 +37,6 @@ class SecureStoreService {
   ): Promise<void> {
     try {
       const pinHash = pin ? await this.hashPin(pin) : '';
-      console.log('💾 Saving Session:');
-      console.log('  Email:', email);
-      console.log('  PIN:', pin);
-      console.log('  PIN Hash:', pinHash);
-      
       const session: StoredSession = {
         userId,
         email,
@@ -52,9 +48,8 @@ class SecureStoreService {
       };
 
       await SecureStore.setItemAsync(this.SESSION_KEY, JSON.stringify(session));
-      console.log('✅ Session saved securely');
     } catch (error) {
-      console.error('Failed to save session:', error);
+      console.error('Failed to save session');
       throw error;
     }
   }
@@ -67,16 +62,11 @@ class SecureStoreService {
     try {
       const sessionStr = await SecureStore.getItemAsync(this.SESSION_KEY);
       if (!sessionStr) {
-        console.log('📭 No session stored');
         return null;
       }
-      const session = JSON.parse(sessionStr);
-      console.log('📖 Retrieved session:');
-      console.log('  Email:', session.email);
-      console.log('  PIN Hash on disk:', session.pinHash);
-      return session;
+      return JSON.parse(sessionStr) as StoredSession;
     } catch (error) {
-      console.error('Failed to retrieve session:', error);
+      console.error('Failed to retrieve session');
       return null;
     }
   }
@@ -88,26 +78,24 @@ class SecureStoreService {
   async verifyPin(pin: string): Promise<boolean> {
     try {
       const session = await this.getSession();
-      if (!session) {
-        console.log('❌ No session found for PIN verification');
+      if (!session?.pinHash) {
         return false;
       }
 
-      if (!session.pinHash) {
-        console.log('❌ No PIN has been set for this session');
-        return false;
+      for (const candidate of await this.pinHashCandidates(pin)) {
+        if (candidate === session.pinHash) {
+          // Upgrade legacy unsalted hashes on successful verify
+          if (!session.pinHash.startsWith('v2:')) {
+            const upgraded = await this.hashPin(pin);
+            session.pinHash = upgraded;
+            await SecureStore.setItemAsync(this.SESSION_KEY, JSON.stringify(session));
+          }
+          return true;
+        }
       }
-
-      const pinHash = await this.hashPin(pin);
-      console.log('🔐 PIN Verification:');
-      console.log('  Entered PIN:', pin);
-      console.log('  Computed Hash:', pinHash);
-      console.log('  Stored Hash:', session.pinHash);
-      console.log('  Match?:', pinHash === session.pinHash);
-      
-      return pinHash === session.pinHash;
+      return false;
     } catch (error) {
-      console.error('Failed to verify PIN:', error);
+      console.error('Failed to verify PIN');
       return false;
     }
   }
@@ -122,9 +110,8 @@ class SecureStoreService {
 
       session.token = newToken;
       await SecureStore.setItemAsync(this.SESSION_KEY, JSON.stringify(session));
-      console.log('Token updated');
     } catch (error) {
-      console.error('Failed to update token:', error);
+      console.error('Failed to update token');
       throw error;
     }
   }
@@ -138,13 +125,10 @@ class SecureStoreService {
       const session = await this.getSession();
       if (!session) return;
 
-      // Keep PIN hash and user info, only clear the token
       session.token = '';
-      console.log('🔓 Token cleared (PIN preserved for offline login)');
-      
       await SecureStore.setItemAsync(this.SESSION_KEY, JSON.stringify(session));
     } catch (error) {
-      console.error('Failed to clear token:', error);
+      console.error('Failed to clear token');
       throw error;
     }
   }
@@ -155,31 +139,53 @@ class SecureStoreService {
   async clearSession(): Promise<void> {
     try {
       await SecureStore.deleteItemAsync(this.SESSION_KEY);
-      console.log('Session cleared');
     } catch (error) {
-      console.error('Failed to clear session:', error);
+      console.error('Failed to clear session');
       throw error;
     }
   }
 
+  private async getOrCreatePinSalt(): Promise<string> {
+    const existing = await SecureStore.getItemAsync(this.PIN_SALT_KEY);
+    if (existing) return existing;
+    const bytes = await Crypto.getRandomBytesAsync(16);
+    const salt = Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+    await SecureStore.setItemAsync(this.PIN_SALT_KEY, salt);
+    return salt;
+  }
+
   /**
-   * Simple PIN hash function
-   * In production, use a proper key derivation function like PBKDF2
+   * Salted SHA-256 PIN hash (v2). Legacy unsalted SHA-256 still verified for migration.
    */
   private async hashPin(pin: string): Promise<string> {
-    try {
-      return await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, pin);
-    } catch (error) {
-      console.error('Failed to hash PIN:', error);
-      throw error;
-    }
+    const salt = await this.getOrCreatePinSalt();
+    const digest = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      `${salt}:${pin}`
+    );
+    return `v2:${salt}:${digest}`;
+  }
+
+  private async legacyHashPin(pin: string): Promise<string> {
+    return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, pin);
   }
 
   /**
-   * Compute PIN hash for offline credential storage
+   * Compute current (v2) PIN hash for offline credential storage
    */
   async computePinHash(pin: string): Promise<string> {
     return this.hashPin(pin);
+  }
+
+  /**
+   * Candidate hashes for lookup (v2 first, then legacy unsalted).
+   */
+  async pinHashCandidates(pin: string): Promise<string[]> {
+    const current = await this.hashPin(pin);
+    const legacy = await this.legacyHashPin(pin);
+    return current === legacy ? [current] : [current, legacy];
   }
 
   /**
@@ -199,7 +205,7 @@ class SecureStoreService {
       const session = await this.getSession();
       return session?.token || null;
     } catch (error) {
-      console.error('Failed to get stored token:', error);
+      console.error('Failed to get stored token');
       return null;
     }
   }

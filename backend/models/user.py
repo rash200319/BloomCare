@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, Enum, DateTime, func
+from sqlalchemy import Column, String, Boolean, Enum, DateTime, Integer, func
 import enum
 from backend.db.base import Base
 
@@ -26,4 +26,6 @@ class User(Base):
     phone_number = Column(String(20), nullable=True)
     is_active = Column(Boolean, default=True)
     first_time_login = Column(Boolean, default=True)
+    # Bumped by logout-all / password change to invalidate outstanding JWTs
+    token_version = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, server_default=func.now())

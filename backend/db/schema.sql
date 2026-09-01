@@ -26,7 +26,7 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 -- Existing databases may still have legacy OBSERTITIAN enum label.
--- migrate_roles.sql upgrades those DBs to CLINICAL_SPECIALIST.
+-- init_db.py upgrades those rows to CLINICAL_SPECIALIST after schema apply.
 
 DO $$ BEGIN
     CREATE TYPE risk_tier AS ENUM ('routine_care', 'escalate');
@@ -42,10 +42,14 @@ CREATE TABLE IF NOT EXISTS users (
     role user_role DEFAULT 'FRONTLINE_STAFF',
     is_active BOOLEAN DEFAULT TRUE,
     first_time_login BOOLEAN DEFAULT TRUE,
+    token_version INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     specialization VARCHAR(100), -- For specialists, e.g., "Obstetrics", "Cardiology"
     phone_number VARCHAR(20)
 );
+
+-- Existing DBs created before token_version existed
+ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
 
 -- PATIENTS
 CREATE TABLE IF NOT EXISTS patients (
@@ -60,10 +64,13 @@ CREATE TABLE IF NOT EXISTS patients (
     emergency_contact VARCHAR(50),
     blood_group VARCHAR(10),
     first_time_login BOOLEAN DEFAULT TRUE,
+    token_version INTEGER NOT NULL DEFAULT 0,
     registered_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     assigned_worker_id UUID REFERENCES users(id) ON DELETE SET NULL
 );
+
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
 
 
 
@@ -385,7 +392,7 @@ CREATE INDEX IF NOT EXISTS idx_appointments_creator ON appointments(created_by_i
 CREATE INDEX IF NOT EXISTS idx_appointments_specialist ON appointments(specialist_id);
 CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status);
 CREATE INDEX IF NOT EXISTS idx_appointments_specialist_date ON appointments(specialist_id, appointment_date);
-CREATE INDEX IF NOT EXISTS idx_appointments_specialist_day_queue ON appointments(specialist_id, DATE(appointment_date), queue_number);
+CREATE INDEX IF NOT EXISTS idx_appointments_specialist_day_queue ON appointments(specialist_id, ((appointment_date AT TIME ZONE 'UTC')::date), queue_number);
 CREATE INDEX IF NOT EXISTS idx_appointments_completed ON appointments(completed_at) WHERE status = 'COMPLETED';
 CREATE INDEX IF NOT EXISTS idx_appointments_cancelled ON appointments(cancelled_at) WHERE status = 'CANCELLED';
 

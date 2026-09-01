@@ -9,8 +9,10 @@ from backend.models.user import User
 
 try:
     from backend.services.llm_service import generate_mock_explanation, generate_multilingual_explanation
-except ImportError:
-    pass
+except ImportError as exc:
+    raise ImportError(
+        "LLM service unavailable. Ensure backend/services/llm_service.py is present."
+    ) from exc
 
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,7 @@ import json
 import uuid
 from io import BytesIO
 
-from backend.core.deps import get_db, get_current_active_user
+from backend.core.deps import get_db, get_current_active_user, ensure_patient_access
 from backend.schemas.screening import PatientReportRequest, PatientReportResponse, Stage1ScreeningReportData
 from backend.models.user import User
 from backend.models.screening import Stage1Screening, Stage2Diagnostic, PatientReport
@@ -261,13 +261,10 @@ def download_report(
                 detail="Report not found"
             )
         
-        # Check authorization
-        if str(report.patient_id) != str(current_user.id) and current_user.role.value != "ADMIN":
-            if current_user.role.value not in ["CLINICAL_SPECIALIST", "FRONTLINE_STAFF"]:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Not authorized to download this report"
-                )
+        # Check authorization (patient self, admin/specialist, or assigned frontline)
+        ensure_patient_access(
+            db, current_user, str(report.patient_id), action="report.download"
+        )
         
         # Return as JSON for now (can be extended to PDF)
         json_content = json.dumps(report.report_content, indent=2)
@@ -298,13 +295,9 @@ def list_patient_reports(
     """List all reports for a patient."""
     
     try:
-        # Check authorization
-        if str(patient_id) != str(current_user.id) and current_user.role.value != "ADMIN":
-            if current_user.role.value not in ["CLINICAL_SPECIALIST", "FRONTLINE_STAFF"]:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Not authorized to view these reports"
-                )
+        ensure_patient_access(
+            db, current_user, str(patient_id), action="report.list"
+        )
         
         # Retrieve reports
         reports = db.query(PatientReport).filter(

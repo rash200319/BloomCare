@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def init_db():
+    """Apply schema.sql, migrate legacy roles, and upsert core demo login accounts."""
     logger.info("Initializing database from schema.sql...")
 
     # Parse SQLAlchemy URI to get psycopg2 parameters
@@ -43,15 +44,25 @@ def init_db():
         with open(schema_path, "r") as f:
             sql = f.read()
 
-        try:
-            cursor.execute(sql)
-            logger.info("Schema execution completed successfully!")
-        except Exception as schema_error:
-            # Schema may be partially present in development; continue with seeding.
-            logger.warning("Schema execution reported: %s", schema_error)
-            conn.rollback()
+        # schema.sql is written to be idempotent (IF NOT EXISTS, DROP-then-
+        # CREATE for triggers, DO blocks catching duplicate_object for enums),
+        # so a failure here is a real bug in the schema, not a rerun artifact.
+        # Let it propagate rather than silently seeding against a broken DB.
+        cursor.execute(sql)
+        logger.info("Schema execution completed successfully!")
 
         cursor.execute('SET search_path TO "BloomCare"')
+
+        # Ensure JWT invalidation columns exist on older Railway DBs.
+        try:
+            cursor.execute(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0"
+            )
+            cursor.execute(
+                "ALTER TABLE patients ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0"
+            )
+        except Exception as col_error:
+            logger.warning("token_version ensure skipped: %s", col_error)
 
         # Insert default users for demo/testing
         from backend.core.security import get_password_hash
@@ -70,7 +81,7 @@ def init_db():
                 "password": "rash2003",
             },
             {
-                "email": "obsertitian@bloomcare.health",
+                "email": "obstetrician@bloomcare.health",
                 "full_name": "Obstetrician Demo",
                 "role": "CLINICAL_SPECIALIST",
                 "password": "rash2003",
@@ -136,6 +147,7 @@ def init_db():
 
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
+        raise
     finally:
         if 'cursor' in locals():
             cursor.close()
@@ -144,4 +156,7 @@ def init_db():
 
 
 if __name__ == "__main__":
-    init_db()
+    try:
+        init_db()
+    except Exception:
+        sys.exit(1)

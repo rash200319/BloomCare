@@ -1,24 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PendingScreening } from '../types';
+import { readSecureJsonArray, writeSecureJsonArray } from './queueCrypto';
 
 const PENDING_QUEUE_KEY = 'bloomcare_pending_stage1_queue';
 
 export const readPendingQueue = async (): Promise<PendingScreening[]> => {
-  const raw = await AsyncStorage.getItem(PENDING_QUEUE_KEY);
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return readSecureJsonArray<PendingScreening>(
+    PENDING_QUEUE_KEY,
+    (key) => AsyncStorage.getItem(key),
+    (key, value) => AsyncStorage.setItem(key, value)
+  );
 };
 
 export const writePendingQueue = async (queue: PendingScreening[]): Promise<void> => {
-  await AsyncStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(queue));
+  await writeSecureJsonArray(
+    PENDING_QUEUE_KEY,
+    queue,
+    (key, value) => AsyncStorage.setItem(key, value)
+  );
 };
 
 export const enqueuePending = async (

@@ -134,6 +134,28 @@ function getGroqClient(): Groq | null {
 
 export async function POST(request: Request) {
   try {
+    const authHeader = request.headers.get("authorization") || ""
+    if (!authHeader.toLowerCase().startsWith("bearer ") || authHeader.trim().length < 16) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
+    }
+
+    const apiBase =
+      process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
+      (process.env.NEXT_PUBLIC_BACKEND_URL
+        ? `${process.env.NEXT_PUBLIC_BACKEND_URL.replace(/\/+$/, "")}/api/v1`
+        : null)
+
+    if (apiBase) {
+      const verify = await fetch(`${apiBase}/auth/profile`, {
+        method: "GET",
+        headers: { Authorization: authHeader },
+        cache: "no-store",
+      })
+      if (!verify.ok) {
+        return NextResponse.json({ error: "Invalid or expired session" }, { status: 401 })
+      }
+    }
+
     const body = (await request.json()) as {
       shapJson?: unknown
       language?: string

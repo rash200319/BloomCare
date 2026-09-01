@@ -47,6 +47,7 @@ import {
   syncDirtyVitalsUpdates,
   syncPendingFrontlineActions,
 } from '../services/syncService';
+import { readSecureJsonArray, writeSecureJsonArray } from '../services/queueCrypto';
 
 interface FrontlineStaffScreenProps {
   user: User;
@@ -210,9 +211,16 @@ const upsertBloomcarePatient = async (patient: BloomcareCachedPatient): Promise<
 };
 
 const appendToBloomcareSyncQueue = async (items: BloomcareSyncQueueItem[]): Promise<void> => {
-  const raw = await AsyncStorage.getItem(BLOOMCARE_SYNC_QUEUE_KEY);
-  const queue = safeParseArray<BloomcareSyncQueueItem>(raw);
-  await AsyncStorage.setItem(BLOOMCARE_SYNC_QUEUE_KEY, JSON.stringify([...queue, ...items]));
+  const queue = await readSecureJsonArray<BloomcareSyncQueueItem>(
+    BLOOMCARE_SYNC_QUEUE_KEY,
+    (key) => AsyncStorage.getItem(key),
+    (key, value) => AsyncStorage.setItem(key, value)
+  );
+  await writeSecureJsonArray(
+    BLOOMCARE_SYNC_QUEUE_KEY,
+    [...queue, ...items],
+    (key, value) => AsyncStorage.setItem(key, value)
+  );
 };
 
 const buildPendingQueueItem = (
