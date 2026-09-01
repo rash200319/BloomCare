@@ -1,6 +1,6 @@
 "use client"
 
-import { getApiBaseCandidates } from "@/lib/api"
+import { getApiBaseCandidates, toApiUrl } from "@/lib/api"
 
 import { useEffect, useMemo, useState } from "react"
 import {
@@ -408,7 +408,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
 
     for (const base of candidates) {
       try {
-        const response = await fetch(`${base}${path}`, {
+        const response = await fetch(toApiUrl(path, base), {
           cache: "no-store",
           ...init,
           headers,

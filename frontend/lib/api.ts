@@ -64,6 +64,21 @@ export function getApiBaseCandidates(): string[] {
 export const BACKEND_URL = getBackendOrigin()
 export const API_V1_BASE = getApiBase()
 
+/** Join a client path onto the API base. Collection paths get a trailing slash
+ *  so FastAPI does not 307 to http:// behind Railway (mixed content). */
+export function toApiUrl(path: string, base: string = getApiBase()): string {
+  if (path.startsWith("http")) {
+    return preferHttpsForRemote(path)
+  }
+
+  const [rawPath, query] = path.split("?")
+  let pathname = rawPath.startsWith("/") ? rawPath : `/${rawPath}`
+  if (/^\/[A-Za-z0-9_-]+$/.test(pathname)) {
+    pathname = `${pathname}/`
+  }
+  return `${normalizeBase(base)}${pathname}${query ? `?${query}` : ""}`
+}
+
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null
   return window.localStorage.getItem(TOKEN_KEY)
@@ -114,8 +129,8 @@ export async function apiRequest(
   }
 
   const url = path.startsWith("http")
-    ? path
-    : `${getApiBase()}${path.startsWith("/") ? path : `/${path}`}`
+    ? preferHttpsForRemote(path)
+    : toApiUrl(path)
 
   const headers = new Headers(fetchInit.headers)
   if (token && !headers.has("Authorization")) {

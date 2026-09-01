@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from backend.api.api_router import api_router
 from backend.core.config import settings, validate_security_settings
@@ -18,7 +19,11 @@ app = FastAPI(
     docs_url=_docs_url,
     redoc_url=_redoc_url,
     openapi_url=_openapi_url,
+    redirect_slashes=False,
 )
+
+# Railway terminates TLS; without this, slash-redirects emit http:// and browsers block mixed content.
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 
 def custom_openapi():

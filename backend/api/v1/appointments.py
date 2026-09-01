@@ -408,6 +408,13 @@ def get_appointment(
 
 
 @router.get(
+    "",
+    response_model=List[AppointmentResponse],
+    summary="List Appointments",
+    description="Retrieve appointments with optional filters. Specialists see only HIGH/MODERATE risk patients, admins see all",
+    include_in_schema=False,
+)
+@router.get(
     "/",
     response_model=List[AppointmentResponse],
     summary="List Appointments",
