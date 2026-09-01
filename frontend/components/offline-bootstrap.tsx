@@ -3,29 +3,38 @@
 import { useEffect } from "react"
 
 /**
- * Registers the offline service worker for Stage-1 offline AI shell assets.
- * Set NEXT_PUBLIC_ENABLE_OFFLINE_SW=false to disable (useful if a stale SW
- * is masking a Vercel deploy during demos).
+ * Offline SW is opt-in. A stale worker was serving old Mark as Reviewed
+ * code (POST /triage/history + /review-screening) after Vercel deploys.
+ * Set NEXT_PUBLIC_ENABLE_OFFLINE_SW=true only for the frontline offline demo.
  */
 export default function OfflineBootstrap() {
   useEffect(() => {
-    if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
-      return
-    }
+    if (typeof window === "undefined") return
 
-    const enabled = process.env.NEXT_PUBLIC_ENABLE_OFFLINE_SW !== "false"
+    const enabled = process.env.NEXT_PUBLIC_ENABLE_OFFLINE_SW === "true"
 
     const onLoad = () => {
-      if (!enabled) {
+      if ("serviceWorker" in navigator) {
         navigator.serviceWorker.getRegistrations().then((regs) => {
-          regs.forEach((reg) => reg.unregister())
+          if (enabled) {
+            navigator.serviceWorker.register("/sw.js").catch((error) => {
+              console.error("Service worker registration failed:", error)
+            })
+            return
+          }
+          regs.forEach((reg) => {
+            void reg.unregister()
+          })
         })
-        return
       }
 
-      navigator.serviceWorker.register("/sw.js").catch((error) => {
-        console.error("Service worker registration failed:", error)
-      })
+      if ("caches" in window && !enabled) {
+        caches.keys().then((keys) => {
+          keys.forEach((key) => {
+            void caches.delete(key)
+          })
+        })
+      }
     }
 
     window.addEventListener("load", onLoad)

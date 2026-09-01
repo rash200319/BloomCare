@@ -1,4 +1,4 @@
-const CACHE_NAME = "bloomcare-offline-v4"
+const CACHE_NAME = "bloomcare-offline-v5"
 const APP_SHELL = [
   "/manifest.json",
   "/scripts/stage1_offline_ai.js",
@@ -84,21 +84,8 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // Do not cache Next.js build assets; prefer network so redeploys show up.
-  if (requestUrl.pathname.startsWith("/_next/")) {
-    event.respondWith(
-      fetch(event.request).catch(async () => {
-        const cached = await caches.match(event.request)
-        return (
-          cached ||
-          new Response("Offline", {
-            status: 503,
-            statusText: "Offline",
-            headers: { "Content-Type": "text/plain" },
-          })
-        )
-      }),
-    )
+  if (requestUrl.pathname.startsWith("/_next/") || requestUrl.pathname.endsWith(".js")) {
+    event.respondWith(fetch(event.request))
     return
   }
 
@@ -110,7 +97,6 @@ self.addEventListener("fetch", (event) => {
     requestUrl.pathname.endsWith(".jpg") ||
     requestUrl.pathname.endsWith(".jpeg") ||
     requestUrl.pathname.endsWith(".svg") ||
-    requestUrl.pathname.endsWith(".js") ||
     requestUrl.pathname === "/manifest.json"
 
   if (!isStaticAsset) {
