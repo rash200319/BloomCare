@@ -23,6 +23,8 @@ interface PatientPortalScreenProps {
   user: User;
   onLogout: () => void;
   isOnline?: boolean;
+  language: LanguageCode;
+  onLanguageChange: (language: LanguageCode) => void;
 }
 
 interface CheckIn {
@@ -65,10 +67,15 @@ interface ScreenFactor {
   value: string;
 }
 
-export default function PatientPortalScreen({ user, onLogout }: PatientPortalScreenProps) {
-  const [language, setLanguage] = useState<LanguageCode>('en');
+export default function PatientPortalScreen({
+  user,
+  onLogout,
+  isOnline: isOnlineProp,
+  language,
+  onLanguageChange,
+}: PatientPortalScreenProps) {
   const [selectedTab, setSelectedTab] = useState<'home' | 'care' | 'visits' | 'insights'>('home');
-  const [isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState(typeof isOnlineProp === 'boolean' ? isOnlineProp : true);
   
   // Data states
   const [patientProfile, setPatientProfile] = useState<PatientProfile>({
@@ -82,6 +89,12 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
   const [aiExplanation, setAiExplanation] = useState('');
 
   const t = text[language];
+
+  useEffect(() => {
+    if (typeof isOnlineProp === 'boolean') {
+      setIsOnline(isOnlineProp);
+    }
+  }, [isOnlineProp]);
 
   // Mock recent check-ins for history tab
   const recentCheckIns: CheckIn[] = [
@@ -384,7 +397,7 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>
-              {language === 'en' ? 'Your Pregnancy' : language === 'si' ? 'ඔබේ ගර්භණ' : 'உங்கள் கர்ப்பநિலை'}
+              {t.yourPregnancy}
             </Text>
             <Text style={styles.cardBadge}>
               {gestationalWeek <= 13 ? '1st' : gestationalWeek <= 27 ? '2nd' : '3rd'} Trimester
@@ -393,19 +406,19 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
           <View style={styles.cardContent}>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>
-                {language === 'en' ? 'Weeks Pregnant' : language === 'si' ? 'ගර්භණ සතිය' : 'கர்ப்பக் கால வாரம்'}
+                {t.weeksPregnant}
               </Text>
               <Text style={styles.infoValue}>{gestationalWeek}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>
-                {language === 'en' ? 'Estimated Due Date' : language === 'si' ? 'ප්‍රසව දිනය' : 'பிரசவ தேதி'}
+                {t.estimatedDueDate}
               </Text>
               <Text style={styles.infoValue}>{patientProfile.due_date || 'N/A'}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>
-                {language === 'en' ? 'Blood Group' : language === 'si' ? 'රුධිර කාණ්ඩ' : 'இரத்த வகை'}
+                {t.bloodGroup}
               </Text>
               <Text style={styles.infoValue}>{patientProfile.blood_group || 'N/A'}</Text>
             </View>
@@ -416,7 +429,7 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
         {upcomingAppointments.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>
-              {language === 'en' ? 'Upcoming Appointments' : language === 'si' ? 'ඉදිරි පත්‍රිකා' : 'வரவிருக்கும் சந்திப்புகள்'}
+              {t.upcomingAppointments}
             </Text>
             {upcomingAppointments.slice(0, 2).map((appt, idx) => {
               const apptDate = getSafeDate(appt.scheduled_for);
@@ -444,7 +457,7 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
         {latestScreening && (latestScreening.latest_stage1 || latestScreening.latest_stage2) && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>
-              {language === 'en' ? 'Screening Analysis' : language === 'si' ? 'පරීක්ෂණ විශ්ලේෂණ' : 'ஸ்கிரீனிங் பகுப்பாய்வு'}
+              {t.screeningAnalysis}
             </Text>
             <Pressable
               style={[styles.explainButton, isExplaining && { opacity: 0.6 }]}
@@ -455,7 +468,7 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
                 <Text style={styles.explainButtonText}>
-                  {language === 'en' ? 'Explain My Results' : language === 'si' ? 'ප්‍රතිඵල පැහැදිලි කරන්න' : 'முடிவுகளை விளக்கவும்'}
+                  {t.explainResults}
                 </Text>
               )}
             </Pressable>
@@ -473,13 +486,13 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
   const carePlanContent = () => (
     <View>
       <Text style={styles.sectionTitle}>
-        {language === 'en' ? 'Care Plan' : language === 'si' ? 'සත්කාර සැලැස්ම' : 'சிகிச்சை திட்டம்'}
+        {t.carePlan}
       </Text>
 
       {prescriptions.length === 0 ? (
         <View style={styles.card}>
           <Text style={styles.emptyText}>
-            {language === 'en' ? 'No active prescriptions' : language === 'si' ? 'ක්‍රියාශීල ඖෂධ නොමැත' : 'செயலில் உள்ள மருந்துகள் இல்லை'}
+            {t.noPrescriptions}
           </Text>
         </View>
       ) : (
@@ -488,33 +501,33 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
             <Text style={styles.cardTitle}>{rx.medication_name}</Text>
             <View style={styles.prescriptionDetail_}>
               <Text style={styles.label}>
-                {language === 'en' ? 'Dosage' : language === 'si' ? 'මාත්රා' : 'அளவு'}
+                {t.dosage}
               </Text>
               <Text style={styles.value}>{rx.dosage || 'N/A'}</Text>
             </View>
             <View style={styles.prescriptionDetail_}>
               <Text style={styles.label}>
-                {language === 'en' ? 'Frequency' : language === 'si' ? 'සංඛ්‍යාතය' : 'அதிர்வெண்'}
+                {t.frequency}
               </Text>
               <Text style={styles.value}>{rx.frequency || 'N/A'}</Text>
             </View>
             <View style={styles.prescriptionDetail_}>
               <Text style={styles.label}>
-                {language === 'en' ? 'Route' : language === 'si' ? 'මාර්ගය' : 'வழி'}
+                {t.route}
               </Text>
               <Text style={styles.value}>{rx.route || 'Oral'}</Text>
             </View>
             {rx.doctor_full_name && (
               <View style={styles.prescriptionDetail_}>
                 <Text style={styles.label}>
-                  {language === 'en' ? 'Prescribed By' : language === 'si' ? 'නිර්දේශ කරන ලද' : 'விதிக்கப்பட்ட'}
+                  {t.prescribedBy}
                 </Text>
                 <Text style={styles.value}>Dr. {rx.doctor_full_name}</Text>
               </View>
             )}
             <View style={styles.prescriptionDetail_}>
               <Text style={styles.label}>
-                {language === 'en' ? 'Period' : language === 'si' ? 'කාල පරිච්ඡේද' : 'காலம்'}
+                {t.period}
               </Text>
               <Text style={styles.value}>
                 {rx.start_date && rx.end_date ? `${rx.start_date} to ${rx.end_date}` : 'See instructions'}
@@ -529,13 +542,13 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
   const visitsContent = () => (
     <View>
       <Text style={styles.sectionTitle}>
-        {language === 'en' ? 'Visits' : language === 'si' ? 'හමුවීම්' : 'சந்திப்புகள்'}
+        {t.visits}
       </Text>
 
       {appointments.length === 0 ? (
         <View style={styles.card}>
           <Text style={styles.emptyText}>
-            {language === 'en' ? 'No upcoming appointments' : language === 'si' ? 'ඉදිරි හමුවීම් නොමැත' : 'வரவிருக்கும் சந்திப்புகள் இல்லை'}
+            {t.noUpcomingAppointments}
           </Text>
         </View>
       ) : (
@@ -558,7 +571,7 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
                   <Text style={styles.appointmentTitle}>{appt.title || appt.appointment_type || 'Appointment'}</Text>
                   <Text style={styles.appointmentTime}>{formatTimeSlot(apptDate, appt.duration_minutes)}</Text>
                   <Text style={[styles.appointmentTime, { marginTop: 4 }]}>
-                    {language === 'en' ? 'Status: ' : language === 'si' ? 'තත්ත්වය: ' : 'நிலை: '}
+                    {t.statusLabel}
                     {appt.status || 'Scheduled'}
                   </Text>
                 </View>
@@ -573,7 +586,7 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
   const insightsContent = () => (
     <View>
       <Text style={styles.sectionTitle}>
-        {language === 'en' ? 'Health Insights' : language === 'si' ? 'සෞඛ්‍ය විදසුන්' : 'சுகாதார நுண்ணறிவு'}
+        {t.healthInsights}
       </Text>
 
       {(() => {
@@ -584,7 +597,7 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
           <View style={styles.card}>
             <Text style={styles.cardBadge}>{`Week ${weeklyInsight.week}`}</Text>
             <Text style={styles.insightTitle}>
-              {language === 'en' ? 'Weekly Pregnancy Tips' : language === 'si' ? 'සතිපතා ගර්භණී උපදෙස්' : 'வாராந்த கர்ப்ப குறிப்புகள்'}
+              {t.weeklyTips}
             </Text>
             <Text style={styles.insightDescription}>{weeklyInsight.description}</Text>
 
@@ -622,7 +635,7 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
           </View>
           <Pressable style={styles.logoutButton} onPress={onLogout}>
             <Text style={styles.logoutButtonText}>
-              {language === 'en' ? 'Logout' : language === 'si' ? 'ඉවත් වන්න' : 'வெளியேறு'}
+              {t.logout}
             </Text>
           </Pressable>
         </View>
@@ -637,7 +650,7 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
               styles.langButton,
               language === lang && styles.langButtonActive
             ]}
-            onPress={() => setLanguage(lang)}
+            onPress={() => onLanguageChange(lang)}
           >
             <Text style={[
               styles.langButtonText,
@@ -656,7 +669,7 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
           onPress={() => setSelectedTab('home')}
         >
           <Text style={[styles.tabText, selectedTab === 'home' && styles.tabTextActive]}>
-            {language === 'en' ? 'Home' : language === 'si' ? 'ගෙය' : 'வீடு'}
+            {t.home}
           </Text>
         </Pressable>
         <Pressable
@@ -664,7 +677,7 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
           onPress={() => setSelectedTab('care')}
         >
           <Text style={[styles.tabText, selectedTab === 'care' && styles.tabTextActive]}>
-            {language === 'en' ? 'Care' : language === 'si' ? 'සත්කාර' : 'பராமரிப்பு'}
+            {t.care}
           </Text>
         </Pressable>
         <Pressable
@@ -672,7 +685,7 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
           onPress={() => setSelectedTab('visits')}
         >
           <Text style={[styles.tabText, selectedTab === 'visits' && styles.tabTextActive]}>
-            {language === 'en' ? 'Visits' : language === 'si' ? 'හමුවීම්' : 'சந்திப்புகள்'}
+            {t.visits}
           </Text>
         </Pressable>
         <Pressable
@@ -680,7 +693,7 @@ export default function PatientPortalScreen({ user, onLogout }: PatientPortalScr
           onPress={() => setSelectedTab('insights')}
         >
           <Text style={[styles.tabText, selectedTab === 'insights' && styles.tabTextActive]}>
-            {language === 'en' ? 'Tips' : language === 'si' ? 'ඉඟි' : 'குறிப்புகள்'}
+            {t.tips}
           </Text>
         </Pressable>
       </View>

@@ -15,8 +15,7 @@ import {
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
-import { v4 as uuidv4 } from 'uuid';
-import { text, assistantNarrative } from '../i18n';
+import { text, assistantNarrative, formatMsg } from '../i18n';
 import { API_BASE_URL } from '../config/api';
 import {
   LanguageCode,
@@ -42,17 +41,18 @@ import {
   queueReferralCard,
   registerPatientForFrontline,
   saveDirtyOfflineVitalsUpdate,
-    searchPatientInLocalCache,
+  searchPatientInLocalCache,
   submitRiskOnline,
   syncDirtyVitalsUpdates,
   syncPendingFrontlineActions,
 } from '../services/syncService';
-import { readSecureJsonArray, writeSecureJsonArray } from '../services/queueCrypto';
 
 interface FrontlineStaffScreenProps {
   user: User;
   onLogout: () => void;
   isOnline?: boolean;
+  language: LanguageCode;
+  onLanguageChange: (language: LanguageCode) => void;
 }
 
 const initialFields = {
@@ -98,23 +98,12 @@ const formatDueDateInput = (value: string): string => {
 };
 
 const BLOOMCARE_PATIENTS_CACHE_KEY = 'bloomcare_patients_cache';
-const BLOOMCARE_SYNC_QUEUE_KEY = 'bloomcare_sync_queue';
-
-type OfflineQueueAction = 'CREATE_PATIENT' | 'CREATE_SCREENING' | 'CREATE_APPOINTMENT';
 
 interface BloomcareCachedPatient {
   id: string;
   nic: string;
   patient_name: string;
   age?: number;
-}
-
-interface BloomcareSyncQueueItem {
-  id: string;
-  action: OfflineQueueAction;
-  payload: Record<string, unknown>;
-  timestamp: string;
-  sync_status: 'PENDING';
 }
 
 interface AppointmentSpecialization {
@@ -169,6 +158,15 @@ const findCachedPatientByNic = async (nic: string): Promise<PatientMiniProfile |
     return null;
   }
 
+  await offlineDatabase.initialize();
+  const dbPatients = await offlineDatabase.getAllPatientProfiles();
+  const dbMatch = dbPatients.find(
+    (item) => normalizeNicValue(String(item.national_id ?? '')) === normalizedNic
+  );
+  if (dbMatch) {
+    return mapPatientProfile(dbMatch);
+  }
+
   const cachedPatients = await readBloomcarePatientsCache();
   const match = cachedPatients.find((item) => normalizeNicValue(item.nic) === normalizedNic);
 
@@ -210,30 +208,6 @@ const upsertBloomcarePatient = async (patient: BloomcareCachedPatient): Promise<
   await AsyncStorage.setItem(BLOOMCARE_PATIENTS_CACHE_KEY, JSON.stringify(next));
 };
 
-const appendToBloomcareSyncQueue = async (items: BloomcareSyncQueueItem[]): Promise<void> => {
-  const queue = await readSecureJsonArray<BloomcareSyncQueueItem>(
-    BLOOMCARE_SYNC_QUEUE_KEY,
-    (key) => AsyncStorage.getItem(key),
-    (key, value) => AsyncStorage.setItem(key, value)
-  );
-  await writeSecureJsonArray(
-    BLOOMCARE_SYNC_QUEUE_KEY,
-    [...queue, ...items],
-    (key, value) => AsyncStorage.setItem(key, value)
-  );
-};
-
-const buildPendingQueueItem = (
-  action: OfflineQueueAction,
-  payload: Record<string, unknown>
-): BloomcareSyncQueueItem => ({
-  id: uuidv4(),
-  action,
-  payload,
-  timestamp: new Date().toISOString(),
-  sync_status: 'PENDING',
-});
-
 const num = (raw: string, fallback: number): number => {
   const parsed = Number.parseFloat(raw);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -255,8 +229,13 @@ const badgeStyle = (online: boolean): object => ({
   color: online ? '#166534' : '#991b1b'
 });
 
-export default function FrontlineStaffScreen({ user, onLogout, isOnline }: FrontlineStaffScreenProps) {
-  const [language, setLanguage] = useState<LanguageCode>('en');
+export default function FrontlineStaffScreen({
+  user,
+  onLogout,
+  isOnline,
+  language,
+  onLanguageChange,
+}: FrontlineStaffScreenProps) {
   const [fields, setFields] = useState(initialFields);
   const [risk, setRisk] = useState<RiskResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -523,7 +502,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
         setAppointmentSpecializations(list);
       })
       .catch(() => {
-        setAppointmentError('Failed to load specializations.');
+        setAppointmentError(t.alertLoadSpecializationsFailed);
       })
       .finally(() => {
         setAppointmentLoading(false);
@@ -541,7 +520,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
         setAppointmentSpecialists(list);
       })
       .catch(() => {
-        setAppointmentError('Failed to load specialists.');
+        setAppointmentError(t.alertLoadSpecialistsFailed);
       })
       .finally(() => {
         setAppointmentLoading(false);
@@ -601,17 +580,17 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
 
   const handleCalculateRisk = async (): Promise<void> => {
     if (!nicInput.trim()) {
-      Alert.alert('NIC Required', 'Enter patient NIC before assessment.');
+      Alert.alert(t.alertNicRequired, t.alertEnterNicAssessment);
       return;
     }
 
     if (!verifiedPatient) {
-      Alert.alert('Patient Not Verified', 'Verify NIC first to confirm the patient is registered.');
+      Alert.alert(t.alertPatientNotVerified, t.alertVerifyNicFirst);
       return;
     }
 
     if (!fields.patientName.trim()) {
-      Alert.alert('Error', 'Please enter patient name');
+      Alert.alert(t.error, t.alertEnterPatientName);
       return;
     }
 
@@ -665,7 +644,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
       const riskResult = offlineStage1Risk(vitals);
       setRisk(riskResult);
     } catch (error) {
-      Alert.alert('Error', 'Failed to calculate risk');
+      Alert.alert(t.error, t.alertRiskFailed);
       console.error(error);
     } finally {
       setLoading(false);
@@ -674,7 +653,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
 
   const handleSaveAndEnqueue = async (): Promise<void> => {
     if (!risk) {
-      Alert.alert('Error', 'Please calculate risk first');
+      Alert.alert(t.error, t.alertCalculateRiskFirst);
       return;
     }
 
@@ -683,15 +662,6 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
 
       if (!online) {
         if (verifiedPatient) {
-          const screeningId = uuidv4();
-          await appendToBloomcareSyncQueue([
-            buildPendingQueueItem('CREATE_SCREENING', {
-              patient_id: verifiedPatient.patient_id,
-              screening_id: screeningId,
-              ...vitals,
-            }),
-          ]);
-
           await saveDirtyOfflineVitalsUpdate({
             patient_id: verifiedPatient.patient_id,
             patient_name: fields.patientName.trim() || verifiedPatient.patient_name || 'Unknown Patient',
@@ -701,7 +671,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
             recommendations: risk.recommendations,
           });
 
-          Alert.alert('Saved Offline', 'Queued screening for sync.');
+          Alert.alert(t.alertSavedOffline, t.alertQueuedScreening);
           setFields(initialFields);
           setRisk(null);
           setShowAppointmentForm(false);
@@ -711,62 +681,50 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
 
         const fallbackNic = normalizeNicValue(offlineUnregisteredNic ?? nicInput);
         if (!fallbackNic) {
-          Alert.alert('NIC Required', 'Verify NIC first before offline save.');
+          Alert.alert(t.alertNicRequired, t.alertVerifyNicOffline);
           return;
         }
 
         if (!registerForm.full_name.trim()) {
-          Alert.alert('Registration Required', 'Enter full name to proceed with temporary offline registration.');
+          Alert.alert(t.alertRegistrationRequired, t.alertEnterFullNameOffline);
           return;
         }
 
-        const newPatientUuid = uuidv4();
-        const screeningId = uuidv4();
-
-        await appendToBloomcareSyncQueue([
-          buildPendingQueueItem('CREATE_PATIENT', {
-            id: newPatientUuid,
-            nic: fallbackNic,
+        const patient = await registerPatientForFrontline(
+          {
             full_name: registerForm.full_name.trim(),
+            national_id: fallbackNic,
             due_date: registerForm.due_date.trim() || undefined,
             age: registerForm.age ? Number(registerForm.age) : undefined,
             contact_number: registerForm.contact_number.trim() || undefined,
             emergency_contact: registerForm.emergency_contact.trim() || undefined,
             blood_group: registerForm.blood_group.trim() || undefined,
-          }),
-          buildPendingQueueItem('CREATE_SCREENING', {
-            patient_id: newPatientUuid,
-            screening_id: screeningId,
-            ...vitals,
-          }),
-        ]);
-
-        await upsertBloomcarePatient({
-          id: newPatientUuid,
-          nic: fallbackNic,
-          patient_name: registerForm.full_name.trim(),
-          age: registerForm.age ? Number(registerForm.age) : undefined,
-        });
+          },
+          false
+        );
 
         await saveDirtyOfflineVitalsUpdate({
-          patient_id: newPatientUuid,
-          patient_name: registerForm.full_name.trim(),
+          patient_id: patient.patient_id,
+          patient_name: patient.patient_name,
           vitals,
           risk_score: risk.risk_score,
           risk_level: risk.risk_level,
           recommendations: risk.recommendations,
         });
 
-        setVerifiedPatient({
-          patient_id: newPatientUuid,
-          national_id: fallbackNic,
-          patient_name: registerForm.full_name.trim(),
-          age: registerForm.age ? Number(registerForm.age) : undefined,
-          risk_level: 'low',
-        });
+        if (patient.national_id) {
+          await upsertBloomcarePatient({
+            id: patient.patient_id,
+            nic: patient.national_id,
+            patient_name: patient.patient_name,
+            age: patient.age,
+          });
+        }
+
+        setVerifiedPatient(patient);
         setRegisterForm(initialRegisterForm);
         setOfflineUnregisteredNic(null);
-        Alert.alert('Saved Offline', 'Temporary patient and screening queued for sync.');
+        Alert.alert(t.alertSavedOffline, t.alertOfflinePatientQueued);
         setFields(initialFields);
         setRisk(null);
         setShowAppointmentForm(false);
@@ -784,22 +742,20 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
       });
 
       if (online) {
-        await Promise.all([
-          syncDirtyVitalsUpdates(),
-          syncPendingFrontlineActions(),
-        ]);
+        await syncPendingFrontlineActions();
+        await syncDirtyVitalsUpdates();
       }
 
       await loadRegistryAndHistory();
 
-      Alert.alert('Saved', 'Record marked for sync (is_synced: false). It will upload when online.');
+      Alert.alert(t.alertSaved, t.alertSavedWillSync);
       setFields(initialFields);
       setVerifiedPatient(null);
       setNicInput('');
       setRisk(null);
       await refreshQueueCount();
     } catch (error) {
-      Alert.alert('Error', 'Failed to save record');
+      Alert.alert(t.error, t.alertSaveFailed);
       console.error(error);
     }
   };
@@ -829,7 +785,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
 
   const handleOpenAppointmentFlow = (): void => {
     if (!verifiedPatient) {
-      Alert.alert('Patient Required', 'Verify NIC before creating an appointment.');
+      Alert.alert(t.alertPatientRequired, t.alertVerifyNicAppointment);
       return;
     }
     resetAppointmentFlow();
@@ -839,7 +795,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
   const handleVerifyNic = async (): Promise<void> => {
     const nic = nicInput.trim();
     if (!nic) {
-      Alert.alert('NIC Required', 'Please enter NIC.');
+      Alert.alert(t.alertNicRequired, t.enterNicPlaceholder);
       return;
     }
 
@@ -855,7 +811,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
             ...prev,
             national_id: normalizeNicValue(nic),
           }));
-          Alert.alert('Patient not in local cache', 'Register the patient first, then assess once it is cached on this device.');
+          Alert.alert(t.alertPatientNotInCache, t.alertRegisterFirstCache);
           return;
         }
 
@@ -867,14 +823,14 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
           age: typeof cachedProfile.age === 'number' ? String(cachedProfile.age) : prev.age,
         }));
         setActiveTab('triage');
-        Alert.alert('Verified', 'Patient found in local cache. Proceed to Stage 1 screening.');
+        Alert.alert(t.alertVerified, t.alertVerifiedCache);
         return;
       }
 
       const match = await findPatientByNic(nic, online);
       if (!match) {
         setVerifiedPatient(null);
-        Alert.alert('Not Registered', 'No registered patient found for this NIC. Please register first.');
+        Alert.alert(t.alertNotRegistered, t.alertNotRegisteredMsg);
         return;
       }
 
@@ -894,9 +850,9 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
         age: typeof match.age === 'number' ? String(match.age) : prev.age,
       }));
       setActiveTab('triage');
-      Alert.alert('Verified', 'Patient registration confirmed. You can assess now.');
+      Alert.alert(t.alertVerified, t.alertVerifiedCache);
     } catch (error) {
-      Alert.alert('Error', 'Failed to verify NIC.');
+      Alert.alert(t.error, t.alertVerifyNicFailed);
     } finally {
       setLoading(false);
     }
@@ -904,7 +860,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
 
   const handleRegisterPatient = async (): Promise<void> => {
     if (!registerForm.full_name.trim() || !registerForm.national_id.trim()) {
-      Alert.alert('Missing Data', 'Full name and NIC are required.');
+      Alert.alert(t.alertMissingData, t.alertFullNameNicRequired);
       return;
     }
 
@@ -945,9 +901,9 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
         await syncPendingFrontlineActions();
       }
       await loadRegistryAndHistory();
-      Alert.alert('Saved', online ? 'Patient registered successfully.' : 'Saved offline. Will sync automatically when online.');
+      Alert.alert(t.alertSaved, online ? t.alertPatientRegistered : t.alertPatientSavedOffline);
     } catch (error) {
-      Alert.alert('Error', 'Could not register patient right now.');
+      Alert.alert(t.error, t.alertRegisterFailed);
     } finally {
       setRegistering(false);
     }
@@ -955,7 +911,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
 
   const handleQueueReferralCard = async (): Promise<void> => {
     if (!risk || !verifiedPatient) {
-      Alert.alert('Unavailable', 'Complete patient verification and assessment first.');
+      Alert.alert(t.alertUnavailable, t.alertCompleteAssessmentFirst);
       return;
     }
 
@@ -970,22 +926,22 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
       });
 
       Alert.alert(
-        'Referral Card',
-        `Patient: ${verifiedPatient.patient_name}\nNIC: ${nicInput}\nRisk: ${risk.risk_level.toUpperCase()} (${Math.round(risk.risk_score * 100)}%)\n\n${online ? 'Saved and ready for print flow.' : 'Saved offline and queued.'}`
+        t.alertReferralCard,
+        `${t.patientName}: ${verifiedPatient.patient_name}\n${t.nic}: ${nicInput}\n${t.riskLevel}: ${risk.risk_level.toUpperCase()} (${Math.round(risk.risk_score * 100)}%)\n\n${online ? t.alertReferralSavedOnline : t.alertReferralSavedOffline}`
       );
     } catch {
-      Alert.alert('Error', 'Unable to prepare referral card.');
+      Alert.alert(t.error, t.alertReferralFailed);
     }
   };
 
   const handleCreateAppointment = async (): Promise<void> => {
     if (!verifiedPatient) {
-      Alert.alert('Patient Required', 'Verify NIC before creating appointment.');
+      Alert.alert(t.alertPatientRequired, t.alertVerifyNicAppointment);
       return;
     }
 
     if (!selectedSpecialist || !selectedAppointmentSlot) {
-      Alert.alert('Missing Details', 'Select a specialist, date, and time slot.');
+      Alert.alert(t.alertMissingDetails, t.alertSelectSpecialistSlot);
       return;
     }
 
@@ -1006,9 +962,9 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
       );
       resetAppointmentFlow();
       setShowAppointmentForm(false);
-      Alert.alert('Appointment', online ? 'Appointment created.' : 'Appointment saved offline and queued for sync.');
+      Alert.alert(t.newAppointment, online ? t.alertAppointmentCreated : t.alertAppointmentOffline);
     } catch {
-      Alert.alert('Error', 'Unable to create appointment.');
+      Alert.alert(t.error, t.alertAppointmentFailed);
     }
   };
 
@@ -1027,7 +983,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
         setSelectedHistory([]);
         setVerifiedPatient(null);
         setOfflineUnregisteredNic(null);
-        Alert.alert('Patient not in local cache', 'Search a NIC that has already been cached on this device.');
+        Alert.alert(t.alertPatientNotInCache, t.alertRegisterFirstCache);
         return;
       }
 
@@ -1042,7 +998,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
       }));
       setActiveTab('triage');
     } catch (error) {
-      Alert.alert('Error', 'Failed to search local cache');
+      Alert.alert(t.error, t.alertSearchCacheFailed);
     }
   };
 
@@ -1070,7 +1026,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
     if (syncing) return;
 
     if (!online) {
-      Alert.alert('Offline', 'Connect to the internet to sync pending records.');
+      Alert.alert(t.offline, t.alertOfflineSync);
       return;
     }
 
@@ -1079,21 +1035,22 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
       const actionResult = await syncPendingFrontlineActions();
       const dirtyResult = await syncDirtyVitalsUpdates();
       await refreshQueueCount();
+      await loadRegistryAndHistory();
 
       const totalSynced = dirtyResult.synced + actionResult.synced;
       const totalPending = dirtyResult.pending + actionResult.pending;
 
       if (totalSynced === 0 && totalPending === 0) {
-        Alert.alert('Sync Complete', 'No pending records to sync.');
+        Alert.alert(t.alertSyncComplete, t.alertNoPending);
         return;
       }
 
       Alert.alert(
-        'Sync Complete',
-        `Synced: ${totalSynced}\nPending: ${totalPending}`
+        t.alertSyncComplete,
+        formatMsg(t.alertSyncResult, { synced: totalSynced, pending: totalPending })
       );
     } catch (error) {
-      Alert.alert('Sync Failed', 'Could not sync records right now. Please try again.');
+      Alert.alert(t.alertSyncFailed, t.alertSyncFailedMsg);
     } finally {
       setSyncing(false);
     }
@@ -1103,24 +1060,25 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
     if (syncing) return;
 
     if (!online) {
-      Alert.alert('Offline', 'Connect to the internet before syncing registered patients.');
+      Alert.alert(t.offline, t.alertOfflineRegistrationSync);
       return;
     }
 
     setSyncing(true);
     try {
       const result = await syncPendingFrontlineActions();
+      await syncDirtyVitalsUpdates();
       await refreshQueueCount();
       await loadRegistryAndHistory();
 
       Alert.alert(
-        'Registration Sync',
+        t.alertRegistrationSync,
         result.synced > 0
-          ? `Synced ${result.synced} registered patient(s). Pending: ${result.pending}`
-          : `No registered patients were pending sync. Pending: ${result.pending}`
+          ? formatMsg(t.alertRegistrationSynced, { synced: result.synced, pending: result.pending })
+          : formatMsg(t.alertRegistrationNone, { pending: result.pending })
       );
     } catch (error) {
-      Alert.alert('Sync Failed', 'Could not sync registered patients right now. Please try again.');
+      Alert.alert(t.alertSyncFailed, t.alertSyncFailedMsg);
     } finally {
       setSyncing(false);
     }
@@ -1135,7 +1093,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>{t.appTitle}</Text>
-          <Text style={styles.headerSubtitle}>Welcome, {user.full_name}</Text>
+          <Text style={styles.headerSubtitle}>{formatMsg(t.welcomeUser, { name: user.full_name })}</Text>
         </View>
         <Pressable style={styles.logoutButton} onPress={onLogout}>
           <Text style={styles.logoutButtonText}>{t.logout}</Text>
@@ -1147,6 +1105,30 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
         <View style={[styles.badge, badgeStyle(online) as any]}>
           <Text style={styles.badgeText}>{online ? t.online : t.offline}</Text>
         </View>
+        <View style={styles.syncStatusWrap}>
+          <Text style={styles.syncStatusText}>
+            {pendingCount > 0
+              ? formatMsg(t.syncPendingHint, { count: pendingCount })
+              : t.syncReady}
+          </Text>
+          {!online && pendingCount > 0 && (
+            <Text style={styles.syncHintText}>{t.offlineModeNote}</Text>
+          )}
+        </View>
+        <Pressable
+          style={[
+            styles.syncNowButton,
+            (syncing || !online) && styles.syncNowButtonDisabled,
+          ]}
+          onPress={handleManualSync}
+          disabled={syncing || !online}
+        >
+          {syncing ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.syncNowButtonText}>{t.syncNow}</Text>
+          )}
+        </Pressable>
       </View>
 
       {/* Language Selector */}
@@ -1158,7 +1140,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
               styles.langButton,
               language === lang && styles.langButtonActive
             ]}
-            onPress={() => setLanguage(lang)}
+            onPress={() => onLanguageChange(lang)}
           >
             <Text style={[
               styles.langButtonText,
@@ -1176,36 +1158,36 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
           style={[styles.tab, activeTab === 'triage' && styles.tabActive]}
           onPress={() => setActiveTab('triage')}
         >
-          <Text style={[styles.tabText, activeTab === 'triage' && styles.tabTextActive]}>Assessment</Text>
+          <Text style={[styles.tabText, activeTab === 'triage' && styles.tabTextActive]}>{t.tabAssessment}</Text>
         </Pressable>
         <Pressable
           style={[styles.tab, activeTab === 'registry' && styles.tabActive]}
           onPress={() => setActiveTab('registry')}
         >
-          <Text style={[styles.tabText, activeTab === 'registry' && styles.tabTextActive]}>Registry</Text>
+          <Text style={[styles.tabText, activeTab === 'registry' && styles.tabTextActive]}>{t.tabRegistry}</Text>
         </Pressable>
         <Pressable
           style={[styles.tab, activeTab === 'history' && styles.tabActive]}
           onPress={() => setActiveTab('history')}
         >
-          <Text style={[styles.tabText, activeTab === 'history' && styles.tabTextActive]}>History</Text>
+          <Text style={[styles.tabText, activeTab === 'history' && styles.tabTextActive]}>{t.tabHistory}</Text>
         </Pressable>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {activeTab === 'triage' && (
           <View style={styles.cardSection}>
-            <Text style={styles.sectionTitle}>Register Patient</Text>
+            <Text style={styles.sectionTitle}>{t.registerPatient}</Text>
             <TextInput
               style={styles.input}
-              placeholder="Full name"
+              placeholder={t.fullName}
               placeholderTextColor="#999"
               value={registerForm.full_name}
               onChangeText={(value) => setRegisterForm((prev) => ({ ...prev, full_name: value }))}
             />
             <TextInput
               style={styles.input}
-              placeholder="NIC"
+              placeholder={t.nic}
               placeholderTextColor="#999"
               value={registerForm.national_id}
               onChangeText={(value) => setRegisterForm((prev) => ({ ...prev, national_id: value }))}
@@ -1213,7 +1195,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
             <View style={styles.twoColumnRow}>
               <TextInput
                 style={[styles.input, styles.halfWidth]}
-                placeholder="Age"
+                placeholder={t.age}
                 placeholderTextColor="#999"
                 keyboardType="number-pad"
                 value={registerForm.age}
@@ -1221,7 +1203,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
               />
               <TextInput
                 style={[styles.input, styles.halfWidth]}
-                placeholder="Due Date (YYYY-MM-DD)"
+                placeholder={t.dueDate}
                 placeholderTextColor="#999"
                 keyboardType="number-pad"
                 maxLength={10}
@@ -1234,23 +1216,23 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
                 }
               />
             </View>
-            <Text style={styles.inputHint}>Due date format: YYYY-MM-DD</Text>
+            <Text style={styles.inputHint}>{t.dueDateHint}</Text>
             <TextInput
               style={styles.input}
-              placeholder="Contact number"
+              placeholder={t.contactNumber}
               placeholderTextColor="#999"
               value={registerForm.contact_number}
               onChangeText={(value) => setRegisterForm((prev) => ({ ...prev, contact_number: value }))}
             />
             <TextInput
               style={styles.input}
-              placeholder="Emergency contact"
+              placeholder={t.emergencyContact}
               placeholderTextColor="#999"
               value={registerForm.emergency_contact}
               onChangeText={(value) => setRegisterForm((prev) => ({ ...prev, emergency_contact: value }))}
             />
             <View style={styles.dropdownContainer}>
-              <Text style={styles.label}>Blood Type</Text>
+              <Text style={styles.label}>{t.bloodType}</Text>
               <Pressable
                 style={styles.dropdownTrigger}
                 onPress={() => setShowBloodTypeDropdown((prev) => !prev)}
@@ -1263,7 +1245,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
                         : styles.dropdownPlaceholderText
                     }
                   >
-                    {registerForm.blood_group || 'Select blood type'}
+                    {registerForm.blood_group || t.selectBloodType}
                   </Text>
                   <Text style={styles.dropdownChevron}>▼</Text>
                 </View>
@@ -1280,7 +1262,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
                 onPress={() => setShowBloodTypeDropdown(false)}
               >
                 <View style={styles.dropdownModalCard}>
-                  <Text style={styles.dropdownModalTitle}>Select Blood Type</Text>
+                  <Text style={styles.dropdownModalTitle}>{t.selectBloodType}</Text>
                   {BLOOD_TYPE_OPTIONS.map((bloodType) => (
                     <Pressable
                       key={bloodType}
@@ -1301,14 +1283,14 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
               onPress={handleRegisterPatient}
               disabled={registering}
             >
-              {registering ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Register Patient</Text>}
+              {registering ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{t.registerPatient}</Text>}
             </Pressable>
 
-            <Text style={[styles.sectionTitle, styles.marginTop]}>Verify NIC Before Assessment</Text>
+            <Text style={[styles.sectionTitle, styles.marginTop]}>{t.verifyNicTitle}</Text>
             <View style={styles.twoColumnRow}>
               <TextInput
                 style={[styles.input, styles.halfWidth]}
-                placeholder="Enter NIC"
+                placeholder={t.enterNicPlaceholder}
                 placeholderTextColor="#999"
                 value={nicInput}
                 onChangeText={setNicInput}
@@ -1317,21 +1299,21 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
                 style={[styles.button, styles.secondaryButton, styles.halfWidth]}
                 onPress={handleVerifyNic}
               >
-                <Text style={styles.secondaryButtonText}>Verify NIC</Text>
+                <Text style={styles.secondaryButtonText}>{t.verifyNic}</Text>
               </Pressable>
             </View>
 
             {verifiedPatient && (
               <View style={styles.verifiedBox}>
-                <Text style={styles.verifiedText}>Verified: {verifiedPatient.patient_name}</Text>
-                <Text style={styles.verifiedMeta}>NIC: {nicInput}</Text>
+                <Text style={styles.verifiedText}>{formatMsg(t.verifiedPatient, { name: verifiedPatient.patient_name })}</Text>
+                <Text style={styles.verifiedMeta}>{t.nic}: {nicInput}</Text>
               </View>
             )}
 
-            <Text style={styles.sectionTitle}>Local Patient Cache (Sync & Go)</Text>
+            <Text style={styles.sectionTitle}>{t.localCacheTitle}</Text>
             <TextInput
               style={styles.input}
-              placeholder="Search NIC in local cache"
+              placeholder={t.searchLocalCache}
               placeholderTextColor="#999"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -1341,14 +1323,14 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
               style={[styles.button, styles.secondaryButton, { marginTop: 8 }]}
               onPress={handleSearchLocalPatient}
             >
-              <Text style={styles.secondaryButtonText}>Search Local Cache</Text>
+              <Text style={styles.secondaryButtonText}>{t.searchLocalCacheBtn}</Text>
             </Pressable>
             <Pressable
               style={[styles.button, styles.primaryButton, { marginTop: 8 }, syncing && styles.buttonDisabled]}
               onPress={handleSyncRegisteredPatients}
               disabled={syncing}
             >
-              {syncing ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sync Registered Patients</Text>}
+              {syncing ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{t.syncRegisteredPatients}</Text>}
             </Pressable>
 
             {searchResults.length > 0 && (
@@ -1373,7 +1355,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
 
             {selectedHistory.length > 0 && (
               <View style={{ marginTop: 10 }}>
-                <Text style={styles.historyTitle}>Cached Stage 1 History</Text>
+                <Text style={styles.historyTitle}>{t.cachedHistory}</Text>
                 {selectedHistory.slice(0, 3).map((item) => (
                   <View key={item.id} style={styles.historyItemInline}>
                     <Text style={styles.historyText}>Date: {item.createdAt.slice(0, 10)}</Text>
@@ -1390,7 +1372,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
         {activeTab === 'triage' && (
           !risk ? (
             <View>
-              <Text style={styles.sectionTitle}>Patient Assessment</Text>
+              <Text style={styles.sectionTitle}>{t.patientAssessment}</Text>
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>{t.patientName}</Text>
@@ -1619,12 +1601,12 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
                 styles.riskCard,
                 risk.risk_level === 'high' ? styles.riskCardHigh : styles.riskCardLow
               ]}>
-                <Text style={styles.riskLevel}>{risk.risk_level === 'high' ? 'HIGH RISK' : 'LOW RISK'}</Text>
+                <Text style={styles.riskLevel}>{risk.risk_level === 'high' ? t.highRisk : t.lowRisk}</Text>
                 <Text style={styles.riskScore}>{Math.round(risk.risk_score * 100)}%</Text>
               </View>
 
               <View style={styles.infoCard}>
-                <Text style={styles.infoLabel}>Blood Pressure Status</Text>
+                <Text style={styles.infoLabel}>{t.bpStatus}</Text>
                 <Text style={styles.infoValue}>{risk.bp_status}</Text>
               </View>
 
@@ -1650,7 +1632,7 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
 
               {Array.isArray(risk.triggers) && risk.triggers.length > 0 && (
                 <View style={styles.triggerCardSection}>
-                  <Text style={styles.recommendationsTitle}>Clinical Trigger Report</Text>
+                  <Text style={styles.recommendationsTitle}>{t.clinicalTriggers}</Text>
                   {risk.triggers.map((trigger, idx) => (
                     <View key={`${trigger.feature}-${idx}`} style={styles.triggerItem}>
                       <Text style={styles.triggerTitle}>{trigger.feature} Alert</Text>
@@ -1668,13 +1650,13 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
                   style={[styles.button, styles.primaryButton]}
                   onPress={handleSaveAndEnqueue}
                 >
-                  <Text style={styles.buttonText}>Save & Queue for Sync</Text>
+                  <Text style={styles.buttonText}>{t.saveQueueSync}</Text>
                 </Pressable>
                 <Pressable
                   style={[styles.button, styles.secondaryButton]}
                   onPress={handleQueueReferralCard}
                 >
-                  <Text style={styles.secondaryButtonText}>Print Referral Card</Text>
+                  <Text style={styles.secondaryButtonText}>{t.printReferral}</Text>
                 </Pressable>
               </View>
 
@@ -1683,13 +1665,13 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
                   style={[styles.button, styles.primaryButton]}
                   onPress={handleOpenAppointmentFlow}
                 >
-                  <Text style={styles.buttonText}>Make New Appointment</Text>
+                  <Text style={styles.buttonText}>{t.makeAppointment}</Text>
                 </Pressable>
                 <Pressable
                   style={[styles.button, styles.secondaryButton]}
                   onPress={handleClearForm}
                 >
-                  <Text style={styles.secondaryButtonText}>New Assessment</Text>
+                  <Text style={styles.secondaryButtonText}>{t.newAssessment}</Text>
                 </Pressable>
               </View>
 
@@ -1856,10 +1838,10 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
 
         {activeTab === 'registry' && (
           <View style={styles.cardSection}>
-            <Text style={styles.sectionTitle}>Patient Registry</Text>
+            <Text style={styles.sectionTitle}>{t.patientRegistry}</Text>
             <TextInput
               style={styles.input}
-              placeholder="Search NIC or name"
+              placeholder={t.searchNicOrName}
               value={registrySearchQuery}
               onChangeText={setRegistrySearchQuery}
               placeholderTextColor="#999"
@@ -1880,20 +1862,20 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
                   <Text style={styles.registryDetail}>NIC: {patient.national_id ?? 'N/A'}</Text>
                   <Text style={styles.registryDetail}>ID: {patient.patient_id}</Text>
                   <View style={styles.registryRow}>
-                    <Text style={styles.registryLabel}>Age:</Text>
+                    <Text style={styles.registryLabel}>{t.age}:</Text>
                     <Text style={styles.registryValue}>{patient.age || 'N/A'}</Text>
                   </View>
                   <View style={styles.registryRow}>
-                    <Text style={styles.registryLabel}>Gestation:</Text>
-                    <Text style={styles.registryValue}>{patient.gestation_weeks || 'N/A'} weeks</Text>
+                    <Text style={styles.registryLabel}>{t.gestation}:</Text>
+                    <Text style={styles.registryValue}>{patient.gestation_weeks || t.notAvailable} {t.weeks}</Text>
                   </View>
                   <View style={styles.registryRow}>
-                    <Text style={styles.registryLabel}>Risk Level:</Text>
+                    <Text style={styles.registryLabel}>{t.riskLevel}:</Text>
                     <Text style={[
                       styles.registryValue,
                       patient.risk_level === 'high' ? styles.riskHigh : styles.riskLow
                     ]}>
-                      {patient.risk_level || 'Not assessed'}
+                      {patient.risk_level || t.notAssessed}
                     </Text>
                   </View>
                 </View>
@@ -1903,10 +1885,10 @@ export default function FrontlineStaffScreen({ user, onLogout, isOnline }: Front
 
         {activeTab === 'history' && (
           <View style={styles.cardSection}>
-            <Text style={styles.sectionTitle}>Screening History</Text>
+            <Text style={styles.sectionTitle}>{t.screeningHistory}</Text>
             {screeningHistory.length === 0 ? (
               <View style={styles.emptyCard}>
-                <Text style={styles.emptyText}>No screening history available</Text>
+                <Text style={styles.emptyText}>{t.noHistory}</Text>
               </View>
             ) : (
               screeningHistory.slice(0, 10).map((item, idx) => (
@@ -2120,6 +2102,20 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  syncStatusWrap: {
+    flex: 1,
+    minWidth: 120,
+  },
+  syncStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  syncHintText: {
+    fontSize: 11,
+    color: '#92400e',
+    marginTop: 2,
   },
   pendingBadge: {
     backgroundColor: '#fef3c7',

@@ -18,12 +18,18 @@ import authService from '../services/authService';
 interface LoginScreenProps {
   onLoginSuccess: (role: UserRole) => void;
   isOnline: boolean;
+  language: LanguageCode;
+  onLanguageChange: (language: LanguageCode) => void;
 }
 
 type LoginStep = 'role-selection' | 'online-login' | 'first-password-setup' | 'offline-pin' | 'pin-setup';
 
-export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenProps) {
-  const [language, setLanguage] = useState<LanguageCode>('en');
+export default function LoginScreen({
+  onLoginSuccess,
+  isOnline,
+  language,
+  onLanguageChange,
+}: LoginScreenProps) {
   const [step, setStep] = useState<LoginStep>('role-selection');
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [email, setEmail] = useState('');
@@ -56,19 +62,19 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
 
   const handleOnlineLogin = async (): Promise<void> => {
     if (!isOnline) {
-      Alert.alert('Internet Required', 'First-time login requires an internet connection.');
+      Alert.alert(t.alertInternetRequired, t.onlineRequiredLogin);
       return;
     }
 
     if (!selectedRole) {
-      Alert.alert('Error', 'Please choose a role first');
+      Alert.alert(t.error, t.chooseRoleFirst);
       return;
     }
 
     if (selectedRole === 'patient') {
       const nic = nationalId.trim().toUpperCase();
       if (!nic || !password) {
-        Alert.alert('Error', 'Please enter NIC and password');
+        Alert.alert(t.error, t.enterNicPassword);
         return;
       }
 
@@ -76,7 +82,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
       try {
         const { user, isFirstLogin } = await authService.loginPatient(nic, password);
         if (user.role !== 'patient') {
-          Alert.alert('Error', 'Patient login required');
+          Alert.alert(t.error, t.patientLoginRequired);
           return;
         }
 
@@ -93,7 +99,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
         setAllowPinSkip(true);
         setStep('pin-setup');
       } catch (error) {
-        Alert.alert('Login Failed', error instanceof Error ? error.message : 'Unknown error');
+        Alert.alert(t.loginFailed, error instanceof Error ? error.message : t.unknownError);
       } finally {
         setIsLoading(false);
       }
@@ -101,7 +107,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
     }
 
     if (!email || !password) {
-      Alert.alert('Error', 'Please enter email and password');
+      Alert.alert(t.error, t.enterEmailPassword);
       return;
     }
 
@@ -109,7 +115,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
     try {
       const { user, isFirstLogin } = await authService.loginStaff(email.trim().toLowerCase(), password);
       if (user.role !== 'frontline_staff') {
-        Alert.alert('Error', 'Staff login required');
+        Alert.alert(t.error, t.staffLoginRequired);
         return;
       }
 
@@ -126,7 +132,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
       setAllowPinSkip(true);
       setStep('pin-setup');
     } catch (error) {
-      Alert.alert('Login Failed', error instanceof Error ? error.message : 'Unknown error');
+      Alert.alert(t.loginFailed, error instanceof Error ? error.message : t.unknownError);
     } finally {
       setIsLoading(false);
     }
@@ -134,32 +140,32 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
 
   const handleFirstPasswordSetup = async (): Promise<void> => {
     if (!isOnline) {
-      Alert.alert('Internet Required', 'You should be online for this step.');
+      Alert.alert(t.alertInternetRequired, t.onlineRequiredSetup);
       return;
     }
 
     if (!selectedRole) {
-      Alert.alert('Error', 'Please choose a role first');
+      Alert.alert(t.error, t.chooseRoleFirst);
       return;
     }
 
     if (selectedRole === 'patient' && !nationalId.trim()) {
-      Alert.alert('Error', 'Please enter NIC');
+      Alert.alert(t.error, t.enterNic);
       return;
     }
 
     if (selectedRole !== 'patient' && !email.trim()) {
-      Alert.alert('Error', 'Please enter email');
+      Alert.alert(t.error, t.enterEmail);
       return;
     }
 
     if (!temporaryPassword || !newPassword || !confirmPassword) {
-      Alert.alert('Error', 'Please enter temporary password, new password, and confirmation');
+      Alert.alert(t.error, t.enterAllPasswordFields);
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      Alert.alert(t.error, t.passwordsMismatch);
       return;
     }
 
@@ -180,7 +186,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
       setAllowPinSkip(false);
       setStep('pin-setup');
     } catch (error) {
-      Alert.alert('Password Setup Failed', error instanceof Error ? error.message : 'Unknown error');
+      Alert.alert(t.registrationFailed, error instanceof Error ? error.message : t.unknownError);
     } finally {
       setIsLoading(false);
     }
@@ -188,17 +194,17 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
 
   const handlePinSetup = async (): Promise<void> => {
     if (!pin || !pinConfirm) {
-      Alert.alert('Error', 'Please enter and confirm your PIN');
+      Alert.alert(t.error, t.enterConfirmPin);
       return;
     }
 
     if (pin.length < 4 || pin.length > 6) {
-      Alert.alert('Error', 'PIN must be 4-6 digits');
+      Alert.alert(t.error, t.pinLengthError);
       return;
     }
 
     if (pin !== pinConfirm) {
-      Alert.alert('Error', 'PINs do not match');
+      Alert.alert(t.error, t.pinsMismatch);
       return;
     }
 
@@ -210,7 +216,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
         onLoginSuccess(user.role);
       }
     } catch (error) {
-      Alert.alert('PIN Setup Failed', error instanceof Error ? error.message : 'Unknown error');
+      Alert.alert(t.registrationFailed, error instanceof Error ? error.message : t.unknownError);
     } finally {
       setIsLoading(false);
     }
@@ -218,12 +224,12 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
 
   const handleOfflinePinLogin = async (): Promise<void> => {
     if (!pin) {
-      Alert.alert('Error', 'Please enter your PIN');
+      Alert.alert(t.error, t.enterPin);
       return;
     }
 
     if (pin.length < 4 || pin.length > 6) {
-      Alert.alert('Error', 'PIN must be 4-6 digits');
+      Alert.alert(t.error, t.pinLengthError);
       return;
     }
 
@@ -234,7 +240,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
         onLoginSuccess(user.role);
       }
     } catch (error) {
-      Alert.alert('Offline Login Failed', error instanceof Error ? error.message : 'Invalid PIN or no saved session');
+      Alert.alert(t.loginFailed, error instanceof Error ? error.message : t.unknownError);
     } finally {
       setIsLoading(false);
     }
@@ -248,38 +254,38 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
           <Text style={styles.title}>BloomCare</Text>
           <View style={styles.statusBadge}>
             <Text style={[styles.statusText, { color: isOnline ? '#16a34a' : '#ea580c' }]}> 
-              {isOnline ? 'Online' : 'Offline'}
+              {isOnline ? t.online : t.offline}
             </Text>
           </View>
         </View>
 
         <View style={styles.languageSelector}>
-          <Pressable style={[styles.langButton, language === 'en' && styles.langButtonActive]} onPress={() => setLanguage('en')}>
+          <Pressable style={[styles.langButton, language === 'en' && styles.langButtonActive]} onPress={() => onLanguageChange('en')}>
             <Text style={[styles.langButtonText, language === 'en' && styles.langButtonTextActive]}>EN</Text>
           </Pressable>
-          <Pressable style={[styles.langButton, language === 'si' && styles.langButtonActive]} onPress={() => setLanguage('si')}>
+          <Pressable style={[styles.langButton, language === 'si' && styles.langButtonActive]} onPress={() => onLanguageChange('si')}>
             <Text style={[styles.langButtonText, language === 'si' && styles.langButtonTextActive]}>SI</Text>
           </Pressable>
-          <Pressable style={[styles.langButton, language === 'ta' && styles.langButtonActive]} onPress={() => setLanguage('ta')}>
+          <Pressable style={[styles.langButton, language === 'ta' && styles.langButtonActive]} onPress={() => onLanguageChange('ta')}>
             <Text style={[styles.langButtonText, language === 'ta' && styles.langButtonTextActive]}>TA</Text>
           </Pressable>
         </View>
 
         {step === 'role-selection' && (
           <View style={styles.form}>
-            <Text style={styles.sectionTitle}>Select Your Portal</Text>
+            <Text style={styles.sectionTitle}>{t.selectPortal}</Text>
             <Pressable style={styles.roleCard} onPress={() => handleRoleSelect('patient')}>
-              <Text style={styles.roleTitle}>Patient Portal</Text>
-              <Text style={styles.roleDescription}>View appointments, records, and screening history.</Text>
-              <Text style={styles.roleAction}>First-Time Login</Text>
+              <Text style={styles.roleTitle}>{t.patientPortal}</Text>
+              <Text style={styles.roleDescription}>{t.patientPortalDesc}</Text>
+              <Text style={styles.roleAction}>{t.firstTimeLogin}</Text>
             </Pressable>
             <Pressable style={styles.roleCard} onPress={() => handleRoleSelect('frontline_staff')}>
-              <Text style={styles.roleTitle}>Frontline Staff Portal</Text>
-              <Text style={styles.roleDescription}>Manage assigned patients and screenings.</Text>
-              <Text style={styles.roleAction}>First-Time Login</Text>
+              <Text style={styles.roleTitle}>{t.frontlineStaff}</Text>
+              <Text style={styles.roleDescription}>{t.frontlinePortalDesc}</Text>
+              <Text style={styles.roleAction}>{t.firstTimeLogin}</Text>
             </Pressable>
             <Pressable style={styles.secondaryButton} onPress={() => setStep('offline-pin')}>
-              <Text style={styles.secondaryButtonText}>Offline PIN Login</Text>
+              <Text style={styles.secondaryButtonText}>{t.offlinePinLogin}</Text>
             </Pressable>
           </View>
         )}
@@ -287,19 +293,19 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
         {step === 'online-login' && selectedRole && (
           <View style={styles.form}>
             <Pressable onPress={() => { setStep('role-selection'); resetOnlineForm(); setSelectedRole(null); }}>
-              <Text style={styles.backButton}>Back</Text>
+              <Text style={styles.backButton}>{t.back}</Text>
             </Pressable>
-            <Text style={styles.sectionTitle}>{selectedRole === 'patient' ? 'Patient Login' : 'Staff Login'}</Text>
+            <Text style={styles.sectionTitle}>{selectedRole === 'patient' ? t.patientLogin : t.staffLogin}</Text>
             <View style={styles.warningBox}>
-              <Text style={styles.warningText}>You should be online for first-time login and password setup.</Text>
+              <Text style={styles.warningText}>{t.onlineRequiredWarning}</Text>
             </View>
 
             {selectedRole === 'patient' ? (
               <View style={styles.formGroup}>
-                <Text style={styles.label}>NIC</Text>
+                <Text style={styles.label}>{t.nic}</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="NIC / National ID"
+                  placeholder={t.nationalId}
                   placeholderTextColor="#999"
                   autoCapitalize="characters"
                   value={nationalId}
@@ -324,11 +330,11 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
             )}
 
             <View style={styles.formGroup}>
-              <Text style={styles.label}>Password</Text>
+              <Text style={styles.label}>{t.password}</Text>
               <View style={styles.passwordInputContainer}>
                 <TextInput
                   style={styles.passwordInput}
-                  placeholder="Enter password"
+                  placeholder={t.password}
                   placeholderTextColor="#999"
                   secureTextEntry={!showPassword}
                   value={password}
@@ -336,13 +342,13 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
                   editable={!isLoading}
                 />
                 <Pressable style={styles.togglePasswordButton} onPress={() => setShowPassword((value) => !value)}>
-                  <Text style={styles.togglePasswordText}>{showPassword ? 'Hide' : 'Show'}</Text>
+                  <Text style={styles.togglePasswordText}>{showPassword ? t.hide : t.show}</Text>
                 </Pressable>
               </View>
             </View>
 
             <Pressable style={[styles.submitButton, (!isOnline || isLoading) && styles.submitButtonDisabled]} onPress={handleOnlineLogin} disabled={!isOnline || isLoading}>
-              {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>Login</Text>}
+              {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>{t.login}</Text>}
             </Pressable>
 
             <Pressable
@@ -354,7 +360,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
               }}
               disabled={!isOnline || isLoading}
             >
-              <Text style={styles.secondaryButtonText}>First-Time Login</Text>
+              <Text style={styles.secondaryButtonText}>{t.firstTimeLogin}</Text>
             </Pressable>
           </View>
         )}
@@ -362,19 +368,19 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
         {step === 'first-password-setup' && (
           <View style={styles.form}>
             <Pressable onPress={() => setStep('online-login')}>
-              <Text style={styles.backButton}>Back</Text>
+              <Text style={styles.backButton}>{t.back}</Text>
             </Pressable>
-            <Text style={styles.sectionTitle}>Create Password</Text>
+            <Text style={styles.sectionTitle}>{t.createPassword}</Text>
             <View style={styles.warningBox}>
-              <Text style={styles.warningText}>You should be online for this step.</Text>
+              <Text style={styles.warningText}>{t.onlineRequiredSetup}</Text>
             </View>
 
             {selectedRole === 'patient' ? (
               <View style={styles.formGroup}>
-                <Text style={styles.label}>NIC</Text>
+                <Text style={styles.label}>{t.nic}</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="NIC / National ID"
+                  placeholder={t.nationalId}
                   placeholderTextColor="#999"
                   autoCapitalize="characters"
                   value={nationalId}
@@ -384,7 +390,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
               </View>
             ) : (
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Email</Text>
+                <Text style={styles.label}>{t.email}</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="email@example.com"
@@ -399,37 +405,37 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
             )}
 
             <View style={styles.formGroup}>
-              <Text style={styles.label}>Temporary Password</Text>
-              <TextInput style={styles.input} placeholder="Issued at registration" placeholderTextColor="#999" secureTextEntry={!showPassword} value={temporaryPassword} onChangeText={setTemporaryPassword} editable={!isLoading} />
+              <Text style={styles.label}>{t.temporaryPassword}</Text>
+              <TextInput style={styles.input} placeholder={t.temporaryPassword} placeholderTextColor="#999" secureTextEntry={!showPassword} value={temporaryPassword} onChangeText={setTemporaryPassword} editable={!isLoading} />
             </View>
             <View style={styles.formGroup}>
-              <Text style={styles.label}>New Password</Text>
-              <TextInput style={styles.input} placeholder="Create password" placeholderTextColor="#999" secureTextEntry={!showPassword} value={newPassword} onChangeText={setNewPassword} editable={!isLoading} />
+              <Text style={styles.label}>{t.newPassword}</Text>
+              <TextInput style={styles.input} placeholder={t.newPassword} placeholderTextColor="#999" secureTextEntry={!showPassword} value={newPassword} onChangeText={setNewPassword} editable={!isLoading} />
             </View>
             <View style={styles.formGroup}>
-              <Text style={styles.label}>Confirm Password</Text>
-              <TextInput style={styles.input} placeholder="Confirm password" placeholderTextColor="#999" secureTextEntry={!showPassword} value={confirmPassword} onChangeText={setConfirmPassword} editable={!isLoading} />
+              <Text style={styles.label}>{t.confirmPassword}</Text>
+              <TextInput style={styles.input} placeholder={t.confirmPassword} placeholderTextColor="#999" secureTextEntry={!showPassword} value={confirmPassword} onChangeText={setConfirmPassword} editable={!isLoading} />
             </View>
             <Pressable style={[styles.submitButton, (!isOnline || isLoading) && styles.submitButtonDisabled]} onPress={handleFirstPasswordSetup} disabled={!isOnline || isLoading}>
-              {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>Save Password</Text>}
+              {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>{t.savePassword}</Text>}
             </Pressable>
           </View>
         )}
 
         {step === 'pin-setup' && (
           <View style={styles.form}>
-            <Text style={styles.sectionTitle}>Set Offline PIN</Text>
-            <Text style={styles.description}>Create a 4-6 digit PIN for offline access.</Text>
+            <Text style={styles.sectionTitle}>{t.setOfflinePin}</Text>
+            <Text style={styles.description}>{t.setOfflinePinDesc}</Text>
             <View style={styles.formGroup}>
-              <Text style={styles.label}>PIN</Text>
-              <TextInput style={styles.input} placeholder="4-6 digits" placeholderTextColor="#999" keyboardType="number-pad" secureTextEntry value={pin} onChangeText={setPin} editable={!isLoading} />
+              <Text style={styles.label}>{t.pin}</Text>
+              <TextInput style={styles.input} placeholder="4-6" placeholderTextColor="#999" keyboardType="number-pad" secureTextEntry value={pin} onChangeText={setPin} editable={!isLoading} />
             </View>
             <View style={styles.formGroup}>
-              <Text style={styles.label}>Confirm PIN</Text>
-              <TextInput style={styles.input} placeholder="Re-enter PIN" placeholderTextColor="#999" keyboardType="number-pad" secureTextEntry value={pinConfirm} onChangeText={setPinConfirm} editable={!isLoading} />
+              <Text style={styles.label}>{t.confirmPin}</Text>
+              <TextInput style={styles.input} placeholder={t.confirmPin} placeholderTextColor="#999" keyboardType="number-pad" secureTextEntry value={pinConfirm} onChangeText={setPinConfirm} editable={!isLoading} />
             </View>
             <Pressable style={[styles.submitButton, isLoading && styles.submitButtonDisabled]} onPress={handlePinSetup} disabled={isLoading}>
-              {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>Activate Offline Access</Text>}
+              {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>{t.activateOfflineAccess}</Text>}
             </Pressable>
             {allowPinSkip && (
               <Pressable
@@ -442,7 +448,7 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
                 }}
                 disabled={isLoading}
               >
-                <Text style={styles.secondaryButtonText}>Skip for Now</Text>
+                <Text style={styles.secondaryButtonText}>{t.skipForNow}</Text>
               </Pressable>
             )}
           </View>
@@ -451,16 +457,16 @@ export default function LoginScreen({ onLoginSuccess, isOnline }: LoginScreenPro
         {step === 'offline-pin' && (
           <View style={styles.form}>
             <Pressable onPress={() => setStep('role-selection')}>
-              <Text style={styles.backButton}>Back</Text>
+              <Text style={styles.backButton}>{t.back}</Text>
             </Pressable>
-            <Text style={styles.sectionTitle}>Offline PIN Login</Text>
-            <Text style={styles.description}>Use your saved PIN to access cached data.</Text>
+            <Text style={styles.sectionTitle}>{t.offlinePinLoginTitle}</Text>
+            <Text style={styles.description}>{t.offlinePinLoginDesc}</Text>
             <View style={styles.formGroup}>
-              <Text style={styles.label}>PIN</Text>
-              <TextInput style={styles.input} placeholder="Enter PIN" placeholderTextColor="#999" keyboardType="number-pad" secureTextEntry value={pin} onChangeText={setPin} editable={!isLoading} />
+              <Text style={styles.label}>{t.pin}</Text>
+              <TextInput style={styles.input} placeholder={t.enterPin} placeholderTextColor="#999" keyboardType="number-pad" secureTextEntry value={pin} onChangeText={setPin} editable={!isLoading} />
             </View>
             <Pressable style={[styles.submitButton, isLoading && styles.submitButtonDisabled]} onPress={handleOfflinePinLogin} disabled={isLoading}>
-              {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>Access Offline</Text>}
+              {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>{t.accessOffline}</Text>}
             </Pressable>
           </View>
         )}

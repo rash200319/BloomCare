@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
-import { User, UserRole } from './src/types';
+import { User, UserRole, LanguageCode } from './src/types';
 import authService from './src/services/authService';
 import networkStatusService from './src/services/networkStatusService';
 import backgroundSyncService from './src/services/backgroundSyncService';
+import { loadLanguage, saveLanguage } from './src/services/languageService';
 import {
   morningSyncAssignedPatients,
   syncDirtyVitalsUpdates,
@@ -17,21 +18,27 @@ export default function App(): React.JSX.Element {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(true);
+  const [language, setLanguage] = useState<LanguageCode>('en');
+
+  const handleLanguageChange = (lang: LanguageCode): void => {
+    setLanguage(lang);
+    void saveLanguage(lang);
+  };
 
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Initialize network monitoring first
+        const savedLanguage = await loadLanguage();
+        setLanguage(savedLanguage);
+
         await networkStatusService.initialize();
         setIsOnline(networkStatusService.getStatus());
 
-        // Initialize auth and background sync
         const { user: savedUser, token, isOffline } = await authService.initializeAuth();
         
         if (savedUser && token) {
           setUser(savedUser);
 
-          // If online, perform relevant syncs
           if (!isOffline && networkStatusService.getStatus()) {
             if (savedUser.role === 'frontline_staff') {
               try {
@@ -48,7 +55,6 @@ export default function App(): React.JSX.Element {
             }
           }
 
-          // Start background sync
           await backgroundSyncService.initialize();
         }
       } catch (error) {
@@ -60,7 +66,6 @@ export default function App(): React.JSX.Element {
 
     initializeApp();
 
-    // Subscribe to network changes
     const unsubscribe = networkStatusService.subscribe((online) => {
       setIsOnline(online);
     });
@@ -95,7 +100,12 @@ export default function App(): React.JSX.Element {
     return (
       <>
         <ExpoStatusBar style="dark" />
-        <LoginScreen onLoginSuccess={handleLoginSuccess} isOnline={isOnline} />
+        <LoginScreen
+          onLoginSuccess={handleLoginSuccess}
+          isOnline={isOnline}
+          language={language}
+          onLanguageChange={handleLanguageChange}
+        />
       </>
     );
   }
@@ -104,7 +114,13 @@ export default function App(): React.JSX.Element {
     return (
       <>
         <ExpoStatusBar style="dark" />
-        <FrontlineStaffScreen user={user} onLogout={handleLogout} isOnline={isOnline} />
+        <FrontlineStaffScreen
+          user={user}
+          onLogout={handleLogout}
+          isOnline={isOnline}
+          language={language}
+          onLanguageChange={handleLanguageChange}
+        />
       </>
     );
   }
@@ -113,7 +129,13 @@ export default function App(): React.JSX.Element {
     return (
       <>
         <ExpoStatusBar style="dark" />
-        <PatientPortalScreen user={user} onLogout={handleLogout} isOnline={isOnline} />
+        <PatientPortalScreen
+          user={user}
+          onLogout={handleLogout}
+          isOnline={isOnline}
+          language={language}
+          onLanguageChange={handleLanguageChange}
+        />
       </>
     );
   }
