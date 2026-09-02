@@ -65,9 +65,14 @@ class BackgroundSyncService {
           console.log(`Pending vitals synced: ${syncResult.synced}`);
         }
       } else if (user.role === 'frontline_staff') {
-        // Sync frontline staff data
+        // Sync frontline staff data — registrations first, then vitals.
         const registryResult = await syncPendingFrontlineActions();
-        console.log(`Frontline registry sync: ${registryResult.synced} synced, ${registryResult.pending} pending`);
+        console.log(
+          `Frontline registry sync: ${registryResult.synced} synced, ${registryResult.pending} pending`
+        );
+        if (registryResult.errors.length > 0) {
+          console.error('Frontline registry sync errors:', registryResult.errors);
+        }
         const result = await frontlineStaffOperationsService.syncPendingOperations();
         console.log(`Frontline staff sync: ${result.synced} synced, ${result.failed} failed`);
       }

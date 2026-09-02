@@ -242,54 +242,42 @@ class DataSyncService {
     let failed = 0;
 
     for (const sync of pendingSyncs) {
+      // Patient registration / appointments / referral cards are handled by
+      // syncPendingFrontlineActions. Never mark those as failed here.
+      if (sync.entity_type !== 'screening' && sync.entity_type !== 'vitals') {
+        continue;
+      }
+
       try {
         const payload = JSON.parse(sync.payload_json);
         const patientId = String(payload?.patient_id ?? sync.patient_id ?? '').trim();
-        if (patientId.startsWith('local-patient-')) {
+        if (!patientId || patientId.startsWith('local-patient-')) {
+          // Wait until local patient IDs are remapped after registration sync.
           continue;
         }
         const triageItem = this.buildTriageItem(payload);
 
         if (!triageItem) {
-          await offlineDatabase.markSyncFailed(sync.record_id);
-          failed++;
+          console.warn('Skipping unreadable vitals/screening sync:', sync.record_id);
           continue;
         }
 
-        if (sync.entity_type === 'screening') {
-          const response = await fetch(`${API_BASE_URL}/triage/sync`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ items: [triageItem] }),
-          });
+        const response = await fetch(`${API_BASE_URL}/triage/sync`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ items: [triageItem] }),
+        });
 
-          if (response.ok) {
-            await offlineDatabase.markSyncSuccess(sync.record_id);
-            synced++;
-          } else {
-            await offlineDatabase.markSyncFailed(sync.record_id);
-            failed++;
-          }
-        } else if (sync.entity_type === 'vitals') {
-          const response = await fetch(`${API_BASE_URL}/triage/sync`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ items: [triageItem] }),
-          });
-
-          if (response.ok) {
-            await offlineDatabase.markSyncSuccess(sync.record_id);
-            synced++;
-          } else {
-            await offlineDatabase.markSyncFailed(sync.record_id);
-            failed++;
-          }
+        if (response.ok) {
+          await offlineDatabase.markSyncSuccess(sync.record_id);
+          synced++;
+        } else {
+          const detail = await response.text().catch(() => '');
+          console.error(`Vitals sync HTTP ${response.status}:`, detail);
+          failed++;
         }
       } catch (error) {
         console.error(`Failed to upload sync ${sync.record_id}:`, error);

@@ -46,6 +46,7 @@ export interface SyncMetadata {
   record_id: string;
   entity_type: string; // 'appointment', 'insight', 'screening', 'vitals'
   operation: string; // 'create', 'update', 'delete'
+  patient_id?: string | null;
   payload_json: string;
   created_at: string;
   synced_at?: string;
@@ -841,29 +842,15 @@ class OfflineDatabase {
     return recordId;
   }
 
-  async getPendingSyncs(): Promise<SyncMetadata[]> {
-    const db = await this.getDb();
-    const rows = await db.getAllAsync<SyncMetadata>(
-      `
-        SELECT record_id, entity_type, operation, patient_id, payload_json, 
-               created_at, synced_at, sync_status
-        FROM pending_syncs 
-        WHERE sync_status = 'pending'
-        ORDER BY created_at ASC
-      `
-    );
-
+  private async hydrateSyncRows(rows: SyncMetadata[]): Promise<SyncMetadata[]> {
     const { parseSyncPayload, serializeSyncPayload } = await import('./syncEnvelope');
     const verified: SyncMetadata[] = [];
 
     for (const row of rows) {
       const parsed = await parseSyncPayload(row.payload_json);
       if (!parsed) {
-        // Quarantine tampered / unreadable signed payloads.
-        await db.runAsync(
-          `UPDATE pending_syncs SET sync_status = 'failed' WHERE record_id = ?`,
-          [row.record_id]
-        );
+        // Keep unreadable rows pending for retry — do not permanently kill registrations.
+        console.warn('Unable to parse pending sync payload:', row.record_id, row.entity_type);
         continue;
       }
 
@@ -871,7 +858,7 @@ class OfflineDatabase {
       if (!parsed.signed) {
         try {
           const resigned = await serializeSyncPayload(parsed.payload);
-          await db.runAsync(
+          await (await this.getDb()).runAsync(
             `UPDATE pending_syncs SET payload_json = ? WHERE record_id = ?`,
             [resigned, row.record_id]
           );
@@ -887,6 +874,52 @@ class OfflineDatabase {
     }
 
     return verified;
+  }
+
+  async getPendingSyncs(): Promise<SyncMetadata[]> {
+    const db = await this.getDb();
+    const rows = await db.getAllAsync<SyncMetadata>(
+      `
+        SELECT record_id, entity_type, operation, patient_id, payload_json, 
+               created_at, synced_at, sync_status
+        FROM pending_syncs 
+        WHERE sync_status = 'pending'
+        ORDER BY created_at ASC
+      `
+    );
+
+    return this.hydrateSyncRows(rows);
+  }
+
+  /**
+   * Registrations / appointments previously marked failed (e.g. by older buggy sync)
+   * must be retried so offline-created patients can still reach Postgres.
+   */
+  async getFrontlineActionSyncs(): Promise<SyncMetadata[]> {
+    const db = await this.getDb();
+    const rows = await db.getAllAsync<SyncMetadata>(
+      `
+        SELECT record_id, entity_type, operation, patient_id, payload_json,
+               created_at, synced_at, sync_status
+        FROM pending_syncs
+        WHERE entity_type IN ('patient_registration', 'appointment', 'referral_card')
+          AND sync_status IN ('pending', 'failed')
+        ORDER BY created_at ASC
+      `
+    );
+
+    const hydrated = await this.hydrateSyncRows(rows);
+    // Re-open failed rows so a successful retry can mark them synced.
+    for (const row of hydrated) {
+      if (row.sync_status === 'failed') {
+        await db.runAsync(
+          `UPDATE pending_syncs SET sync_status = 'pending' WHERE record_id = ?`,
+          [row.record_id]
+        );
+        row.sync_status = 'pending';
+      }
+    }
+    return hydrated;
   }
 
   async markSyncSuccess(recordId: string): Promise<void> {

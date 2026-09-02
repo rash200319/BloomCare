@@ -84,6 +84,8 @@ const normalizeMiniProfile = (raw: any): PatientMiniProfile => ({
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
+const NIC_PATTERN = /^(?:\d{9}[VvXx]|\d{12})$/;
+
 const sanitizeRegistrationPayload = (payload: Record<string, any>): Record<string, any> => {
   const { local_id, ...rest } = payload ?? {};
   const cleaned: Record<string, any> = {};
@@ -91,14 +93,35 @@ const sanitizeRegistrationPayload = (payload: Record<string, any>): Record<strin
     if (value === undefined || value === null || value === '') continue;
     cleaned[key] = value;
   }
+  if (typeof cleaned.national_id === 'string') {
+    cleaned.national_id = cleaned.national_id.trim().toUpperCase();
+  }
+  if (typeof cleaned.full_name === 'string') {
+    cleaned.full_name = cleaned.full_name.trim();
+  }
   return cleaned;
+};
+
+const readApiError = async (response: Response): Promise<string> => {
+  try {
+    const body = await response.json();
+    if (typeof body?.detail === 'string') return body.detail;
+    if (Array.isArray(body?.detail)) {
+      return body.detail
+        .map((item: any) => item?.msg || JSON.stringify(item))
+        .join('; ');
+    }
+    return JSON.stringify(body);
+  } catch {
+    return `HTTP ${response.status}`;
+  }
 };
 
 const fetchPatientByNationalId = async (
   nationalId: string,
   token: string
 ): Promise<any | null> => {
-  const normalized = nationalId.trim();
+  const normalized = nationalId.trim().toUpperCase();
   if (!normalized) return null;
 
   try {
@@ -109,12 +132,47 @@ const fetchPatientByNationalId = async (
     const rows = await response.json();
     const list = Array.isArray(rows) ? rows : [];
     const match = list.find((item: any) =>
-      String(item?.national_id ?? '').trim() === normalized
+      String(item?.national_id ?? '').trim().toUpperCase() === normalized
     );
     return match ?? null;
   } catch {
     return null;
   }
+};
+
+const postPatientRegistration = async (
+  token: string,
+  payload: Record<string, any>
+): Promise<{ ok: true; patient: any } | { ok: false; error: string }> => {
+  const attempt = async (body: Record<string, any>) => {
+    const response = await fetch(PATIENT_CREATE_URL, {
+      method: 'POST',
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
+    if (response.ok) {
+      return { ok: true as const, patient: await response.json() };
+    }
+    return { ok: false as const, status: response.status, error: await readApiError(response) };
+  };
+
+  let result = await attempt(payload);
+  if (result.ok) return result;
+
+  // Drop optional phone fields that often fail Sri Lankan format validation,
+  // then retry so the patient record itself still reaches Postgres.
+  if (result.status === 422 && (payload.contact_number || payload.emergency_contact)) {
+    const { contact_number, emergency_contact, ...withoutPhones } = payload;
+    result = await attempt(withoutPhones);
+    if (result.ok) return result;
+  }
+
+  const existing = await fetchPatientByNationalId(String(payload.national_id ?? ''), token);
+  if (existing) {
+    return { ok: true, patient: existing };
+  }
+
+  return { ok: false, error: result.error };
 };
 
 export const buildPendingRecord = (vitals: Stage1VitalsInput): PendingScreening => ({
@@ -278,6 +336,8 @@ export const syncDirtyVitalsUpdates = async (): Promise<DirtySyncResult> => {
 
   for (const update of dirty) {
     if (isLocalPatientId(update.patient_id)) {
+      // Registration must sync + remap before these can upload.
+      console.warn('Skipping dirty vitals for unsynced local patient:', update.patient_id);
       continue;
     }
     try {
@@ -396,8 +456,14 @@ export const registerPatientForFrontline = async (
   const normalizedPayload = {
     ...payload,
     full_name: payload.full_name.trim(),
-    national_id: payload.national_id.trim(),
+    national_id: payload.national_id.trim().toUpperCase(),
   };
+
+  if (!NIC_PATTERN.test(normalizedPayload.national_id)) {
+    throw new Error(
+      'NIC must be Sri Lankan format: 9 digits + V/X (e.g. 900000007V) or 12 digits.'
+    );
+  }
 
   if (online) {
     const token = await authService.getStoredToken();
@@ -715,17 +781,30 @@ export const queueReferralCard = async (payload: {
   await offlineDatabase.addPendingSync('referral_card', 'create', payload.patient_id, payload);
 };
 
-export const syncPendingFrontlineActions = async (): Promise<{ pending: number; synced: number }> => {
+export const syncPendingFrontlineActions = async (): Promise<{
+  pending: number;
+  synced: number;
+  errors: string[];
+}> => {
   await offlineDatabase.initialize();
 
   const token = await authService.getStoredToken();
-  const pending = await offlineDatabase.getPendingSyncs();
+  const pending = await offlineDatabase.getFrontlineActionSyncs();
 
-  if (!token || pending.length === 0) {
-    return { pending: pending.length, synced: 0 };
+  if (!token) {
+    return {
+      pending: pending.length,
+      synced: 0,
+      errors: pending.length > 0 ? ['Not authenticated — log in again to sync.'] : [],
+    };
+  }
+
+  if (pending.length === 0) {
+    return { pending: 0, synced: 0, errors: [] };
   }
 
   let synced = 0;
+  const errors: string[] = [];
 
   for (const item of pending) {
     try {
@@ -734,20 +813,22 @@ export const syncPendingFrontlineActions = async (): Promise<{ pending: number; 
       if (item.entity_type === 'patient_registration' && item.operation === 'create') {
         const localId = payload?.local_id ? String(payload.local_id) : '';
         const cleanedPayload = sanitizeRegistrationPayload(payload);
-        const response = await fetch(PATIENT_CREATE_URL, {
-          method: 'POST',
-          headers: authHeaders(token),
-          body: JSON.stringify(cleanedPayload),
-        });
-        let created: any | null = null;
-        if (response.ok) {
-          created = await response.json();
-        } else {
-          created = await fetchPatientByNationalId(String(payload?.national_id ?? ''), token);
-          if (!created) {
-            continue;
-          }
+
+        if (!cleanedPayload.full_name || !cleanedPayload.national_id) {
+          errors.push('Patient registration missing full name or NIC.');
+          continue;
         }
+
+        const createdResult = await postPatientRegistration(token, cleanedPayload);
+        if (!createdResult.ok) {
+          console.error('Patient registration sync failed:', createdResult.error);
+          errors.push(
+            `Patient ${cleanedPayload.national_id}: ${createdResult.error}`
+          );
+          continue;
+        }
+
+        const created = createdResult.patient;
         const mapped = normalizeMiniProfile(created);
         await offlineDatabase.cachePatientProfile({
           ...mapped,
@@ -798,6 +879,9 @@ export const syncPendingFrontlineActions = async (): Promise<{ pending: number; 
           body: JSON.stringify(body),
         });
         if (!response.ok) {
+          const detail = await readApiError(response);
+          console.error('Appointment sync failed:', detail);
+          errors.push(`Appointment: ${detail}`);
           continue;
         }
       } else if (item.entity_type === 'referral_card') {
@@ -808,17 +892,19 @@ export const syncPendingFrontlineActions = async (): Promise<{ pending: number; 
 
       await offlineDatabase.markSyncSuccess(item.record_id);
       synced += 1;
-    } catch {
-      // Keep record pending for next retry.
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown sync error';
+      console.error('Frontline action sync error:', error);
+      errors.push(message);
     }
   }
 
-  const stillPending = (await offlineDatabase.getPendingSyncs()).length;
-  return { pending: stillPending, synced };
+  const stillPending = (await offlineDatabase.getFrontlineActionSyncs()).length;
+  return { pending: stillPending, synced, errors };
 };
 
 export const getPendingFrontlineActionCount = async (): Promise<number> => {
   await offlineDatabase.initialize();
-  const pending = await offlineDatabase.getPendingSyncs();
+  const pending = await offlineDatabase.getFrontlineActionSyncs();
   return pending.length;
 };

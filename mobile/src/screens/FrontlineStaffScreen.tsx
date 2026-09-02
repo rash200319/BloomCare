@@ -903,7 +903,10 @@ export default function FrontlineStaffScreen({
       await loadRegistryAndHistory();
       Alert.alert(t.alertSaved, online ? t.alertPatientRegistered : t.alertPatientSavedOffline);
     } catch (error) {
-      Alert.alert(t.error, t.alertRegisterFailed);
+      Alert.alert(
+        t.error,
+        error instanceof Error ? error.message : t.alertRegisterFailed
+      );
     } finally {
       setRegistering(false);
     }
@@ -1039,9 +1042,26 @@ export default function FrontlineStaffScreen({
 
       const totalSynced = dirtyResult.synced + actionResult.synced;
       const totalPending = dirtyResult.pending + actionResult.pending;
+      const errorText = actionResult.errors.slice(0, 3).join('\n');
+
+      if (actionResult.errors.length > 0) {
+        Alert.alert(
+          t.alertSyncFailed,
+          `${formatMsg(t.alertSyncResult, { synced: totalSynced, pending: totalPending })}\n\n${errorText}`
+        );
+        return;
+      }
 
       if (totalSynced === 0 && totalPending === 0) {
         Alert.alert(t.alertSyncComplete, t.alertNoPending);
+        return;
+      }
+
+      if (totalPending > 0) {
+        Alert.alert(
+          t.alertSyncFailed,
+          formatMsg(t.alertSyncResult, { synced: totalSynced, pending: totalPending })
+        );
         return;
       }
 
@@ -1070,6 +1090,14 @@ export default function FrontlineStaffScreen({
       await syncDirtyVitalsUpdates();
       await refreshQueueCount();
       await loadRegistryAndHistory();
+
+      if (result.errors.length > 0) {
+        Alert.alert(
+          t.alertSyncFailed,
+          `${result.errors.slice(0, 3).join('\n')}\n\n${formatMsg(t.alertRegistrationNone, { pending: result.pending })}`
+        );
+        return;
+      }
 
       Alert.alert(
         t.alertRegistrationSync,
