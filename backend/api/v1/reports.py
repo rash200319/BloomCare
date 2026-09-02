@@ -12,6 +12,7 @@ from io import BytesIO
 from backend.core.deps import get_db, get_current_active_user, ensure_patient_access
 from backend.schemas.screening import PatientReportRequest, PatientReportResponse, Stage1ScreeningReportData
 from backend.models.user import User
+from backend.models.patient import Patient as DBPatient
 from backend.models.screening import Stage1Screening, Stage2Diagnostic, PatientReport
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,132 @@ def _format_contributing_factors(factors: Dict[str, float]) -> List[str]:
         descriptions.append(f"• {desc} ({importance_pct}%)")
 
     return descriptions
+
+
+def _pdf_text(value: Any) -> str:
+    if value is None or value == "":
+        return "--"
+    text = str(value).replace("\u2014", "-").replace("\u2013", "-")
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+
+def _probability_label(payload: Any) -> str:
+    if isinstance(payload, dict):
+        probability = payload.get("probability")
+        risk_level = payload.get("risk_level")
+        if probability is None:
+            return _pdf_text(risk_level or payload)
+        percent = f"{float(probability) * 100:.1f}%"
+        return _pdf_text(f"{percent}  ({risk_level})" if risk_level else percent)
+    if isinstance(payload, (int, float)):
+        return f"{float(payload) * 100:.1f}%"
+    return _pdf_text(payload)
+
+
+def _build_report_pdf(content: Dict[str, Any], report_type: str) -> bytes:
+    from fpdf import FPDF
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.add_page()
+
+    pdf.set_fill_color(244, 63, 94)
+    pdf.rect(0, 0, 210, 22, "F")
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.set_xy(12, 6)
+    title = "BloomCare  |  Stage 2 Diagnostic Report" if report_type == "stage2" else "BloomCare  |  Stage 1 Screening Report"
+    pdf.cell(0, 10, _pdf_text(title), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_text_color(30, 41, 59)
+    pdf.ln(10)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, _pdf_text(content.get("report_title") or "Clinical Report"), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(71, 85, 105)
+    pdf.cell(0, 6, _pdf_text(f"Generated: {content.get('generated_date', '--')}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, _pdf_text(f"Prepared by: {content.get('generated_by', '--')}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    def section(heading: str) -> None:
+        pdf.ln(2)
+        pdf.set_fill_color(255, 241, 242)
+        pdf.set_text_color(190, 18, 60)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 8, f"  {_pdf_text(heading)}", new_x="LMARGIN", new_y="NEXT", fill=True)
+        pdf.set_text_color(30, 41, 59)
+        pdf.set_font("Helvetica", "", 10)
+
+    def row(label: str, value: Any) -> None:
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(58, 7, _pdf_text(label))
+        pdf.set_font("Helvetica", "", 10)
+        pdf.cell(0, 7, _pdf_text(value), new_x="LMARGIN", new_y="NEXT")
+
+    section("Patient")
+    row("Name", content.get("patient_name"))
+    row("Patient ID", content.get("patient_id"))
+    row("Gestational age", f"{content.get('gestational_age_weeks', '--')} weeks")
+
+    if report_type == "stage2":
+        section("Differential diagnosis")
+        row("Primary risk", content.get("dominant_condition") or content.get("disease_checked"))
+        row("Severity score", content.get("overall_severity_score"))
+        row("Model", content.get("model_used"))
+        row("Evaluated", content.get("evaluated_date"))
+
+        probabilities = content.get("condition_probabilities") or {}
+        if isinstance(probabilities, dict) and probabilities:
+            section("Condition probabilities")
+            for name, payload in probabilities.items():
+                if name == "primary_risk":
+                    continue
+                row(str(name).replace("_", " ").title(), _probability_label(payload))
+
+        biomarkers = content.get("biomarkers") or {}
+        if isinstance(biomarkers, dict) and biomarkers:
+            section("Lab / biomarkers")
+            for name, value in biomarkers.items():
+                row(str(name), value)
+
+        labs = content.get("lab_inputs") or {}
+        if isinstance(labs, dict) and labs:
+            section("Specialist lab inputs")
+            for name, value in labs.items():
+                row(str(name).replace("_", " ").title(), value)
+    else:
+        section("Stage 1 screening")
+        row("Risk classification", content.get("risk_classification"))
+        row("Risk score", content.get("risk_score"))
+        row("Screening date", content.get("screening_date"))
+        vitals = content.get("vitals") or {}
+        if isinstance(vitals, dict):
+            section("Vitals")
+            for name, value in vitals.items():
+                row(str(name).replace("_", " ").title(), value)
+        factors = content.get("contributing_factors") or []
+        if factors:
+            section("Contributing factors")
+            pdf.set_font("Helvetica", "", 10)
+            for factor in factors:
+                pdf.multi_cell(0, 6, _pdf_text(factor))
+        recommendations = content.get("recommendations") or []
+        if recommendations:
+            section("Recommendations")
+            for item in recommendations:
+                pdf.multi_cell(0, 6, _pdf_text(f"- {item}"))
+
+    pdf.ln(8)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(100, 116, 139)
+    pdf.multi_cell(
+        0,
+        5,
+        "This report is clinical decision-support generated by BloomCare. It is not a diagnostic authority and must be interpreted by a qualified clinician.",
+    )
+
+    return bytes(pdf.output())
 
 
 @router.post("/stage1", response_model=PatientReportResponse)
@@ -183,11 +310,30 @@ def generate_stage2_report(
         # Safe field access with defaults
         evaluated_at = stage2.evaluated_at if stage2.evaluated_at else datetime.utcnow()
         severity_score = float(stage2.overall_severity_score) if stage2.overall_severity_score else 0.0
-        
+        patient = db.query(DBPatient).filter(DBPatient.id == stage2.patient_id).first()
+        snapshot = stage2.input_snapshot if isinstance(stage2.input_snapshot, dict) else {}
+        metabolomics = stage2.metabolomics if isinstance(stage2.metabolomics, dict) else {}
+        disease_inputs = stage2.disease_specific_inputs if isinstance(stage2.disease_specific_inputs, dict) else {}
+
+        lab_inputs = {
+            "sFlt-1/PlGF ratio": snapshot.get("sflt1_plgf_ratio", stage2.sflt1_plgf_ratio),
+            "Serum creatinine": snapshot.get("serum_creatinine", metabolomics.get("serum_creatinine")),
+            "Platelet count": snapshot.get("platelet_count", disease_inputs.get("platelet_count")),
+            "HbA1c": snapshot.get("hba1c", metabolomics.get("hba1c")),
+            "OGTT 1hr": snapshot.get("ogtt_1hr", metabolomics.get("ogtt_1hr")),
+            "OGTT 2hr": snapshot.get("ogtt_2hr", metabolomics.get("ogtt_2hr")),
+            "Cervical length (mm)": snapshot.get("cervical_length_mm", stage2.cervical_length_mm),
+            "fFN": snapshot.get("ffn_result", disease_inputs.get("ffn_result")),
+            "Systolic BP": snapshot.get("systolic_bp", disease_inputs.get("systolic_bp")),
+            "Diastolic BP": snapshot.get("diastolic_bp", disease_inputs.get("diastolic_bp")),
+            "Blood sugar": snapshot.get("blood_sugar", metabolomics.get("blood_sugar")),
+        }
+
         # Create report content with safe field access
         report_content = {
             "report_title": f"Stage 2 Diagnostic Report - {evaluated_at.strftime('%Y-%m-%d')}",
             "patient_id": str(stage2.patient_id),
+            "patient_name": patient.full_name if patient else "Unknown Patient",
             "disease_checked": stage2.primary_disease_checked or "Not specified",
             "model_used": stage2.model_used or "differential_ensemble",
             "evaluated_date": evaluated_at.isoformat(),
@@ -202,6 +348,7 @@ def generate_stage2_report(
                 "PAPP-A": float(stage2.papp_a) if stage2.papp_a else None,
                 "cervical_length": f"{float(stage2.cervical_length_mm)} mm" if stage2.cervical_length_mm else "Not recorded",
             },
+            "lab_inputs": lab_inputs,
             "generated_date": datetime.utcnow().isoformat(),
             "generated_by": current_user.full_name or current_user.email,
         }
@@ -215,7 +362,7 @@ def generate_stage2_report(
             stage2_diagnostic_id=str(stage2.id),
             report_type="stage2",
             report_title=report_content["report_title"],
-            content_type="json",
+            content_type="pdf",
             report_content=report_content,
             generated_by=str(current_user.id),
         )
@@ -265,15 +412,16 @@ def download_report(
         ensure_patient_access(
             db, current_user, str(report.patient_id), action="report.download"
         )
-        
-        # Return as JSON for now (can be extended to PDF)
-        json_content = json.dumps(report.report_content, indent=2)
-        
+
+        content = report.report_content if isinstance(report.report_content, dict) else {}
+        pdf_bytes = _build_report_pdf(content, report.report_type or "stage2")
+        filename = f"{report.report_type or 'clinical'}_report_{report_id}.pdf"
+
         return Response(
-            content=json_content,
-            media_type="application/json",
+            content=pdf_bytes,
+            media_type="application/pdf",
             headers={
-                "Content-Disposition": f"attachment; filename={report.report_type}_report_{report_id}.json"
+                "Content-Disposition": f"attachment; filename={filename}"
             },
         )
     except HTTPException:

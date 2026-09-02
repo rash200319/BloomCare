@@ -891,7 +891,8 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
       const blobUrl = window.URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = blobUrl
-      link.download = `${activePatient.name.replace(/\s+/g, "_")}_stage2_report.json`
+      const isPdf = (downloadResponse.headers.get("content-type") || "").includes("pdf")
+      link.download = `${activePatient.name.replace(/\s+/g, "_")}_stage2_report.${isPdf ? "pdf" : "json"}`
       document.body.appendChild(link)
       link.click()
       link.remove()
