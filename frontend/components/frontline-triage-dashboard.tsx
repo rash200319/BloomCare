@@ -171,22 +171,49 @@ declare global {
   }
 }
 
-const DEFAULT_IMPUTE = {
-  age: 28,
-  bmi: 24,
-  systolic: 120,
-  diastolic: 80,
-  heart_rate: 78,
-  bs: 95,
-  temperature: 36.8,
-  hemoglobin: 12,
-  pcos: 0,
-  previous_complications: 0,
-  preexisting_diabetes: 0,
-  mental_health: 3,
-  sleep_pattern: 7,
-  exercise: 3,
-  education: 4,
+const EMPTY_SCREENING_FORM = {
+  patientName: "",
+  age: "",
+  systolic: "",
+  diastolic: "",
+  bmi: "",
+  heartRate: "",
+  bs: "",
+  temperature: "",
+  hemoglobin: "",
+  pcos: "",
+  previousComplications: "",
+  preexistingDiabetes: "",
+  mentalHealth: "",
+  sleepPattern: "",
+  exercise: "",
+  education: "",
+  sfltRatio: "",
+  serumCreatinine: "",
+  plateletCount: "",
+  serumTriglycerides: "",
+  tsh: "",
+  pcv: "",
+  seng: "",
+  cystatinC: "",
+  pp13: "",
+  doppler: "",
+  gestationalAge: "",
+  famHtn: "",
+  htn: "",
+  occupation: "",
+  diet: "",
+}
+
+function gestationalWeeksFromDueDate(dueDate?: string | null): number | null {
+  if (!dueDate) return null
+  const due = new Date(dueDate)
+  if (Number.isNaN(due.getTime())) return null
+  const conception = new Date(due)
+  conception.setDate(conception.getDate() - 40 * 7)
+  const weeks = Math.floor((Date.now() - conception.getTime()) / (7 * 24 * 60 * 60 * 1000))
+  if (!Number.isFinite(weeks)) return null
+  return Math.min(42, Math.max(4, weeks))
 }
 
 const NIC_REGEX = /^(?:\d{9}[VvXx]|\d{12})$/
@@ -270,40 +297,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
     return en
   }
   // Form state
-  const [formData, setFormData] = useState({
-    patientName: "Nimalka Fernando",
-    age: "28",
-    systolic: "120",
-    diastolic: "80",
-    bmi: "24.5",
-    heartRate: "78",
-    bs: "95",
-    temperature: "36.8",
-    hemoglobin: "12",
-    pcos: "0",
-    previousComplications: "0",
-    preexistingDiabetes: "0",
-    mentalHealth: "3",
-    sleepPattern: "7",
-    exercise: "3",
-    education: "4",
-    // Stage 2 Fields (Conditional)
-    sfltRatio: "",
-    serumCreatinine: "",
-    plateletCount: "",
-    serumTriglycerides: "",
-    tsh: "",
-    pcv: "",
-    seng: "",
-    cystatinC: "",
-    pp13: "",
-    doppler: "",
-    gestationalAge: "",
-    famHtn: "",
-    htn: "",
-    occupation: "",
-    diet: "",
-  })
+  const [formData, setFormData] = useState({ ...EMPTY_SCREENING_FORM })
   const [showStage2Form, setShowStage2Form] = useState(false)
   const [screeningNationalId, setScreeningNationalId] = useState("")
   const [newPatientForm, setNewPatientForm] = useState({
@@ -532,11 +526,15 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
         }
         setSelectedPatient(selected)
         setScreeningNationalId(selected.nationalId)
-        setFormData((prev) => ({
-          ...prev,
-          patientName: selected.name,
-          age: selected.age > 0 ? String(selected.age) : prev.age,
-        }))
+        setFormData((prev) => {
+          const weeks = gestationalWeeksFromDueDate(selected.dueDate)
+          return {
+            ...prev,
+            patientName: selected.name,
+            age: selected.age > 0 ? String(selected.age) : "",
+            gestationalAge: weeks ? String(weeks) : prev.gestationalAge,
+          }
+        })
       }
 
       setRegistrationMessage("Patient registration saved. You can proceed with screening.")
@@ -632,33 +630,41 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
     }
   }
 
-  const buildVitalsInput = (): VitalsInput => {
-    const parseOrDefault = (raw: string, fallback: number) => {
-      const value = Number.parseFloat(raw)
-      return Number.isNaN(value) ? fallback : value
+  const parseRequiredNumber = (raw: string, label: string): number => {
+    const value = Number.parseFloat(raw)
+    if (!Number.isFinite(value)) {
+      throw new Error(`${label} is required.`)
     }
+    return value
+  }
 
-    const systolic = parseOrDefault(formData.systolic, DEFAULT_IMPUTE.systolic)
-    const diastolic = parseOrDefault(formData.diastolic, DEFAULT_IMPUTE.diastolic)
+  const parseOptionalBinary = (raw: string): number => {
+    const value = Number.parseFloat(raw)
+    return Number.isFinite(value) && value >= 1 ? 1 : 0
+  }
+
+  const buildVitalsInput = (): VitalsInput => {
+    const systolic = parseRequiredNumber(formData.systolic, "Systolic blood pressure")
+    const diastolic = parseRequiredNumber(formData.diastolic, "Diastolic blood pressure")
     const map = (systolic + 2 * diastolic) / 3
 
     return {
       patient_name: formData.patientName.trim() || "Unknown Patient",
-      age: parseOrDefault(formData.age, DEFAULT_IMPUTE.age),
+      age: parseRequiredNumber(formData.age, "Age"),
       systolic,
       diastolic,
-      bmi: parseOrDefault(formData.bmi, DEFAULT_IMPUTE.bmi),
-      heart_rate: parseOrDefault(formData.heartRate, DEFAULT_IMPUTE.heart_rate),
-      bs: parseOrDefault(formData.bs, DEFAULT_IMPUTE.bs),
-      temperature: parseOrDefault(formData.temperature, DEFAULT_IMPUTE.temperature),
-      hemoglobin: parseOrDefault(formData.hemoglobin, DEFAULT_IMPUTE.hemoglobin),
-      pcos: parseOrDefault(formData.pcos, DEFAULT_IMPUTE.pcos),
-      previous_complications: parseOrDefault(formData.previousComplications, DEFAULT_IMPUTE.previous_complications),
-      preexisting_diabetes: parseOrDefault(formData.preexistingDiabetes, DEFAULT_IMPUTE.preexisting_diabetes),
-      mental_health: parseOrDefault(formData.mentalHealth, DEFAULT_IMPUTE.mental_health),
-      sleep_pattern: parseOrDefault(formData.sleepPattern, DEFAULT_IMPUTE.sleep_pattern),
-      exercise: parseOrDefault(formData.exercise, DEFAULT_IMPUTE.exercise),
-      education: parseOrDefault(formData.education, DEFAULT_IMPUTE.education),
+      bmi: parseRequiredNumber(formData.bmi, "BMI"),
+      heart_rate: parseRequiredNumber(formData.heartRate, "Heart rate"),
+      bs: parseRequiredNumber(formData.bs, "Blood sugar"),
+      temperature: parseRequiredNumber(formData.temperature, "Temperature"),
+      hemoglobin: parseRequiredNumber(formData.hemoglobin, "Hemoglobin"),
+      pcos: parseOptionalBinary(formData.pcos),
+      previous_complications: parseOptionalBinary(formData.previousComplications),
+      preexisting_diabetes: parseOptionalBinary(formData.preexistingDiabetes),
+      mental_health: parseRequiredNumber(formData.mentalHealth, "Mental health score"),
+      sleep_pattern: parseRequiredNumber(formData.sleepPattern, "Sleep pattern"),
+      exercise: parseRequiredNumber(formData.exercise, "Exercise frequency"),
+      education: parseRequiredNumber(formData.education, "Education level"),
       map,
     }
   }
@@ -751,7 +757,13 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
       return
     }
 
-    const vitals = buildVitalsInput()
+    let vitals: VitalsInput
+    try {
+      vitals = buildVitalsInput()
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Complete screening values before printing.")
+      return
+    }
     const triggers = deriveRiskTriggers(vitals)
     const generatedAt = new Date().toLocaleString()
     const patientId = selectedPatient?.id || "UNASSIGNED"
@@ -985,9 +997,8 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
       }
 
       const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
-      const toNumber = (value: number, fallback: number) => (Number.isFinite(value) ? value : fallback)
-      const toInt = (value: number, fallback: number) => Math.round(toNumber(value, fallback))
-      const toBinary = (value: number) => (toInt(value, 0) >= 1 ? 1 : 0)
+      const toInt = (value: number) => Math.round(value)
+      const toBinary = (value: number) => (value >= 1 ? 1 : 0)
 
       const patientsRes = await apiRequest("/patients/?limit=500")
       if (!patientsRes.ok) {
@@ -1020,34 +1031,38 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
       setSelectedPatient(verifiedPatient)
 
       const vitalsData = buildVitalsInput()
+      const gestationalAgeWeeks = Number.parseInt(formData.gestationalAge, 10)
+      if (!Number.isFinite(gestationalAgeWeeks)) {
+        throw new Error("Enter gestational age in weeks before screening.")
+      }
       const offlineResult = getOfflineRisk(vitalsData)
       const generalRiskFlag: "Low" | "High" = offlineResult.risk_level.toLowerCase() === "low" ? "Low" : "High"
       const payload: PendingScreening["payload"] = {
         patient_unique_id: verifiedPatient.nationalId,
         phone: verifiedPatient.contactNumber || null,
         name: vitalsData.patient_name,
-        age: clamp(toInt(vitalsData.age, DEFAULT_IMPUTE.age), 10, 60),
+        age: clamp(toInt(vitalsData.age), 10, 60),
         contact: verifiedPatient.contactNumber || null,
-        gestational_age_weeks: clamp(Number.parseInt(formData.gestationalAge || "20", 10) || 20, 4, 42),
+        gestational_age_weeks: clamp(gestationalAgeWeeks, 4, 42),
         general_risk_flag: generalRiskFlag,
-        probability_score: clamp(toNumber(offlineResult.risk_score, 0.5), 0, 1),
+        probability_score: clamp(offlineResult.risk_score, 0, 1),
         triggers: offlineResult.recommendations,
         screened_at: new Date().toISOString(),
-        systolic: clamp(toInt(vitalsData.systolic, DEFAULT_IMPUTE.systolic), 50, 260),
-        diastolic: clamp(toInt(vitalsData.diastolic, DEFAULT_IMPUTE.diastolic), 30, 180),
-        bmi: clamp(toNumber(vitalsData.bmi, DEFAULT_IMPUTE.bmi), 10, 80),
-        heart_rate: clamp(toInt(vitalsData.heart_rate, DEFAULT_IMPUTE.heart_rate), 20, 240),
-        blood_sugar: clamp(toNumber(vitalsData.bs, DEFAULT_IMPUTE.bs), 20, 600),
-        temperature: clamp(toNumber(vitalsData.temperature, DEFAULT_IMPUTE.temperature), 30, 45),
-        hemoglobin: clamp(toNumber(vitalsData.hemoglobin, DEFAULT_IMPUTE.hemoglobin), 2, 25),
+        systolic: clamp(toInt(vitalsData.systolic), 50, 260),
+        diastolic: clamp(toInt(vitalsData.diastolic), 30, 180),
+        bmi: clamp(vitalsData.bmi, 10, 80),
+        heart_rate: clamp(toInt(vitalsData.heart_rate), 20, 240),
+        blood_sugar: clamp(vitalsData.bs, 20, 600),
+        temperature: clamp(vitalsData.temperature, 30, 45),
+        hemoglobin: clamp(vitalsData.hemoglobin, 2, 25),
         pcos: toBinary(vitalsData.pcos),
         previous_complications: toBinary(vitalsData.previous_complications),
         preexisting_diabetes: toBinary(vitalsData.preexisting_diabetes),
-        mental_health: clamp(toInt(vitalsData.mental_health, DEFAULT_IMPUTE.mental_health), 0, 10),
-        sleep_pattern: clamp(toInt(vitalsData.sleep_pattern, DEFAULT_IMPUTE.sleep_pattern), 0, 24),
-        exercise: clamp(toInt(vitalsData.exercise, DEFAULT_IMPUTE.exercise), 0, 24),
-        education: clamp(toInt(vitalsData.education, DEFAULT_IMPUTE.education), 0, 10),
-        map: clamp(toNumber(vitalsData.map, computedMap ?? 80), 20, 200),
+        mental_health: clamp(toInt(vitalsData.mental_health), 0, 10),
+        sleep_pattern: clamp(toInt(vitalsData.sleep_pattern), 0, 24),
+        exercise: clamp(toInt(vitalsData.exercise), 0, 24),
+        education: clamp(toInt(vitalsData.education), 0, 10),
+        map: clamp(vitalsData.map, 20, 200),
         bp_status: (offlineResult.bp_status || "Normal").trim() || "Normal",
         observation: (offlineResult.observation || "Offline model estimate").trim() || "Offline model estimate",
       }
@@ -1284,39 +1299,7 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                 setScreeningNationalId("")
                 setRegistrationError(null)
                 setRegistrationMessage(null)
-                setFormData({
-                  patientName: "",
-                  age: "",
-                  systolic: "",
-                  diastolic: "",
-                  bmi: "",
-                  heartRate: "",
-                  bs: "",
-                  temperature: "",
-                  hemoglobin: "",
-                  pcos: "",
-                  previousComplications: "",
-                  preexistingDiabetes: "",
-                  mentalHealth: "",
-                  sleepPattern: "",
-                  exercise: "",
-                  education: "",
-                  sfltRatio: "",
-                  serumCreatinine: "",
-                  plateletCount: "",
-                  serumTriglycerides: "",
-                  tsh: "",
-                  pcv: "",
-                  seng: "",
-                  cystatinC: "",
-                  pp13: "",
-                  doppler: "",
-                  gestationalAge: "",
-                  famHtn: "",
-                  htn: "",
-                  occupation: "",
-                  diet: "",
-                })
+                setFormData({ ...EMPTY_SCREENING_FORM })
                 setShowResult(false)
               }}
             >
@@ -1353,11 +1336,15 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                 onClick={() => {
                   setSelectedPatient(patient)
                   setScreeningNationalId(patient.nationalId)
-                  setFormData((prev) => ({
-                    ...prev,
-                    patientName: patient.name,
-                    age: patient.age > 0 ? String(patient.age) : prev.age,
-                  }))
+                  setFormData((prev) => {
+                    const weeks = gestationalWeeksFromDueDate(patient.dueDate)
+                    return {
+                      ...prev,
+                      patientName: patient.name,
+                      age: patient.age > 0 ? String(patient.age) : "",
+                      gestationalAge: weeks ? String(weeks) : prev.gestationalAge,
+                    }
+                  })
                   setRegistrationError(null)
                   setRegistrationMessage(null)
                   setShowResult(false)
@@ -1867,6 +1854,23 @@ export default function FrontlineTriageDashboard({ onLogout }: FrontlineTriageDa
                           type="number"
                           value={formData.age}
                           onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                          placeholder={getText("Years", "අවුරුදු", "ஆண்டுகள்")}
+                          className="h-12 bg-slate-50 border-slate-100 focus:bg-white focus:border-primary/30 focus:ring-primary/10 rounded-xl transition-all font-bold text-slate-700"
+                        />
+                      </div>
+
+                      {/* Gestational Age */}
+                      <div className="space-y-3">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">
+                          {getText("Gestational Age (Weeks)", "ගර්භණී වයස (සති)", "கர்ப்பகால வயது (வாரங்கள்)")}
+                        </Label>
+                        <Input
+                          type="number"
+                          min="4"
+                          max="42"
+                          value={formData.gestationalAge}
+                          onChange={(e) => setFormData({ ...formData, gestationalAge: e.target.value })}
+                          placeholder={getText("Weeks", "සති", "வாரங்கள்")}
                           className="h-12 bg-slate-50 border-slate-100 focus:bg-white focus:border-primary/30 focus:ring-primary/10 rounded-xl transition-all font-bold text-slate-700"
                         />
                       </div>

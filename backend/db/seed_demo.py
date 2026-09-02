@@ -90,12 +90,42 @@ def ensure_demo_seeds(db: Session) -> None:
             "full_name": "Nimalka Fernando",
             "age": 28,
             "blood_group": "O+",
+            "due_weeks": 12,
         },
         {
             "national_id": "199912345678",
             "full_name": "Patient Demo",
             "age": 27,
             "blood_group": "A+",
+            "due_weeks": 12,
+        },
+        {
+            "national_id": "900000003V",
+            "full_name": "Ishara Madushani",
+            "age": 34,
+            "blood_group": "B+",
+            "due_weeks": 12,
+        },
+        {
+            "national_id": "900000004V",
+            "full_name": "Kavindi Jayawardena",
+            "age": 26,
+            "blood_group": "AB+",
+            "due_weeks": 14,
+        },
+        {
+            "national_id": "900000005V",
+            "full_name": "Tharushi Silva",
+            "age": 24,
+            "blood_group": "O-",
+            "due_weeks": 24,
+        },
+        {
+            "national_id": "900000006V",
+            "full_name": "Menaka Bandara",
+            "age": 37,
+            "blood_group": "B-",
+            "due_weeks": 12,
         },
     ]
 
@@ -105,6 +135,7 @@ def ensure_demo_seeds(db: Session) -> None:
             .filter(Patient.national_id == item["national_id"])
             .first()
         )
+        due_date = date.today() + timedelta(weeks=item["due_weeks"])
         if patient is None:
             patient = Patient(
                 id=str(uuid.uuid4()),
@@ -113,7 +144,7 @@ def ensure_demo_seeds(db: Session) -> None:
                 age=item["age"],
                 blood_group=item["blood_group"],
                 hashed_password=password_hash,
-                due_date=date.today() + timedelta(weeks=12),
+                due_date=due_date,
                 assigned_worker_id=worker_id,
                 is_active=True,
                 first_time_login=False,
@@ -125,6 +156,7 @@ def ensure_demo_seeds(db: Session) -> None:
             patient.age = item["age"]
             patient.blood_group = item["blood_group"]
             patient.hashed_password = password_hash
+            patient.due_date = due_date
             patient.is_active = True
             patient.first_time_login = False
             if worker_id and not patient.assigned_worker_id:

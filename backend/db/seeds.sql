@@ -1020,4 +1020,363 @@ DO UPDATE SET
     error_message = EXCLUDED.error_message,
     received_at = EXCLUDED.received_at;
 
+-- =============================================================================
+-- WALKTHROUGH ADDITIONS (new rows only — does not replace existing seeds)
+-- Password: rash2003
+--   Ishara Madushani     900000003V   high GDM, Stage 1 only (enter labs)
+--   Kavindi Jayawardena  900000004V   preterm, COMPLETED appointment
+--   Tharushi Silva       900000005V   registered, never screened
+--   Menaka Bandara       900000006V   low→high trend, cancelled + new slot
+-- =============================================================================
+
+ALTER TABLE stage1_screenings ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+
+DO $$
+BEGIN
+    ALTER TABLE stage1_screenings DISABLE TRIGGER trg_stage1_escalation;
+EXCEPTION
+    WHEN undefined_object THEN NULL;
+END $$;
+
+INSERT INTO patients (
+    id, national_id, full_name, age, due_date, contact_number, emergency_contact,
+    blood_group, assigned_worker_id, hashed_password, is_active, first_time_login,
+    registered_at, updated_at
+)
+VALUES
+    (
+        'cccccccc-cccc-cccc-cccc-cccccccccccc',
+        '900000003V',
+        'Ishara Madushani',
+        34,
+        CURRENT_DATE + INTERVAL '12 weeks',
+        '0771234701', '0771234702', 'B+',
+        '22222222-2222-2222-2222-222222222222',
+        crypt('rash2003', gen_salt('bf')),
+        TRUE, FALSE,
+        NOW() - INTERVAL '40 days', NOW()
+    ),
+    (
+        'dddddddd-dddd-dddd-dddd-dddddddddddd',
+        '900000004V',
+        'Kavindi Jayawardena',
+        26,
+        CURRENT_DATE + INTERVAL '14 weeks',
+        '0771234801', '0771234802', 'AB+',
+        '22222222-2222-2222-2222-222222222222',
+        crypt('rash2003', gen_salt('bf')),
+        TRUE, FALSE,
+        NOW() - INTERVAL '50 days', NOW()
+    ),
+    (
+        'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+        '900000005V',
+        'Tharushi Silva',
+        24,
+        CURRENT_DATE + INTERVAL '24 weeks',
+        '0771234901', '0771234902', 'O-',
+        '22222222-2222-2222-2222-222222222222',
+        crypt('rash2003', gen_salt('bf')),
+        TRUE, FALSE,
+        NOW() - INTERVAL '5 days', NOW()
+    ),
+    (
+        'aaaabbbb-cccc-dddd-eeee-ffff00000002',
+        '900000006V',
+        'Menaka Bandara',
+        37,
+        CURRENT_DATE + INTERVAL '12 weeks',
+        '0771234101', '0771234102', 'B-',
+        '22222222-2222-2222-2222-222222222222',
+        crypt('rash2003', gen_salt('bf')),
+        TRUE, FALSE,
+        NOW() - INTERVAL '80 days', NOW()
+    )
+ON CONFLICT DO NOTHING;
+
+INSERT INTO stage1_screenings (
+    id, patient_id, worker_id, encounter_id, gestational_age_weeks,
+    age, systolic, diastolic, bmi, heart_rate, temperature,
+    blood_sugar, hemoglobin, pcos, previous_complications, preexisting_diabetes,
+    mental_health, sleep_pattern, exercise, education,
+    edge_risk_classification, edge_risk_score,
+    contributing_factors, stage2_priority,
+    device_id, collected_at, synced_at, updated_at, reviewed_at
+)
+VALUES
+    (
+        'c3c3c3c3-c3c3-c3c3-c3c3-c3c3c3c3c3c3',
+        'cccccccc-cccc-cccc-cccc-cccccccccccc',
+        '22222222-2222-2222-2222-222222222222',
+        'web-enc-ishara-w28',
+        28, 34, 128, 84, 32.4, 88, 36.9,
+        168.0, 11.1, TRUE, FALSE, TRUE,
+        5, 5, 1, 4,
+        'escalate', 0.790,
+        '{"triggers":["Marked hyperglycemia","BMI 32","Pre-existing diabetes"],"bp_status":"Watch","observation":"GDM pathway"}'::jsonb,
+        '{"recommended_primary_disease":"gdm","risk_flag":"High"}'::jsonb,
+        'web-frontline-dashboard',
+        NOW() - INTERVAL '6 hours', NOW() - INTERVAL '6 hours', NOW() - INTERVAL '6 hours',
+        NULL
+    ),
+    (
+        'd4d4d4d4-d4d4-d4d4-d4d4-d4d4d4d4d4d4',
+        'dddddddd-dddd-dddd-dddd-dddddddddddd',
+        '22222222-2222-2222-2222-222222222222',
+        'web-enc-kavindi-w26',
+        26, 26, 122, 78, 22.1, 92, 36.7,
+        98.0, 11.8, FALSE, TRUE, FALSE,
+        4, 6, 2, 5,
+        'escalate', 0.770,
+        '{"triggers":["Prior preterm birth","Cramping"],"bp_status":"Normal","observation":"Preterm surveillance"}'::jsonb,
+        '{"recommended_primary_disease":"preterm","risk_flag":"High"}'::jsonb,
+        'web-frontline-dashboard',
+        NOW() - INTERVAL '4 days', NOW() - INTERVAL '4 days', NOW() - INTERVAL '4 days',
+        NOW() - INTERVAL '1 day'
+    ),
+    (
+        'a6a6a6a6-a6a6-a6a6-a6a6-a6a6a6a6a6a6',
+        'aaaabbbb-cccc-dddd-eeee-ffff00000002',
+        '22222222-2222-2222-2222-222222222222',
+        'web-enc-menaka-w20',
+        20, 37, 124, 80, 26.2, 80, 36.7,
+        102.0, 11.6, FALSE, FALSE, FALSE,
+        3, 6, 2, 5,
+        'routine_care', 0.360,
+        '{"triggers":["Advanced maternal age"],"bp_status":"Normal","observation":"AMA baseline"}'::jsonb,
+        '{"recommended_primary_disease":"routine_follow_up","risk_flag":"Low"}'::jsonb,
+        'web-frontline-dashboard',
+        NOW() - INTERVAL '56 days', NOW() - INTERVAL '56 days', NOW() - INTERVAL '56 days',
+        NULL
+    ),
+    (
+        'b7b7b7b7-b7b7-b7b7-b7b7-b7b7b7b7b7b7',
+        'aaaabbbb-cccc-dddd-eeee-ffff00000002',
+        '22222222-2222-2222-2222-222222222222',
+        'web-enc-menaka-w28',
+        28, 37, 146, 94, 27.8, 98, 37.1,
+        118.0, 10.7, FALSE, TRUE, FALSE,
+        6, 4, 1, 5,
+        'escalate', 0.810,
+        '{"triggers":["New hypertension","AMA","Rising BMI"],"bp_status":"Elevated","observation":"Converted to high risk"}'::jsonb,
+        '{"recommended_primary_disease":"preeclampsia","risk_flag":"High"}'::jsonb,
+        'web-frontline-dashboard',
+        NOW() - INTERVAL '3 days', NOW() - INTERVAL '3 days', NOW() - INTERVAL '3 days',
+        NULL
+    )
+ON CONFLICT DO NOTHING;
+
+INSERT INTO screening_reports (
+    id, patient_id, general_risk_flag, probability_score, triggers, screened_at, recorded_by
+)
+VALUES
+    ('aa000003-0000-0000-0000-000000000001', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'High', 0.79000, '["Marked hyperglycemia","BMI 32"]'::jsonb, NOW() - INTERVAL '6 hours', '22222222-2222-2222-2222-222222222222'),
+    ('aa000004-0000-0000-0000-000000000001', 'dddddddd-dddd-dddd-dddd-dddddddddddd', 'High', 0.77000, '["Prior preterm birth","Cramping"]'::jsonb, NOW() - INTERVAL '4 days', '22222222-2222-2222-2222-222222222222'),
+    ('aa000006-0000-0000-0000-000000000001', 'aaaabbbb-cccc-dddd-eeee-ffff00000002', 'Low',  0.36000, '["Advanced maternal age"]'::jsonb, NOW() - INTERVAL '56 days', '22222222-2222-2222-2222-222222222222'),
+    ('aa000006-0000-0000-0000-000000000002', 'aaaabbbb-cccc-dddd-eeee-ffff00000002', 'High', 0.81000, '["New hypertension","AMA"]'::jsonb, NOW() - INTERVAL '3 days', '22222222-2222-2222-2222-222222222222')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO stage2_recommendations (
+    id, patient_id, stage1_screening_id, primary_disease_to_check, model_to_use,
+    clinical_notes, created_by, created_at, expires_at
+)
+VALUES
+    (
+        'bb000003-0000-0000-0000-000000000001',
+        'cccccccc-cccc-cccc-cccc-cccccccccccc',
+        'c3c3c3c3-c3c3-c3c3-c3c3-c3c3c3c3c3c3',
+        'gdm', 'Differential PE/GDM/PTB',
+        'Enter HbA1c/OGTT on Differential and run evaluation.',
+        '33333333-3333-3333-3333-333333333333',
+        NOW() - INTERVAL '5 hours', NOW() + INTERVAL '7 days'
+    ),
+    (
+        'bb000004-0000-0000-0000-000000000001',
+        'dddddddd-dddd-dddd-dddd-dddddddddddd',
+        'd4d4d4d4-d4d4-d4d4-d4d4-d4d4d4d4d4d4',
+        'preterm', 'Differential PE/GDM/PTB',
+        'Cervical length and fFN already recorded.',
+        '55555555-5555-5555-5555-555555555555',
+        NOW() - INTERVAL '3 days', NOW() + INTERVAL '4 days'
+    )
+ON CONFLICT DO NOTHING;
+
+INSERT INTO stage2_diagnostics (
+    id, patient_id, specialist_id, stage1_screening_id, gestational_age_weeks,
+    primary_disease_checked, model_used,
+    sflt1_plgf_ratio, plgf_absolute, papp_a, cervical_length_mm,
+    metabolomics, doppler, disease_specific_inputs,
+    cluster_profile, condition_probabilities, explainability_data, input_snapshot,
+    overall_severity_score, dominant_condition, evaluated_at
+)
+VALUES
+    (
+        '35353535-3535-3535-3535-353535353535',
+        'dddddddd-dddd-dddd-dddd-dddddddddddd',
+        '55555555-5555-5555-5555-555555555555',
+        'd4d4d4d4-d4d4-d4d4-d4d4-d4d4d4d4d4d4',
+        26, 'preterm', 'Differential PE/GDM/PTB',
+        22.00, 140.00, 2.10, 21.50,
+        '{"panel":"PTB","status":"completed"}'::jsonb,
+        '{"umbilical_artery_pi":0.92,"uterine_notching":false}'::jsonb,
+        '{"ffn_result":true,"cervical_length_mm":21.5}'::jsonb,
+        '{"cluster":"PTB-short-cervix"}'::jsonb,
+        '{"preeclampsia":{"risk_level":"low","probability":0.16},"gdm":{"risk_level":"low","probability":0.11},"preterm_birth":{"risk_level":"high","probability":0.78},"primary_risk":"preterm_birth"}'::jsonb,
+        '{"model":"Differential PE/GDM/PTB","features":[{"feature":"Cervical Length","importance":0.46,"contribution":0.41,"direction":"increase","value":"21.5 mm","status":"low","clinical_hint":"Length <= 25 mm raises preterm risk"}]}'::jsonb,
+        '{"age":26,"bmi":22.1,"cervical_length_mm":21.5,"ffn_result":true}'::jsonb,
+        0.780, 'preterm_birth', NOW() - INTERVAL '2 days'
+    )
+ON CONFLICT DO NOTHING;
+
+INSERT INTO patient_reports (
+    id, patient_id, stage1_screening_id, stage2_diagnostic_id,
+    report_type, report_title, content_type, report_content,
+    file_path, file_size, generated_by, generated_at, expires_at
+)
+VALUES
+    (
+        'cc000004-0000-0000-0000-000000000001',
+        'dddddddd-dddd-dddd-dddd-dddddddddddd',
+        'd4d4d4d4-d4d4-d4d4-d4d4-d4d4d4d4d4d4',
+        '35353535-3535-3535-3535-353535353535',
+        'combined', 'Combined Stage 1 + Stage 2 Report - Kavindi Jayawardena', 'json',
+        '{"dominant_condition":"preterm_birth","source":"walkthrough-addition"}'::jsonb,
+        NULL, NULL, '55555555-5555-5555-5555-555555555555', NOW() - INTERVAL '2 days', NULL
+    )
+ON CONFLICT DO NOTHING;
+
+INSERT INTO appointments (
+    id, patient_id, specialist_id, created_by_id, created_by_role, appointment_type,
+    appointment_date, duration_minutes, queue_number, status, notes,
+    completed_by_id, completed_at, cancelled_by_id, cancelled_at,
+    reason_for_cancellation, created_at, updated_at
+)
+VALUES
+    (
+        'a0909090-a090-a090-a090-a09090909090',
+        'cccccccc-cccc-cccc-cccc-cccccccccccc',
+        '33333333-3333-3333-3333-333333333333',
+        '22222222-2222-2222-2222-222222222222',
+        'FRONTLINE_STAFF', 'GLUCOSE_SCREENING',
+        date_trunc('day', NOW()) + INTERVAL '2 days' + INTERVAL '9 hours 30 minutes',
+        30, 2, 'SCHEDULED',
+        'Walkthrough: open Differential, type HbA1c/OGTT, run evaluation.',
+        NULL, NULL, NULL, NULL, NULL,
+        NOW() - INTERVAL '5 hours', NOW() - INTERVAL '5 hours'
+    ),
+    (
+        'b0909090-b090-b090-b090-b09090909090',
+        'dddddddd-dddd-dddd-dddd-dddddddddddd',
+        '55555555-5555-5555-5555-555555555555',
+        '22222222-2222-2222-2222-222222222222',
+        'FRONTLINE_STAFF', 'HIGH_RISK_FOLLOW_UP',
+        date_trunc('day', NOW()) - INTERVAL '1 day' + INTERVAL '11 hours',
+        30, 1, 'COMPLETED',
+        'Walkthrough: already reviewed. Must not appear in pending list.',
+        '55555555-5555-5555-5555-555555555555', NOW() - INTERVAL '20 hours',
+        NULL, NULL, NULL,
+        NOW() - INTERVAL '4 days', NOW() - INTERVAL '20 hours'
+    ),
+    (
+        'd0909090-d090-d090-d090-d09090909090',
+        'aaaabbbb-cccc-dddd-eeee-ffff00000002',
+        '33333333-3333-3333-3333-333333333333',
+        '22222222-2222-2222-2222-222222222222',
+        'FRONTLINE_STAFF', 'HIGH_RISK_FOLLOW_UP',
+        date_trunc('day', NOW()) + INTERVAL '4 days' + INTERVAL '8 hours',
+        30, 3, 'CANCELLED',
+        'Patient requested a later slot.',
+        NULL, NULL,
+        '22222222-2222-2222-2222-222222222222', NOW() - INTERVAL '2 hours',
+        'Rescheduled at patient request',
+        NOW() - INTERVAL '2 days', NOW() - INTERVAL '2 hours'
+    ),
+    (
+        'e0909090-e090-e090-e090-e09090909090',
+        'aaaabbbb-cccc-dddd-eeee-ffff00000002',
+        '33333333-3333-3333-3333-333333333333',
+        '22222222-2222-2222-2222-222222222222',
+        'FRONTLINE_STAFF', 'HIGH_RISK_FOLLOW_UP',
+        date_trunc('day', NOW()) + INTERVAL '5 days' + INTERVAL '14 hours',
+        30, 1, 'SCHEDULED',
+        'Replacement slot after cancellation. Still pending review.',
+        NULL, NULL, NULL, NULL, NULL,
+        NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours'
+    )
+ON CONFLICT DO NOTHING;
+
+INSERT INTO notifications (
+    id, recipient_id, appointment_id, notification_type, title, message,
+    is_read, read_at, related_data, created_at
+)
+VALUES
+    (
+        'dd000003-0000-0000-0000-000000000001',
+        '33333333-3333-3333-3333-333333333333',
+        'a0909090-a090-a090-a090-a09090909090',
+        'APPOINTMENT_SCHEDULED',
+        'GDM follow-up scheduled',
+        'Ishara Madushani (900000003V) needs glucose labs on Differential.',
+        FALSE, NULL,
+        '{"patient":"Ishara Madushani","nic":"900000003V"}'::jsonb,
+        NOW() - INTERVAL '5 hours'
+    ),
+    (
+        'dd000004-0000-0000-0000-000000000001',
+        '55555555-5555-5555-5555-555555555555',
+        'b0909090-b090-b090-b090-b09090909090',
+        'APPOINTMENT_COMPLETED',
+        'Preterm review completed',
+        'Kavindi Jayawardena appointment was marked completed.',
+        TRUE, NOW() - INTERVAL '19 hours',
+        '{"patient":"Kavindi Jayawardena"}'::jsonb,
+        NOW() - INTERVAL '20 hours'
+    ),
+    (
+        'dd000006-0000-0000-0000-000000000001',
+        '22222222-2222-2222-2222-222222222222',
+        'd0909090-d090-d090-d090-d09090909090',
+        'APPOINTMENT_CANCELLED',
+        'Menaka Bandara slot cancelled',
+        'Cancelled at patient request. Replacement booked.',
+        FALSE, NULL,
+        '{"patient":"Menaka Bandara","nic":"900000006V"}'::jsonb,
+        NOW() - INTERVAL '2 hours'
+    )
+ON CONFLICT DO NOTHING;
+
+INSERT INTO prescriptions (
+    id, patient_id, specialist_id, stage2_diagnostic_id,
+    medication_name, dosage, frequency, route, instructions,
+    start_date, end_date, is_active, created_at
+)
+VALUES
+    (
+        'ee000003-0000-0000-0000-000000000001',
+        'cccccccc-cccc-cccc-cccc-cccccccccccc',
+        '90000000-0000-0000-0000-000000000104',
+        NULL, 'Metformin', '500mg', 'Twice daily', 'Oral',
+        'Start after meals. Review with OGTT results.',
+        CURRENT_DATE, CURRENT_DATE + INTERVAL '30 days',
+        TRUE, NOW() - INTERVAL '4 hours'
+    ),
+    (
+        'ee000004-0000-0000-0000-000000000001',
+        'dddddddd-dddd-dddd-dddd-dddddddddddd',
+        '55555555-5555-5555-5555-555555555555',
+        '35353535-3535-3535-3535-353535353535',
+        'Progesterone (micronized)', '200mg', 'Once daily at night', 'Vaginal',
+        'Continue until 34 weeks unless instructed otherwise.',
+        CURRENT_DATE - INTERVAL '2 days', CURRENT_DATE + INTERVAL '56 days',
+        TRUE, NOW() - INTERVAL '2 days'
+    )
+ON CONFLICT DO NOTHING;
+
+DO $$
+BEGIN
+    ALTER TABLE stage1_screenings ENABLE TRIGGER trg_stage1_escalation;
+EXCEPTION
+    WHEN undefined_object THEN NULL;
+END $$;
+
 COMMIT;

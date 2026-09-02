@@ -75,6 +75,7 @@ interface BackendStage1History {
   gestational_age_weeks?: number | null
   systolic?: number | null
   diastolic?: number | null
+  bmi?: number | null
   heart_rate?: number | null
   temperature?: number | null
   blood_sugar?: number | null
@@ -104,6 +105,7 @@ interface EscalatedPatient {
     heartRate: number | null
     temperature: number | null
     bloodSugar: number | null
+    bmi: number | null
   }
 }
 
@@ -196,6 +198,35 @@ const languages = [
   { code: "SI", label: "Sinhala" },
   { code: "TA", label: "Tamil" },
 ]
+
+function emptySpecialistInput(): DifferentialRequest {
+  return {
+    patient_id: "",
+    stage1_screening_id: null,
+    gestational_age_weeks: null,
+    age: 0,
+    bmi: 0,
+    systolic_bp: 0,
+    diastolic_bp: 0,
+    heart_rate: 0,
+    blood_sugar: 0,
+    temperature: 0,
+    sflt1_plgf_ratio: 0,
+    serum_creatinine: 0,
+    platelet_count: 0,
+    hba1c: 0,
+    ogtt_1hr: 0,
+    ogtt_2hr: 0,
+    pregnancies_count: 0,
+    cervical_length_mm: 0,
+    ffn_result: false,
+    mean_pulse_pressure: 0,
+  }
+}
+
+function numberInputValue(value: number): string {
+  return Number.isFinite(value) && value !== 0 ? String(value) : ""
+}
 
 export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) {
   const [searchQuery, setSearchQuery] = useState("")
@@ -325,28 +356,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
     }
   }
 
-  const [specialistInput, setSpecialistInput] = useState<DifferentialRequest>({
-    patient_id: "",
-    stage1_screening_id: null,
-    gestational_age_weeks: null,
-    age: 28,
-    bmi: 24,
-    systolic_bp: 120,
-    diastolic_bp: 80,
-    heart_rate: 78,
-    blood_sugar: 95,
-    temperature: 36.8,
-    sflt1_plgf_ratio: 30,
-    serum_creatinine: 0.8,
-    platelet_count: 180,
-    hba1c: 5.4,
-    ogtt_1hr: 130,
-    ogtt_2hr: 120,
-    pregnancies_count: 1,
-    cervical_length_mm: 30,
-    ffn_result: false,
-    mean_pulse_pressure: 40,
-  })
+  const [specialistInput, setSpecialistInput] = useState<DifferentialRequest>(emptySpecialistInput())
   const [differentialResult, setDifferentialResult] = useState<DifferentialResponse | null>(null)
   const [isEvaluatingDifferential, setIsEvaluatingDifferential] = useState(false)
   const [differentialError, setDifferentialError] = useState<string | null>(null)
@@ -553,6 +563,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
             heartRate: row.heart_rate ?? null,
             temperature: row.temperature ?? null,
             bloodSugar: row.blood_sugar ?? null,
+            bmi: row.bmi ?? null,
           },
         }
       })
@@ -649,6 +660,32 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
     })
   }, [selectedPatient?.id])
 
+  useEffect(() => {
+    if (!selectedPatient) {
+      setSpecialistInput(emptySpecialistInput())
+      setDifferentialResult(null)
+      return
+    }
+
+    const systolic = selectedPatient.vitals.systolic ?? 0
+    const diastolic = selectedPatient.vitals.diastolic ?? 0
+    setSpecialistInput({
+      ...emptySpecialistInput(),
+      patient_id: selectedPatient.id,
+      stage1_screening_id: selectedPatient.screeningId || null,
+      gestational_age_weeks: selectedPatient.gestationalWeek,
+      age: selectedPatient.age || 0,
+      bmi: selectedPatient.vitals.bmi ?? 0,
+      systolic_bp: systolic,
+      diastolic_bp: diastolic,
+      heart_rate: selectedPatient.vitals.heartRate ?? 0,
+      blood_sugar: selectedPatient.vitals.bloodSugar ?? 0,
+      temperature: selectedPatient.vitals.temperature ?? 0,
+      mean_pulse_pressure: systolic && diastolic ? systolic - diastolic : 0,
+    })
+    setDifferentialResult(null)
+  }, [selectedPatient?.id, selectedPatient?.screeningId])
+
   const filteredPatients = escalatedPatients.filter(
     (p) =>
       p.status === "pending" &&
@@ -722,90 +759,91 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
   }, [featureImportanceData])
 
   const biomarkerRows = useMemo(() => {
+    const measured = (value: number) => Number.isFinite(value) && value > 0
     const rows = [
       {
         name: "Systolic BP",
-        value: `${specialistInput.systolic_bp.toFixed(0)} mmHg`,
+        value: measured(specialistInput.systolic_bp) ? `${specialistInput.systolic_bp.toFixed(0)} mmHg` : "--",
         range: "90-139",
-        status: specialistInput.systolic_bp >= 140 ? "high" : "normal",
+        status: !measured(specialistInput.systolic_bp) ? "unknown" : specialistInput.systolic_bp >= 140 ? "high" : "normal",
       },
       {
         name: "Diastolic BP",
-        value: `${specialistInput.diastolic_bp.toFixed(0)} mmHg`,
+        value: measured(specialistInput.diastolic_bp) ? `${specialistInput.diastolic_bp.toFixed(0)} mmHg` : "--",
         range: "60-89",
-        status: specialistInput.diastolic_bp >= 90 ? "high" : "normal",
+        status: !measured(specialistInput.diastolic_bp) ? "unknown" : specialistInput.diastolic_bp >= 90 ? "high" : "normal",
       },
       {
         name: "Heart Rate",
-        value: `${specialistInput.heart_rate.toFixed(0)} bpm`,
+        value: measured(specialistInput.heart_rate) ? `${specialistInput.heart_rate.toFixed(0)} bpm` : "--",
         range: "60-100",
-        status: specialistInput.heart_rate > 100 ? "high" : "normal",
+        status: !measured(specialistInput.heart_rate) ? "unknown" : specialistInput.heart_rate > 100 ? "high" : "normal",
       },
       {
         name: "Temperature",
-        value: `${specialistInput.temperature.toFixed(1)} C`,
+        value: measured(specialistInput.temperature) ? `${specialistInput.temperature.toFixed(1)} C` : "--",
         range: "36.1-37.2",
-        status: specialistInput.temperature >= 38 ? "high" : "normal",
+        status: !measured(specialistInput.temperature) ? "unknown" : specialistInput.temperature >= 38 ? "high" : "normal",
       },
       {
         name: "Blood Sugar",
-        value: `${specialistInput.blood_sugar.toFixed(1)} mg/dL`,
+        value: measured(specialistInput.blood_sugar) ? `${specialistInput.blood_sugar.toFixed(1)} mg/dL` : "--",
         range: "70-139",
-        status: specialistInput.blood_sugar >= 140 ? "high" : "normal",
+        status: !measured(specialistInput.blood_sugar) ? "unknown" : specialistInput.blood_sugar >= 140 ? "high" : "normal",
       },
       {
         name: "sFlt-1/PlGF Ratio",
-        value: specialistInput.sflt1_plgf_ratio.toFixed(2),
+        value: measured(specialistInput.sflt1_plgf_ratio) ? specialistInput.sflt1_plgf_ratio.toFixed(2) : "--",
         range: "< 38",
-        status: specialistInput.sflt1_plgf_ratio >= 38 ? "high" : "normal",
+        status: !measured(specialistInput.sflt1_plgf_ratio) ? "unknown" : specialistInput.sflt1_plgf_ratio >= 38 ? "high" : "normal",
       },
       {
         name: "Serum Creatinine",
-        value: `${specialistInput.serum_creatinine.toFixed(2)} mg/dL`,
+        value: measured(specialistInput.serum_creatinine) ? `${specialistInput.serum_creatinine.toFixed(2)} mg/dL` : "--",
         range: "0.5-1.1",
-        status: specialistInput.serum_creatinine > 1.1 ? "high" : "normal",
+        status: !measured(specialistInput.serum_creatinine) ? "unknown" : specialistInput.serum_creatinine > 1.1 ? "high" : "normal",
       },
       {
         name: "Platelet Count",
-        value: `${specialistInput.platelet_count.toFixed(0)} x10^9/L`,
+        value: measured(specialistInput.platelet_count) ? `${specialistInput.platelet_count.toFixed(0)} x10^9/L` : "--",
         range: "150-450",
-        status: specialistInput.platelet_count < 150 ? "low" : "normal",
+        status: !measured(specialistInput.platelet_count) ? "unknown" : specialistInput.platelet_count < 150 ? "low" : "normal",
       },
       {
         name: "HbA1c",
-        value: `${specialistInput.hba1c.toFixed(1)}%`,
+        value: measured(specialistInput.hba1c) ? `${specialistInput.hba1c.toFixed(1)}%` : "--",
         range: "< 5.7",
-        status: specialistInput.hba1c >= 6.5 ? "high" : specialistInput.hba1c >= 5.7 ? "elevated" : "normal",
+        status: !measured(specialistInput.hba1c) ? "unknown" : specialistInput.hba1c >= 6.5 ? "high" : specialistInput.hba1c >= 5.7 ? "elevated" : "normal",
       },
       {
         name: "OGTT 1hr",
-        value: `${specialistInput.ogtt_1hr.toFixed(0)} mg/dL`,
+        value: measured(specialistInput.ogtt_1hr) ? `${specialistInput.ogtt_1hr.toFixed(0)} mg/dL` : "--",
         range: "< 180",
-        status: specialistInput.ogtt_1hr >= 180 ? "high" : "normal",
+        status: !measured(specialistInput.ogtt_1hr) ? "unknown" : specialistInput.ogtt_1hr >= 180 ? "high" : "normal",
       },
       {
         name: "OGTT 2hr",
-        value: `${specialistInput.ogtt_2hr.toFixed(0)} mg/dL`,
+        value: measured(specialistInput.ogtt_2hr) ? `${specialistInput.ogtt_2hr.toFixed(0)} mg/dL` : "--",
         range: "< 153",
-        status: specialistInput.ogtt_2hr >= 153 ? "high" : "normal",
+        status: !measured(specialistInput.ogtt_2hr) ? "unknown" : specialistInput.ogtt_2hr >= 153 ? "high" : "normal",
       },
       {
         name: "Cervical Length",
-        value: `${specialistInput.cervical_length_mm.toFixed(1)} mm`,
+        value: measured(specialistInput.cervical_length_mm) ? `${specialistInput.cervical_length_mm.toFixed(1)} mm` : "--",
         range: "> 25",
-        status: specialistInput.cervical_length_mm <= 25 ? "low" : "normal",
+        status: !measured(specialistInput.cervical_length_mm) ? "unknown" : specialistInput.cervical_length_mm <= 25 ? "low" : "normal",
       },
       {
         name: "fFN Result",
-        value: specialistInput.ffn_result ? "Positive" : "Negative",
+        value: specialistInput.ffn_result ? "Positive" : measured(specialistInput.cervical_length_mm) || measured(specialistInput.sflt1_plgf_ratio) ? "Negative" : "--",
         range: "Negative",
         status: specialistInput.ffn_result ? "high" : "normal",
       },
       {
         name: "Mean Pulse Pressure",
-        value: `${specialistInput.mean_pulse_pressure.toFixed(0)} mmHg`,
+        value: measured(specialistInput.mean_pulse_pressure) ? `${specialistInput.mean_pulse_pressure.toFixed(0)} mmHg` : "--",
         range: "30-50",
-        status: specialistInput.mean_pulse_pressure > 50 ? "high" : "normal",
+        status: !measured(specialistInput.mean_pulse_pressure) ? "unknown" : specialistInput.mean_pulse_pressure > 50 ? "high" : "normal",
       },
     ]
 
@@ -983,6 +1021,19 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
   const handleEvaluateDifferential = async () => {
     if (!activePatient?.id) {
       setDifferentialError("Select a patient before running differential diagnosis")
+      return
+    }
+
+    if (
+      specialistInput.age < 10 ||
+      specialistInput.bmi < 10 ||
+      specialistInput.systolic_bp < 50 ||
+      specialistInput.diastolic_bp < 30 ||
+      specialistInput.heart_rate < 20 ||
+      specialistInput.blood_sugar < 20 ||
+      specialistInput.temperature < 30
+    ) {
+      setDifferentialError("Enter this visit's vitals (age, BMI, blood pressure, heart rate, blood sugar, temperature) before running differential diagnosis.")
       return
     }
 
@@ -1390,6 +1441,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                       heartRate: null,
                       temperature: null,
                       bloodSugar: null,
+                      bmi: null,
                     },
                   }
                   setSelectedPatient(pseudoPatient)
@@ -1678,7 +1730,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                           type="number"
                           step="any"
                           placeholder={label}
-                          value={String(specialistInput[key as keyof DifferentialRequest])}
+                          value={numberInputValue(Number(specialistInput[key as keyof DifferentialRequest]))}
                           onChange={(e) =>
                             setSpecialistInput((prev) => ({
                               ...prev,
@@ -1702,7 +1754,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                           type="number"
                           step="any"
                           placeholder={label}
-                          value={String(specialistInput[key as keyof DifferentialRequest])}
+                          value={numberInputValue(Number(specialistInput[key as keyof DifferentialRequest]))}
                           onChange={(e) =>
                             setSpecialistInput((prev) => ({
                               ...prev,
@@ -1727,7 +1779,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                           type="number"
                           step="any"
                           placeholder={label}
-                          value={String(specialistInput[key as keyof DifferentialRequest])}
+                          value={numberInputValue(Number(specialistInput[key as keyof DifferentialRequest]))}
                           onChange={(e) =>
                             setSpecialistInput((prev) => ({
                               ...prev,
@@ -1750,7 +1802,7 @@ export default function ClinicalDashboard({ onLogout }: ClinicalDashboardProps) 
                           type="number"
                           step="any"
                           placeholder={label}
-                          value={String(specialistInput[key as keyof DifferentialRequest])}
+                          value={numberInputValue(Number(specialistInput[key as keyof DifferentialRequest]))}
                           onChange={(e) =>
                             setSpecialistInput((prev) => ({
                               ...prev,

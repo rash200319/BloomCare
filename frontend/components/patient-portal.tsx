@@ -166,7 +166,7 @@ interface AppointmentViewItem {
 const DEFAULT_PATIENT_DATA: PatientDisplayData = {
   name: "Patient",
   email: "",
-  gestationalWeek: 24,
+  gestationalWeek: 0,
   bloodGroup: "-",
   dueDate: "-",
   pregnancyStatus: "Monitoring",
@@ -211,8 +211,11 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
     screening2: "",
   })
   const gestationalWeek = useMemo(() => {
-    const calculated = calculateGestationalWeekFromDueDate(patientData.dueDate)
-    return calculated ?? patientData.gestationalWeek
+    const calculated = calculateGestationalWeekFromDueDate(
+      patientData.dueDate && patientData.dueDate !== "-" ? patientData.dueDate : undefined,
+    )
+    if (calculated && calculated > 0) return calculated
+    return patientData.gestationalWeek > 0 ? patientData.gestationalWeek : 0
   }, [patientData.dueDate, patientData.gestationalWeek])
   const daysToWelcome = useMemo(() => {
     if (!patientData.dueDate || patientData.dueDate === "-") return null
@@ -223,10 +226,13 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
     return Math.max(0, Math.ceil((dueDate.getTime() - now.getTime()) / msPerDay))
   }, [patientData.dueDate])
 
-  const weeklyInsight = useMemo(() => getWeeklyInsight(gestationalWeek), [gestationalWeek])
-  const currentWeek = weeklyInsight.week
-  const trimesterLabel = currentWeek <= 13 ? "1st" : currentWeek <= 27 ? "2nd" : "3rd"
-  const remainingWeeks = Math.max(0, 40 - currentWeek)
+  const weeklyInsight = useMemo(
+    () => (gestationalWeek >= 1 ? getWeeklyInsight(gestationalWeek) : null),
+    [gestationalWeek],
+  )
+  const currentWeek = weeklyInsight?.week ?? 0
+  const trimesterLabel = currentWeek < 1 ? "--" : currentWeek <= 13 ? "1st" : currentWeek <= 27 ? "2nd" : "3rd"
+  const remainingWeeks = currentWeek < 1 ? 0 : Math.max(0, 40 - currentWeek)
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -773,7 +779,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
   }, [appointments])
 
   const insightFactIcons = [Droplets, Heart, Pill]
-  const healthTips = weeklyInsight.facts.map((fact, index) => ({
+  const healthTips = (weeklyInsight?.facts ?? []).map((fact, index) => ({
     id: index + 1,
     title: fact.title,
     titleSi: fact.title,
@@ -864,7 +870,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
             >
               <div className="hidden sm:text-right sm:block">
                 <p className="text-sm font-black text-slate-900 tracking-tight">{patientData.name}</p>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Week {gestationalWeek} • {patientData.bloodGroup}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Week {gestationalWeek > 0 ? gestationalWeek : "--"} • {patientData.bloodGroup}</p>
               </div>
               <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center shadow-lg shadow-accent/20 transition-transform group-hover:scale-105">
                 <User className="w-5 h-5 text-white" />
@@ -918,7 +924,7 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                   <div className="bg-white/50 backdrop-blur-md px-4 py-2 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-primary" />
                     <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">
-                       {getText("Week", "සතිය", "வாரம்")} {gestationalWeek}
+                       {getText("Week", "සතිය", "வாரம்")} {gestationalWeek > 0 ? gestationalWeek : "--"}
                     </span>
                   </div>
                   <div className="bg-white/50 backdrop-blur-md px-4 py-2 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-2">
@@ -975,10 +981,10 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                  <CardContent className="p-8">
                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{getText("Gestational progress", "ප්‍රගතිය", "முன்னேற்றம்")}</p>
                    <div className="flex items-end justify-between">
-                    <p className="text-3xl font-black text-slate-900 tracking-tight">{gestationalWeek} <span className="text-sm text-slate-400">weeks</span></p>
+                    <p className="text-3xl font-black text-slate-900 tracking-tight">{gestationalWeek > 0 ? gestationalWeek : "--"} <span className="text-sm text-slate-400">weeks</span></p>
                    </div>
                    <div className="w-full h-1.5 bg-slate-100 rounded-full mt-6 overflow-hidden">
-                     <div className="h-full bg-primary rounded-full" style={{ width: `${(gestationalWeek / 40) * 100}%` }} />
+                     <div className="h-full bg-primary rounded-full" style={{ width: `${gestationalWeek > 0 ? (gestationalWeek / 40) * 100 : 0}%` }} />
                    </div>
                  </CardContent>
               </Card>
@@ -1268,7 +1274,15 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
           {/* Insights (Tips) Tab */}
           <TabsContent value="tips" className="space-y-8 animate-in fade-in duration-500">
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {healthTips.map((tip) => (
+                {healthTips.length === 0 ? (
+                  <p className="text-sm font-bold text-slate-500 md:col-span-3">
+                    {getText(
+                      "Weekly tips appear after a due date is on your patient record.",
+                      "ඔබගේ රෝගී වාර්තාවේ ප්‍රසව දිනයක් ඇති විට සතිපතා උපදෙස් පෙන්වයි.",
+                      "உங்கள் பதிவில் பிரசவ தேதி இருந்தால் வார குறிப்புகள் தோன்றும்.",
+                    )}
+                  </p>
+                ) : healthTips.map((tip) => (
                   <Card key={tip.id} className="border-0 glass shadow-xl shadow-slate-200/50 overflow-hidden group hover:scale-[1.03] transition-all duration-300 rounded-[24px]">
                     <CardContent className="p-8">
                       <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-primary group-hover:text-white transition-all shadow-sm">
@@ -1297,17 +1311,25 @@ const PatientPortal = ({ onLogout }: PatientPortalProps) => {
                          <div className="absolute inset-0 bg-slate-900/40" />
                       </div>
                       <Baby className="w-24 h-24 text-primary relative z-10 mb-6 animate-pulse" />
-                      <h3 className="text-3xl font-black relative z-10 tracking-tight">Week {currentWeek}</h3>
-                      <p className="text-slate-400 font-black uppercase tracking-[0.2em] text-[10px] relative z-10 mt-2">Corn Ear Size</p>
+                      <h3 className="text-3xl font-black relative z-10 tracking-tight">Week {currentWeek > 0 ? currentWeek : "--"}</h3>
+                      <p className="text-slate-400 font-black uppercase tracking-[0.2em] text-[10px] relative z-10 mt-2">
+                        {currentWeek > 0 ? getText("This week", "මේ සතිය", "இந்த வாரம்") : getText("Due date needed", "ප්‍රසව දිනය අවශ්‍යයි", "பிரசவ தேதி தேவை")}
+                      </p>
                    </div>
                    <div className="flex-1 p-12 bg-white/40">
                       <h3 className="text-2xl font-black text-slate-900 mb-6 tracking-tight">Development This Week</h3>
-                      <p className="text-slate-500 leading-relaxed mb-8 font-bold">{weeklyInsight.description}</p>
+                      <p className="text-slate-500 leading-relaxed mb-8 font-bold">
+                        {weeklyInsight?.description || getText(
+                          "Weekly insights appear after a due date is on your patient record.",
+                          "ඔබගේ රෝගී වාර්තාවේ ප්‍රසව දිනයක් ඇති විට සතිපතා විදසුන් පෙන්වයි.",
+                          "உங்கள் பதிவில் பிரசவ தேதி இருந்தால் வார நுண்ணறிவு தோன்றும்.",
+                        )}
+                      </p>
                       <div className="grid grid-cols-3 gap-6">
                          {[
-                           { val: `W${currentWeek}`, label: "Current Week" },
+                           { val: currentWeek > 0 ? `W${currentWeek}` : "--", label: "Current Week" },
                            { val: trimesterLabel, label: "Trimester" },
-                           { val: `${remainingWeeks}`, label: "Weeks Left" },
+                           { val: currentWeek > 0 ? `${remainingWeeks}` : "--", label: "Weeks Left" },
                          ].map(stat => (
                            <div key={stat.label} className="p-6 bg-white/50 rounded-2xl border border-slate-100 text-center shadow-sm">
                               <p className="text-xl font-black text-slate-900 tracking-tight">{stat.val}</p>

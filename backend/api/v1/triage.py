@@ -342,6 +342,7 @@ def stage1_history(
                 "gestational_age_weeks": screening.gestational_age_weeks,
                 "systolic": screening.systolic,
                 "diastolic": screening.diastolic,
+                "bmi": float(screening.bmi) if screening.bmi is not None else None,
                 "heart_rate": screening.heart_rate,
                 "temperature": float(screening.temperature) if screening.temperature is not None else None,
                 "blood_sugar": float(screening.Blood_sugar) if screening.Blood_sugar is not None else None,
